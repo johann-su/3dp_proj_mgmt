@@ -1,12 +1,12 @@
 # 3D printing project management
 
-This project should be a self hostable project management platform for .3mf / .step / .stl files. Its structure should mirror [Makerworld](https://makerworld.com) or [Printables](https://printables) - just being completely self hostable.
+This project should be a self hostable project management platform for .3mf files (stl/step upload was removed to keep the UI and ingestion simple — 3mf is a container with embedded metadata and images). Its structure should mirror [Makerworld](https://makerworld.com) or [Printables](https://printables) - just being completely self hostable.
 
 ## Features
 
 MVP:
-- [x] Creating a model (ie one or multiple .3mf / .step / .stl files that together make up one coherent model)
-- [x] Upload .3mf / .step / .stl file
+- [x] Creating a model (ie one or multiple .3mf files that together make up one coherent model)
+- [x] Upload .3mf file
 - [x] Add metadata (title, description, images, category, tags)
 - [x] A homepage where the models are listed and searchable
 - [x] A details page for every model when clicking on it where the project files can be downloaded (like makerworlds print profiles tab)

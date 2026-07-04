@@ -59,7 +59,7 @@ export async function createModel(
 
   const uploads = input.files;
   if (!uploads.some((f) => f.kind === "model")) {
-    return { error: "At least one model file (.3mf / .step / .stl) is required" };
+    return { error: "At least one .3mf file is required" };
   }
   const uploadError = validateUploads(uploads);
   if (uploadError) return { error: uploadError };

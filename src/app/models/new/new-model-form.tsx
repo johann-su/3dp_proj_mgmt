@@ -23,7 +23,7 @@ import {
 
 type Category = { id: string; name: string; slug: string };
 
-const MODEL_ACCEPT = ".3mf,.stl,.step,.stp";
+const MODEL_ACCEPT = ".3mf";
 const IMAGE_ACCEPT = ".png,.jpg,.jpeg,.webp,.gif";
 
 async function uploadFile(file: File, kind: "model" | "image"): Promise<UploadedFile> {
@@ -210,7 +210,7 @@ export function NewModelForm({ categories }: { categories: Category[] }) {
     e.preventDefault();
 
     if (modelFiles.length === 0) {
-      toast.error("Add at least one model file (.3mf / .step / .stl)");
+      toast.error("Add at least one .3mf file");
       setStep(1);
       return;
     }
@@ -255,7 +255,7 @@ export function NewModelForm({ categories }: { categories: Category[] }) {
       {step === 1 && (
         <>
           <FilePicker
-            hint="Click to add .3mf / .step / .stl files — title, description, images and printer are imported from .3mf automatically"
+            hint="Click to add .3mf files — title, description, images and printer are imported automatically"
             accept={MODEL_ACCEPT}
             files={modelFiles}
             setFiles={setModelFiles}

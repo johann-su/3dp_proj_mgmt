@@ -12,7 +12,9 @@ export const s3 = new S3Client({
 
 export const S3_BUCKET = process.env.S3_BUCKET ?? "models";
 
-export const MODEL_EXTENSIONS = [".3mf", ".stl", ".step", ".stp"];
+// 3mf only: it's a container with embedded metadata/images, which keeps the
+// upload UI and ingestion simple (stl/step support was deliberately removed).
+export const MODEL_EXTENSIONS = [".3mf"];
 export const IMAGE_EXTENSIONS = [".png", ".jpg", ".jpeg", ".webp", ".gif"];
 
 export function fileExtension(filename: string) {
