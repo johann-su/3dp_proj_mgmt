@@ -5,6 +5,8 @@ import { toast } from "sonner";
 import { ArrowLeft, ArrowRight, FileBox, ImageIcon, X } from "lucide-react";
 import { createModel, type UploadedFile } from "@/app/models/actions";
 import { extract3mfMetadata } from "@/lib/threemf";
+import type { BomItemInput } from "@/lib/bom";
+import { BomEditor } from "./bom-editor";
 import { cn, isNextRedirectError } from "@/lib/utils";
 import { formatBytes } from "@/lib/format";
 import { Button } from "@/components/ui/button";
@@ -166,6 +168,7 @@ export function NewModelForm({ categories }: { categories: Category[] }) {
   const [modelFiles, setModelFiles] = useState<File[]>([]);
   const [imageFiles, setImageFiles] = useState<File[]>([]);
   const [categoryId, setCategoryId] = useState<string>("");
+  const [bom, setBom] = useState<BomItemInput[]>([]);
   const [status, setStatus] = useState<string | null>(null);
   const [extracting, setExtracting] = useState(0);
 
@@ -232,6 +235,7 @@ export function NewModelForm({ categories }: { categories: Category[] }) {
         categoryId: categoryId || null,
         tags: tags.split(","),
         files: uploaded,
+        bom,
       });
       if (result?.error) {
         setStatus(null);
@@ -323,6 +327,8 @@ export function NewModelForm({ categories }: { categories: Category[] }) {
               />
             </div>
           </div>
+
+          <BomEditor items={bom} setItems={setBom} />
 
           <FilePicker
             label="Images"

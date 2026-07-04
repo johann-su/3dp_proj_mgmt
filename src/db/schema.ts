@@ -100,6 +100,20 @@ export const modelFiles = pgTable("model_files", {
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
+// Bill of materials: filament, heat set inserts, screws, …
+export const bomItems = pgTable("bom_items", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  modelId: uuid("model_id")
+    .notNull()
+    .references(() => models.id, { onDelete: "cascade" }),
+  name: text("name").notNull(),
+  // free-form so "4", "0.5 kg" and "2 m" all work
+  quantity: text("quantity").notNull().default("1"),
+  link: text("link"),
+  imageUrl: text("image_url"),
+  position: integer("position").notNull().default(0),
+});
+
 export const tags = pgTable("tags", {
   id: uuid("id").primaryKey().defaultRandom(),
   name: text("name").notNull().unique(),
@@ -152,6 +166,7 @@ export const modelsRelations = relations(models, ({ one, many }) => ({
     references: [categories.id],
   }),
   files: many(modelFiles),
+  bomItems: many(bomItems),
   modelTags: many(modelTags),
   collectionModels: many(collectionModels),
 }));
@@ -170,6 +185,10 @@ export const collectionModelsRelations = relations(collectionModels, ({ one }) =
     fields: [collectionModels.modelId],
     references: [models.id],
   }),
+}));
+
+export const bomItemsRelations = relations(bomItems, ({ one }) => ({
+  model: one(models, { fields: [bomItems.modelId], references: [models.id] }),
 }));
 
 export const modelFilesRelations = relations(modelFiles, ({ one }) => ({
