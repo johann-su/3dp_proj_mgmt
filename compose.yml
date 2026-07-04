@@ -27,6 +27,11 @@ services:
       DATABASE_URL: postgres://stl:stl@postgres:5432/stl
       BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:-change-me-in-production}
       BETTER_AUTH_URL: ${BETTER_AUTH_URL:-http://localhost:3000}
+      # Optional OIDC SSO (see .env.example)
+      OIDC_ISSUER: ${OIDC_ISSUER:-}
+      OIDC_CLIENT_ID: ${OIDC_CLIENT_ID:-}
+      OIDC_CLIENT_SECRET: ${OIDC_CLIENT_SECRET:-}
+      OIDC_PROVIDER_NAME: ${OIDC_PROVIDER_NAME:-SSO}
       # Point these at your S3-compatible storage (AWS S3, MinIO, Garage, …)
       S3_ENDPOINT: ${S3_ENDPOINT:?set S3_ENDPOINT to your S3-compatible storage}
       S3_REGION: ${S3_REGION:-us-east-1}

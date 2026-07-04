@@ -14,11 +14,13 @@ MVP:
 After MVP works:
 - [x] Prefill title, description, images and a printer tag (e.g. "bambu p1s") from uploaded .3mf files
 - [x] Collections: folders/groups of models (per user, "Add to collection" on model pages)
-- [x] Import from other platforms (makerworld & printables only) — Create → "Import from URL".
-  Printables: metadata, images and model files are fetched server-side and prefilled.
-  MakerWorld: metadata + images when reachable; file downloads require a Bambu account and
-  Cloudflare usually blocks server-side fetches — fallback is uploading the .3mf manually
-  (its metadata is extracted automatically). Imported models link back via `source_url`.
+- [ ] Import from other platforms (makerworld & printables only)
+- [ ] Bill of Materials (BOM) for models
+  - filament, heat set inserts etc
+  - Item (name), quantitiy, link (optional), image (optional)
+  - downloadable as csv
+  - displayed on the model page above the description, below the images
+  - upload csv in model creation menu or wizzard
 
 ## Tech stack
 
@@ -49,7 +51,7 @@ migration (or `npm run db:push` to sync directly during development).
 
 ## Self-hosting
 
-The `app` service in `docker-compose.yml` builds a production image (Next.js standalone
+The `app` service in `compose.yml` builds a production image (Next.js standalone
 output) that applies migrations and seeds categories on boot:
 
 ```sh
@@ -59,6 +61,15 @@ export S3_ENDPOINT=https://your-s3-endpoint
 export S3_ACCESS_KEY_ID=… S3_SECRET_ACCESS_KEY=… S3_BUCKET=models
 docker compose --profile app up -d --build
 ```
+
+### OIDC single sign-on (optional)
+
+Set `OIDC_ISSUER`, `OIDC_CLIENT_ID` and `OIDC_CLIENT_SECRET` to show an SSO button
+below the email/password form on the sign-in page (`OIDC_PROVIDER_NAME` customizes
+the button label). The issuer must serve `/.well-known/openid-configuration`, and
+the client must be registered with the redirect URI
+`{BETTER_AUTH_URL}/api/auth/oauth2/callback/oidc`. Works with Authentik, Keycloak,
+Pocket ID, and any other standard OIDC provider.
 
 ## Architecture notes
 
