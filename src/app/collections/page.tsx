@@ -65,7 +65,7 @@ export default async function MyCollectionsPage() {
                 href={`/collections/${collection.id}`}
                 className="group"
               >
-                <Card className="overflow-hidden h-full py-0 gap-0 transition-shadow group-hover:shadow-md">
+                <Card className="overflow-hidden h-full py-0 gap-0 border-0 shadow-sm transition-shadow group-hover:shadow-lg">
                   <div className="aspect-[4/3] bg-muted flex items-center justify-center overflow-hidden">
                     {cover ? (
                       // eslint-disable-next-line @next/next/no-img-element

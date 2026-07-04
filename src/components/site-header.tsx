@@ -9,18 +9,20 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { UserMenu } from "@/components/user-menu";
+import { ThemeToggle } from "@/components/theme-toggle";
 
 export async function SiteHeader() {
   const session = await getSession();
 
   return (
-    <header className="border-b sticky top-0 z-40 bg-background/95 backdrop-blur">
+    <header className="border-b sticky top-0 z-40 bg-card/95 text-card-foreground backdrop-blur">
       <div className="mx-auto max-w-6xl px-4 h-14 flex items-center gap-4">
         <Link href="/" className="flex items-center gap-2 font-semibold">
-          <Box className="size-5" />
+          <Box className="size-5 text-primary" />
           Print Vault
         </Link>
         <div className="ml-auto flex items-center gap-2">
+          <ThemeToggle />
           {session ? (
             <>
               <DropdownMenu>
