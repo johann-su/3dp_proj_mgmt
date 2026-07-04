@@ -1,0 +1,170 @@
+import Link from "next/link";
+import { notFound } from "next/navigation";
+import { and, asc, eq, inArray } from "drizzle-orm";
+import { Download, FileBox } from "lucide-react";
+import { db } from "@/db";
+import { collectionModels, collections, models } from "@/db/schema";
+import { getSession } from "@/lib/auth";
+import { formatBytes, formatDate } from "@/lib/format";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Separator } from "@/components/ui/separator";
+import { ImageGallery } from "./image-gallery";
+import { DeleteModelButton } from "./delete-model-button";
+import { AddToCollection, type CollectionOption } from "./add-to-collection";
+
+export const dynamic = "force-dynamic";
+
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+export default async function ModelPage({
+  params,
+}: {
+  params: Promise<{ id: string }>;
+}) {
+  const { id } = await params;
+  if (!UUID_RE.test(id)) notFound();
+
+  const [model, session] = await Promise.all([
+    db.query.models.findFirst({
+      where: eq(models.id, id),
+      with: {
+        user: { columns: { name: true } },
+        category: true,
+        files: { orderBy: (f, { asc }) => asc(f.position) },
+        modelTags: { with: { tag: true } },
+      },
+    }),
+    getSession(),
+  ]);
+  if (!model) notFound();
+
+  const images = model.files.filter((f) => f.kind === "image");
+  const printFiles = model.files.filter((f) => f.kind === "model");
+  const isOwner = session?.user.id === model.userId;
+
+  let collectionOptions: CollectionOption[] = [];
+  if (session) {
+    const own = await db.query.collections.findMany({
+      where: eq(collections.userId, session.user.id),
+      orderBy: asc(collections.title),
+      columns: { id: true, title: true },
+    });
+    const memberships = own.length
+      ? await db
+          .select({ collectionId: collectionModels.collectionId })
+          .from(collectionModels)
+          .where(
+            and(
+              eq(collectionModels.modelId, model.id),
+              inArray(
+                collectionModels.collectionId,
+                own.map((c) => c.id),
+              ),
+            ),
+          )
+      : [];
+    const memberIds = new Set(memberships.map((m) => m.collectionId));
+    collectionOptions = own.map((c) => ({
+      id: c.id,
+      title: c.title,
+      inCollection: memberIds.has(c.id),
+    }));
+  }
+
+  return (
+    <div className="mx-auto max-w-6xl px-4 py-8">
+      <div className="grid gap-8 lg:grid-cols-[1fr_400px]">
+        <div>
+          <ImageGallery
+            images={images.map((img) => ({ id: img.id, filename: img.filename }))}
+            title={model.title}
+          />
+
+          <div className="mt-8">
+            <h2 className="text-lg font-semibold mb-2">Description</h2>
+            {model.description ? (
+              <p className="whitespace-pre-wrap text-sm leading-relaxed">
+                {model.description}
+              </p>
+            ) : (
+              <p className="text-sm text-muted-foreground">No description.</p>
+            )}
+          </div>
+        </div>
+
+        <div className="space-y-4">
+          <div>
+            <h1 className="text-2xl font-bold tracking-tight">{model.title}</h1>
+            <p className="text-sm text-muted-foreground mt-1">
+              by {model.user.name} · {formatDate(model.createdAt)}
+            </p>
+          </div>
+
+          <div className="flex flex-wrap gap-1.5">
+            {model.category && (
+              <Link href={`/?category=${model.category.slug}`}>
+                <Badge>{model.category.name}</Badge>
+              </Link>
+            )}
+            {model.modelTags.map(({ tag }) => (
+              <Link key={tag.id} href={`/?q=${encodeURIComponent(tag.name)}`}>
+                <Badge variant="secondary">{tag.name}</Badge>
+              </Link>
+            ))}
+          </div>
+
+          {session && (
+            <AddToCollection modelId={model.id} collections={collectionOptions} />
+          )}
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">
+                Files ({printFiles.length})
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="grid gap-2">
+              {printFiles.map((file) => (
+                <div
+                  key={file.id}
+                  className="flex items-center gap-3 border rounded-md px-3 py-2"
+                >
+                  <FileBox className="size-4 text-muted-foreground shrink-0" />
+                  <div className="min-w-0">
+                    <div className="text-sm font-medium truncate">
+                      {file.filename}
+                    </div>
+                    <div className="text-xs text-muted-foreground">
+                      {formatBytes(file.size)}
+                    </div>
+                  </div>
+                  <Button
+                    asChild
+                    size="icon"
+                    variant="ghost"
+                    className="ml-auto shrink-0"
+                    aria-label={`Download ${file.filename}`}
+                  >
+                    <a href={`/api/files/${file.id}?download=1`}>
+                      <Download className="size-4" />
+                    </a>
+                  </Button>
+                </div>
+              ))}
+            </CardContent>
+          </Card>
+
+          {isOwner && (
+            <>
+              <Separator />
+              <DeleteModelButton modelId={model.id} />
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
