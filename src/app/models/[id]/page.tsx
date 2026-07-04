@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { and, asc, eq, inArray } from "drizzle-orm";
-import { Download, FileBox } from "lucide-react";
+import { Download, ExternalLink, FileBox } from "lucide-react";
 import { db } from "@/db";
 import { collectionModels, collections, models } from "@/db/schema";
 import { getSession } from "@/lib/auth";
@@ -101,6 +101,18 @@ export default async function ModelPage({
             <p className="text-sm text-muted-foreground mt-1">
               by {model.user.name} · {formatDate(model.createdAt)}
             </p>
+            {model.sourceUrl && (
+              <a
+                href={model.sourceUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1 text-sm text-primary hover:underline mt-1"
+              >
+                <ExternalLink className="size-3.5" />
+                Imported from{" "}
+                {model.sourceUrl.includes("makerworld") ? "MakerWorld" : "Printables"}
+              </a>
+            )}
           </div>
 
           <div className="flex flex-wrap gap-1.5">

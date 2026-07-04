@@ -1,8 +1,8 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
-import { ArrowLeft, ArrowRight, FileBox, ImageIcon, X } from "lucide-react";
+import { ArrowLeft, ArrowRight, CloudDownload, FileBox, ImageIcon, X } from "lucide-react";
 import { createModel, type UploadedFile } from "@/app/models/actions";
 import { extract3mfMetadata } from "@/lib/threemf";
 import { cn, isNextRedirectError } from "@/lib/utils";
@@ -147,6 +147,54 @@ function StepIndicator({ step }: { step: 1 | 2 }) {
   );
 }
 
+// Draft produced by /models/import (files are already staged in S3).
+export type ImportDraftPayload = {
+  sourceUrl: string;
+  title: string;
+  description: string;
+  tags: string[];
+  files: UploadedFile[];
+  warnings: string[];
+};
+
+export const IMPORT_DRAFT_KEY = "printvault-import-draft";
+
+function StagedFileList({
+  files,
+  onRemove,
+}: {
+  files: UploadedFile[];
+  onRemove: (index: number) => void;
+}) {
+  if (files.length === 0) return null;
+  return (
+    <ul className="grid gap-1">
+      {files.map((file, i) => (
+        <li
+          key={file.key}
+          className="flex items-center gap-2 text-sm border rounded-md px-3 py-2"
+        >
+          <CloudDownload className="size-3.5 text-primary shrink-0" />
+          <span className="truncate">{file.filename}</span>
+          <span className="text-muted-foreground ml-auto shrink-0">
+            {formatBytes(file.size)}
+          </span>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            className="size-6 shrink-0"
+            aria-label={`Remove ${file.filename}`}
+            onClick={() => onRemove(i)}
+          >
+            <X className="size-3.5" />
+          </Button>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
 function mergeTags(existing: string, addition: string) {
   const current = existing
     .split(",")
@@ -165,9 +213,38 @@ export function NewModelForm({ categories }: { categories: Category[] }) {
   const [tags, setTags] = useState("");
   const [modelFiles, setModelFiles] = useState<File[]>([]);
   const [imageFiles, setImageFiles] = useState<File[]>([]);
+  const [stagedModels, setStagedModels] = useState<UploadedFile[]>([]);
+  const [stagedImages, setStagedImages] = useState<UploadedFile[]>([]);
+  const [sourceUrl, setSourceUrl] = useState<string | null>(null);
   const [categoryId, setCategoryId] = useState<string>("");
   const [status, setStatus] = useState<string | null>(null);
   const [extracting, setExtracting] = useState(0);
+
+  // Hydrate from an import draft handed over by /models/import. This must
+  // run after hydration (sessionStorage is client-only), so the one-time
+  // cascading render is intentional.
+  useEffect(() => {
+    const raw = sessionStorage.getItem(IMPORT_DRAFT_KEY);
+    if (!raw) return;
+    sessionStorage.removeItem(IMPORT_DRAFT_KEY);
+    try {
+      const draft = JSON.parse(raw) as ImportDraftPayload;
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setTitle(draft.title ?? "");
+      setDescription(draft.description ?? "");
+      setTags((draft.tags ?? []).join(", "));
+      setSourceUrl(draft.sourceUrl ?? null);
+      setStagedModels((draft.files ?? []).filter((f) => f.kind === "model"));
+      setStagedImages((draft.files ?? []).filter((f) => f.kind === "image"));
+      setStep(2);
+      toast.success("Model imported — review and save");
+      for (const warning of draft.warnings ?? []) {
+        toast.warning(warning);
+      }
+    } catch {
+      // corrupt draft — start with an empty form
+    }
+  }, []);
 
   async function importFrom3mf(added: File[]) {
     for (const file of added) {
@@ -206,7 +283,7 @@ export function NewModelForm({ categories }: { categories: Category[] }) {
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
 
-    if (modelFiles.length === 0) {
+    if (modelFiles.length + stagedModels.length === 0) {
       toast.error("Add at least one model file (.3mf / .step / .stl)");
       setStep(1);
       return;
@@ -217,7 +294,7 @@ export function NewModelForm({ categories }: { categories: Category[] }) {
         ...modelFiles.map((file) => ({ file, kind: "model" as const })),
         ...imageFiles.map((file) => ({ file, kind: "image" as const })),
       ];
-      const uploaded: UploadedFile[] = [];
+      const uploaded: UploadedFile[] = [...stagedModels, ...stagedImages];
       for (const [i, { file, kind }] of toUpload.entries()) {
         setStatus(`Uploading ${i + 1}/${toUpload.length}: ${file.name}`);
         uploaded.push(await uploadFile(file, kind));
@@ -232,6 +309,7 @@ export function NewModelForm({ categories }: { categories: Category[] }) {
         categoryId: categoryId || null,
         tags: tags.split(","),
         files: uploaded,
+        sourceUrl,
       });
       if (result?.error) {
         setStatus(null);
@@ -258,10 +336,14 @@ export function NewModelForm({ categories }: { categories: Category[] }) {
             onFilesAdded={importFrom3mf}
             icon={<FileBox className="size-6" />}
           />
+          <StagedFileList
+            files={stagedModels}
+            onRemove={(i) => setStagedModels(stagedModels.filter((_, j) => j !== i))}
+          />
           <Button
             type="button"
             className="justify-self-end"
-            disabled={modelFiles.length === 0 || extracting > 0}
+            disabled={modelFiles.length + stagedModels.length === 0 || extracting > 0}
             onClick={() => setStep(2)}
           >
             {extracting > 0 ? "Reading metadata…" : "Continue"}
@@ -324,6 +406,32 @@ export function NewModelForm({ categories }: { categories: Category[] }) {
             </div>
           </div>
 
+          {(stagedModels.length > 0 || modelFiles.length > 0) && (
+            <div className="grid gap-2">
+              <Label>Model files</Label>
+              {modelFiles.length > 0 && (
+                <ul className="grid gap-1">
+                  {modelFiles.map((file, i) => (
+                    <li
+                      key={`${file.name}-${i}`}
+                      className="flex items-center gap-2 text-sm border rounded-md px-3 py-2"
+                    >
+                      <FileBox className="size-3.5 text-muted-foreground shrink-0" />
+                      <span className="truncate">{file.name}</span>
+                      <span className="text-muted-foreground ml-auto shrink-0">
+                        {formatBytes(file.size)}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+              <StagedFileList
+                files={stagedModels}
+                onRemove={(i) => setStagedModels(stagedModels.filter((_, j) => j !== i))}
+              />
+            </div>
+          )}
+
           <FilePicker
             label="Images"
             hint="Click to add preview images"
@@ -332,6 +440,17 @@ export function NewModelForm({ categories }: { categories: Category[] }) {
             setFiles={setImageFiles}
             icon={<ImageIcon className="size-6" />}
           />
+          <StagedFileList
+            files={stagedImages}
+            onRemove={(i) => setStagedImages(stagedImages.filter((_, j) => j !== i))}
+          />
+
+          {sourceUrl && (
+            <p className="text-sm text-muted-foreground">
+              Will be linked to its source:{" "}
+              <span className="break-all">{sourceUrl}</span>
+            </p>
+          )}
 
           <div className="flex justify-between">
             <Button

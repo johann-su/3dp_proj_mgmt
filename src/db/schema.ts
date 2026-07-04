@@ -80,6 +80,8 @@ export const models = pgTable("models", {
   userId: text("user_id")
     .notNull()
     .references(() => user.id, { onDelete: "cascade" }),
+  // makerworld/printables URL this model was imported from
+  sourceUrl: text("source_url"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });

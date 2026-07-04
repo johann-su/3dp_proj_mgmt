@@ -29,7 +29,25 @@ export type CreateModelInput = {
   categoryId: string | null;
   tags: string[];
   files: UploadedFile[];
+  sourceUrl?: string | null;
 };
+
+function validateSourceUrl(raw: string | null | undefined): string | null | undefined {
+  if (!raw) return null;
+  try {
+    const url = new URL(raw);
+    const host = url.hostname;
+    if (
+      url.protocol === "https:" &&
+      (/(^|\.)makerworld\.com$/.test(host) || /(^|\.)printables\.com$/.test(host))
+    ) {
+      return url.toString();
+    }
+  } catch {
+    // fall through
+  }
+  return undefined; // invalid
+}
 
 function validateUploads(files: UploadedFile[]): string | null {
   for (const file of files) {
@@ -62,6 +80,11 @@ export async function createModel(
   const uploadError = validateUploads(uploads);
   if (uploadError) return { error: uploadError };
 
+  const sourceUrl = validateSourceUrl(input.sourceUrl);
+  if (sourceUrl === undefined) {
+    return { error: "Source URL must be a MakerWorld or Printables link" };
+  }
+
   const tagNames = [
     ...new Set(
       input.tags.map((t) => t.trim().toLowerCase()).filter((t) => t.length > 0),
@@ -76,6 +99,7 @@ export async function createModel(
         description: input.description.trim(),
         categoryId: input.categoryId || null,
         userId: session.user.id,
+        sourceUrl,
       })
       .returning({ id: models.id });
 
