@@ -15,6 +15,13 @@
       "when": 1783186683455,
       "tag": "0001_collections",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1783192771999,
+      "tag": "0002_bom",
+      "breakpoints": true
     }
   ]
 }

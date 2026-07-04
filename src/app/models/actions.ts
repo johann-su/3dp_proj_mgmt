@@ -5,8 +5,9 @@ import { redirect } from "next/navigation";
 import { eq, inArray } from "drizzle-orm";
 import { DeleteObjectsCommand } from "@aws-sdk/client-s3";
 import { db } from "@/db";
-import { modelFiles, models, modelTags, tags } from "@/db/schema";
+import { bomItems, modelFiles, models, modelTags, tags } from "@/db/schema";
 import { getSession } from "@/lib/auth";
+import { sanitizeBomItems, type BomItemInput } from "@/lib/bom";
 import {
   s3,
   S3_BUCKET,
@@ -29,6 +30,7 @@ export type CreateModelInput = {
   categoryId: string | null;
   tags: string[];
   files: UploadedFile[];
+  bom?: BomItemInput[];
 };
 
 function validateUploads(files: UploadedFile[]): string | null {
@@ -62,6 +64,10 @@ export async function createModel(
   const uploadError = validateUploads(uploads);
   if (uploadError) return { error: uploadError };
 
+  const bomResult = sanitizeBomItems(input.bom ?? []);
+  if ("error" in bomResult) return { error: bomResult.error };
+  const bom = bomResult.items;
+
   const tagNames = [
     ...new Set(
       input.tags.map((t) => t.trim().toLowerCase()).filter((t) => t.length > 0),
@@ -91,6 +97,19 @@ export async function createModel(
         position: position++,
       })),
     );
+
+    if (bom.length > 0) {
+      await tx.insert(bomItems).values(
+        bom.map((item, i) => ({
+          modelId: model.id,
+          name: item.name,
+          quantity: item.quantity,
+          link: item.link,
+          imageUrl: item.imageUrl,
+          position: i,
+        })),
+      );
+    }
 
     if (tagNames.length > 0) {
       const insertedTags = await tx

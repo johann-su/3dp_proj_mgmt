@@ -15,12 +15,13 @@ After MVP works:
 - [x] Prefill title, description, images and a printer tag (e.g. "bambu p1s") from uploaded .3mf files
 - [x] Collections: folders/groups of models (per user, "Add to collection" on model pages)
 - [ ] Import from other platforms (makerworld & printables only)
-- [ ] Bill of Materials (BOM) for models
+- [x] Bill of Materials (BOM) for models
   - filament, heat set inserts etc
   - Item (name), quantitiy, link (optional), image (optional)
-  - downloadable as csv
+  - downloadable as csv (`GET /api/models/{id}/bom`)
   - displayed on the model page above the description, below the images
-  - upload csv in model creation menu or wizzard
+  - upload csv in model creation wizard (columns: name, quantity, link, image —
+    header aliases like qty/url/picture work too) or add rows manually
 
 ## Tech stack
 
