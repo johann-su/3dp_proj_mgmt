@@ -124,21 +124,32 @@ async function estimateFile(file: FileRow, slicerUrl: string | undefined) {
   }
 }
 
+// Models whose pending files are currently being processed. Viewing a model
+// page re-triggers processing (so files stuck pending from an outage heal
+// themselves), and this keeps concurrent views from queueing the same work.
+const inFlight = new Set<string>();
+
 // Processes every pending model file of a model, sequentially — the service
 // slices one file at a time anyway.
 export async function processPendingSlices(modelId: string) {
-  const slicerUrl = process.env.SLICER_URL;
-  const pending = await db.query.modelFiles.findMany({
-    where: and(
-      eq(modelFiles.modelId, modelId),
-      eq(modelFiles.sliceStatus, "pending"),
-    ),
-  });
-  for (const file of pending) {
-    try {
-      await estimateFile(file, slicerUrl);
-    } catch (err) {
-      console.error(`slice estimation failed for ${file.filename}:`, err);
+  if (inFlight.has(modelId)) return;
+  inFlight.add(modelId);
+  try {
+    const slicerUrl = process.env.SLICER_URL;
+    const pending = await db.query.modelFiles.findMany({
+      where: and(
+        eq(modelFiles.modelId, modelId),
+        eq(modelFiles.sliceStatus, "pending"),
+      ),
+    });
+    for (const file of pending) {
+      try {
+        await estimateFile(file, slicerUrl);
+      } catch (err) {
+        console.error(`slice estimation failed for ${file.filename}:`, err);
+      }
     }
+  } finally {
+    inFlight.delete(modelId);
   }
 }

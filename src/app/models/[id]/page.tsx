@@ -1,13 +1,19 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { after } from "next/server";
 import { and, asc, eq, inArray } from "drizzle-orm";
 import {
+  Clock,
   Download,
   ExternalLink,
   FileBox,
   FileText,
+  Layers,
   Pencil,
+  Printer,
   SquarePen,
+  TriangleAlert,
+  Weight,
   Wrench,
 } from "lucide-react";
 import { db } from "@/db";
@@ -15,6 +21,7 @@ import { collectionModels, collections, models } from "@/db/schema";
 import { getSession } from "@/lib/auth";
 import { formatBytes, formatDate, formatDuration, formatGrams } from "@/lib/format";
 import { get3mfSliceInfo } from "@/lib/threemf-remote";
+import { processPendingSlices } from "@/lib/slicer";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -82,6 +89,14 @@ export default async function ModelPage({
   const sliceInfos = await Promise.all(
     printFiles.map((f) => get3mfSliceInfo(f.s3Key, f.size)),
   );
+
+  // Files can be left pending when the slicer service was unreachable (or
+  // unconfigured) at upload time — retry them in the background so estimates
+  // eventually appear on refresh.
+  const slicerConfigured = !!process.env.SLICER_URL;
+  if (slicerConfigured && printFiles.some((f) => f.sliceStatus === "pending")) {
+    after(() => processPendingSlices(model.id));
+  }
 
   let collectionOptions: CollectionOption[] = [];
   if (session) {
@@ -263,55 +278,88 @@ export default async function ModelPage({
                   (persisted ? file.printTimeSeconds : null);
                 const grams =
                   info?.filamentGrams ?? (persisted ? file.filamentGrams : null);
-                const meta = [
-                  formatBytes(file.size),
-                  info && `${info.plateCount} ${info.plateCount === 1 ? "plate" : "plates"}`,
-                  printTime != null &&
-                    `${approx ? "~" : ""}${formatDuration(printTime)}`,
-                  grams != null && `${approx ? "~" : ""}${formatGrams(grams)}`,
-                  file.sliceStatus === "pending" && "estimating…",
-                ]
-                  .filter(Boolean)
-                  .join(" · ");
                 // Hardware the project was set up for (see PrinterInfo).
                 const printer = file.printerInfo;
-                const printerLine =
-                  printer &&
-                  [
-                    printer.model,
-                    printer.nozzleDiameterMm != null &&
-                      `${printer.nozzleDiameterMm} mm nozzle`,
-                    printer.filamentTypes?.join(" / "),
-                    printer.bedType?.toLowerCase(),
-                  ]
-                    .filter(Boolean)
-                    .join(" · ");
                 return (
                   <div
                     key={file.id}
-                    className="flex min-w-0 items-center gap-3 border rounded-md px-3 py-2"
+                    className="flex min-w-0 items-center gap-3 border rounded-lg px-3 py-2.5"
                   >
-                    <FileBox className="size-4 text-muted-foreground shrink-0" />
-                    <div className="min-w-0">
+                    <div className="flex size-10 shrink-0 items-center justify-center rounded-md bg-muted">
+                      <FileBox className="size-5 text-muted-foreground/80" />
+                    </div>
+                    <div className="min-w-0 flex-1 space-y-1">
                       <div className="text-sm font-medium truncate">
                         {file.filename}
                       </div>
-                      <div className="text-xs text-muted-foreground">{meta}</div>
-                      {printerLine && (
-                        <div className="text-xs text-muted-foreground">
-                          {printerLine}
-                        </div>
-                      )}
-                      {file.sliceStatus === "failed" && (
-                        <div
-                          className="text-xs text-destructive"
-                          title={file.sliceError ?? undefined}
-                        >
-                          Couldn&apos;t be sliced — the file may not be printable
+                      <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-muted-foreground">
+                        {printTime != null && (
+                          <span className="inline-flex items-center gap-1">
+                            <Clock className="size-3.5" />
+                            {approx ? "~" : ""}
+                            {formatDuration(printTime)}
+                          </span>
+                        )}
+                        {grams != null && (
+                          <span className="inline-flex items-center gap-1">
+                            <Weight className="size-3.5" />
+                            {approx ? "~" : ""}
+                            {formatGrams(grams)}
+                          </span>
+                        )}
+                        {info && (
+                          <span className="inline-flex items-center gap-1">
+                            <Layers className="size-3.5" />
+                            {info.plateCount}{" "}
+                            {info.plateCount === 1 ? "plate" : "plates"}
+                          </span>
+                        )}
+                        <span>{formatBytes(file.size)}</span>
+                        {file.sliceStatus === "pending" && slicerConfigured && (
+                          <span className="animate-pulse">estimating…</span>
+                        )}
+                      </div>
+                      {(printer || file.sliceStatus === "failed") && (
+                        <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                          {printer?.model && (
+                            <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
+                              <Printer className="size-3.5" />
+                              {printer.model}
+                              {printer.nozzleDiameterMm != null &&
+                                ` · ${printer.nozzleDiameterMm} mm`}
+                            </span>
+                          )}
+                          {printer?.filamentTypes?.map((type) => (
+                            <Badge
+                              key={type}
+                              variant="secondary"
+                              className="px-1.5 py-0 text-[10px] font-medium"
+                            >
+                              {type}
+                            </Badge>
+                          ))}
+                          {printer?.bedType && (
+                            <Badge
+                              variant="outline"
+                              className="px-1.5 py-0 text-[10px] font-normal text-muted-foreground"
+                            >
+                              {printer.bedType.toLowerCase()}
+                            </Badge>
+                          )}
+                          {file.sliceStatus === "failed" && (
+                            <span
+                              className="inline-flex items-center gap-1 text-xs text-destructive"
+                              title={file.sliceError ?? undefined}
+                            >
+                              <TriangleAlert className="size-3.5" />
+                              Couldn&apos;t be sliced — the file may not be
+                              printable
+                            </span>
+                          )}
                         </div>
                       )}
                     </div>
-                    <div className="ml-auto flex shrink-0 items-center gap-1">
+                    <div className="flex shrink-0 items-center gap-1">
                       <OpenInSlicer
                         fileId={file.id}
                         makerworldUrl={makerworldUrl}
