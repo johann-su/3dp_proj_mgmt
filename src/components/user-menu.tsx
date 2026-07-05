@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Box, CircleUser, FolderOpen, LogOut } from "lucide-react";
+import { Box, CircleUser, Cloud, FolderOpen, LogOut } from "lucide-react";
 import { signOut } from "@/lib/auth-client";
 import { Button } from "@/components/ui/button";
 import {
@@ -40,6 +40,12 @@ export function UserMenu({ name, email }: { name: string; email: string }) {
           <Link href="/collections">
             <FolderOpen className="size-4" />
             My Collections
+          </Link>
+        </DropdownMenuItem>
+        <DropdownMenuItem asChild>
+          <Link href="/settings/bambu">
+            <Cloud className="size-4" />
+            Bambu Cloud
           </Link>
         </DropdownMenuItem>
         <DropdownMenuSeparator />

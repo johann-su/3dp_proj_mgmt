@@ -31,7 +31,25 @@ export type CreateModelInput = {
   tags: string[];
   files: UploadedFile[];
   bom?: BomItemInput[];
+  sourceUrl?: string | null;
 };
+
+function validateSourceUrl(raw: string | null | undefined): string | null | undefined {
+  if (!raw) return null;
+  try {
+    const url = new URL(raw);
+    const host = url.hostname;
+    if (
+      url.protocol === "https:" &&
+      (/(^|\.)makerworld\.com$/.test(host) || /(^|\.)printables\.com$/.test(host))
+    ) {
+      return url.toString();
+    }
+  } catch {
+    // fall through
+  }
+  return undefined; // invalid
+}
 
 // Reference to one image in the order chosen in the wizard: either a file
 // that already exists on the model, or an index into `newFiles`.
@@ -111,6 +129,11 @@ export async function createModel(
   if ("error" in bomResult) return { error: bomResult.error };
   const bom = bomResult.items;
 
+  const sourceUrl = validateSourceUrl(input.sourceUrl);
+  if (sourceUrl === undefined) {
+    return { error: "Source URL must be a MakerWorld or Printables link" };
+  }
+
   const tagNames = normalizeTagNames(input.tags);
 
   const modelId = await db.transaction(async (tx) => {
@@ -121,6 +144,7 @@ export async function createModel(
         description: input.description.trim(),
         categoryId: input.categoryId || null,
         userId: session.user.id,
+        sourceUrl,
       })
       .returning({ id: models.id });
 

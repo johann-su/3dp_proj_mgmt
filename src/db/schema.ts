@@ -80,6 +80,22 @@ export const models = pgTable("models", {
   userId: text("user_id")
     .notNull()
     .references(() => user.id, { onDelete: "cascade" }),
+  // makerworld/printables URL this model was imported from
+  sourceUrl: text("source_url"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+// Per-user Bambu Cloud credential, used to download MakerWorld .3mf files
+// (which require an authenticated Bambu account). The access token is stored
+// encrypted at rest — see src/lib/crypto.ts.
+export const bambuCredentials = pgTable("bambu_credentials", {
+  userId: text("user_id")
+    .primaryKey()
+    .references(() => user.id, { onDelete: "cascade" }),
+  account: text("account").notNull(),
+  region: text("region").$type<"global" | "china">().notNull().default("global"),
+  tokenCipher: text("token_cipher").notNull(),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });

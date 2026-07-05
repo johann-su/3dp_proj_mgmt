@@ -7,6 +7,7 @@ import {
   ArrowRight,
   ChevronLeft,
   ChevronRight,
+  CloudDownload,
   Eye,
   FileBox,
   ImageIcon,
@@ -21,6 +22,7 @@ import {
 } from "@/app/models/actions";
 import { extract3mfMetadata } from "@/lib/threemf";
 import type { BomItemInput } from "@/lib/bom";
+import { IMPORT_DRAFT_KEY, type ImportDraftPayload } from "./import-draft";
 import { BomEditor } from "./bom-editor";
 import { ModelPreview } from "./model-preview";
 import { cn, isNextRedirectError } from "@/lib/utils";
@@ -121,6 +123,44 @@ function FileRow({
         <X className="size-3.5" />
       </Button>
     </li>
+  );
+}
+
+// Files pulled in by URL import — already staged in S3, shown read-only-ish
+// with a remove control (there is no local File to preview).
+function StagedFileList({
+  files,
+  onRemove,
+}: {
+  files: UploadedFile[];
+  onRemove: (key: string) => void;
+}) {
+  if (files.length === 0) return null;
+  return (
+    <ul className="grid gap-1">
+      {files.map((file) => (
+        <li
+          key={file.key}
+          className="flex min-w-0 items-center gap-2 text-sm border rounded-md px-3 py-2"
+        >
+          <CloudDownload className="size-3.5 text-primary shrink-0" />
+          <span className="truncate">{file.filename}</span>
+          <span className="text-muted-foreground ml-auto shrink-0">
+            {formatBytes(file.size)}
+          </span>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            className="size-6 shrink-0"
+            aria-label={`Remove ${file.filename}`}
+            onClick={() => onRemove(file.key)}
+          >
+            <X className="size-3.5" />
+          </Button>
+        </li>
+      ))}
+    </ul>
   );
 }
 
@@ -399,7 +439,42 @@ export function ModelForm({
   const [status, setStatus] = useState<string | null>(null);
   const [extracting, setExtracting] = useState(0);
 
-  const hasModelFile = existingModelFiles.length > 0 || modelFiles.length > 0;
+  // Files pulled in by URL import (already staged in S3) and the source link,
+  // only used when creating a new model.
+  const [stagedModelFiles, setStagedModelFiles] = useState<UploadedFile[]>([]);
+  const [stagedImageFiles, setStagedImageFiles] = useState<UploadedFile[]>([]);
+  const [sourceUrl, setSourceUrl] = useState<string | null>(null);
+
+  const hasModelFile =
+    existingModelFiles.length > 0 ||
+    modelFiles.length > 0 ||
+    stagedModelFiles.length > 0;
+
+  // Hydrate from an import draft handed over by /models/import. Create mode
+  // only; runs once after hydration (sessionStorage is client-only).
+  useEffect(() => {
+    if (model) return;
+    const raw = sessionStorage.getItem(IMPORT_DRAFT_KEY);
+    if (!raw) return;
+    sessionStorage.removeItem(IMPORT_DRAFT_KEY);
+    try {
+      const draft = JSON.parse(raw) as ImportDraftPayload;
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setTitle(draft.title ?? "");
+      setDescription(draft.description ?? "");
+      setTags((draft.tags ?? []).join(", "));
+      setSourceUrl(draft.sourceUrl ?? null);
+      setStagedModelFiles((draft.files ?? []).filter((f) => f.kind === "model"));
+      setStagedImageFiles((draft.files ?? []).filter((f) => f.kind === "image"));
+      setStep(2);
+      toast.success("Model imported — review and save");
+      for (const warning of draft.warnings ?? []) {
+        toast.warning(warning);
+      }
+    } catch {
+      // corrupt draft — start with an empty form
+    }
+  }, [model]);
 
   // New images render from object URLs; revoke them when the form unmounts.
   const imagesRef = useRef(images);
@@ -552,13 +627,23 @@ export function ModelForm({
         });
       } else {
         setStatus("Creating model…");
+        // Order determines position (and the cover = first image): staged
+        // model files, freshly uploaded models, staged images, new images.
+        const uploadedImages = uploaded.filter((f) => f.kind === "image");
+        const uploadedModels = uploaded.filter((f) => f.kind === "model");
         result = await createModel({
           title,
           description,
           categoryId: categoryId || null,
           tags: tags.split(","),
-          files: uploaded,
+          files: [
+            ...stagedModelFiles,
+            ...uploadedModels,
+            ...stagedImageFiles,
+            ...uploadedImages,
+          ],
           bom,
+          sourceUrl,
         });
       }
       if (result?.error) {
@@ -590,6 +675,12 @@ export function ModelForm({
               }
               onFilesAdded={importFrom3mf}
               icon={<FileBox className="size-6" />}
+            />
+            <StagedFileList
+              files={stagedModelFiles}
+              onRemove={(key) =>
+                setStagedModelFiles((prev) => prev.filter((f) => f.key !== key))
+              }
             />
             <Button
               type="button"
@@ -659,6 +750,20 @@ export function ModelForm({
 
             <BomEditor items={bom} setItems={setBom} />
 
+            {stagedModelFiles.length > 0 && (
+              <div className="grid gap-2">
+                <Label>Imported model files</Label>
+                <StagedFileList
+                  files={stagedModelFiles}
+                  onRemove={(key) =>
+                    setStagedModelFiles((prev) =>
+                      prev.filter((f) => f.key !== key),
+                    )
+                  }
+                />
+              </div>
+            )}
+
             <ImagePicker
               images={images}
               onAdd={addImages}
@@ -666,6 +771,27 @@ export function ModelForm({
               onMove={moveImage}
               onReorder={reorderImage}
             />
+
+            {stagedImageFiles.length > 0 && (
+              <div className="grid gap-2">
+                <Label>Imported images</Label>
+                <StagedFileList
+                  files={stagedImageFiles}
+                  onRemove={(key) =>
+                    setStagedImageFiles((prev) =>
+                      prev.filter((f) => f.key !== key),
+                    )
+                  }
+                />
+              </div>
+            )}
+
+            {sourceUrl && (
+              <p className="text-sm text-muted-foreground">
+                Will be linked to its source:{" "}
+                <span className="break-all">{sourceUrl}</span>
+              </p>
+            )}
           </>
         )}
       </div>

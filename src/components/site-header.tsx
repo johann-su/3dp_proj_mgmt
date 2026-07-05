@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Box, ChevronDown, FolderPlus, Plus } from "lucide-react";
+import { Box, ChevronDown, CloudDownload, FolderPlus, Plus } from "lucide-react";
 import { getSession } from "@/lib/auth";
 import { Button } from "@/components/ui/button";
 import {
@@ -44,6 +44,12 @@ export async function SiteHeader() {
                     <Link href="/collections/new">
                       <FolderPlus className="size-4" />
                       New collection
+                    </Link>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem asChild>
+                    <Link href="/models/import">
+                      <CloudDownload className="size-4" />
+                      Import from URL
                     </Link>
                   </DropdownMenuItem>
                 </DropdownMenuContent>
