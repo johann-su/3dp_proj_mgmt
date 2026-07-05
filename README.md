@@ -15,6 +15,8 @@ After MVP works:
 - [x] Prefill title, description, images and a printer tag (e.g. "bambu p1s") from uploaded .3mf files
 - [x] Collections: folders/groups of models (per user, "Add to collection" on model pages)
 - [ ] Import from other platforms (makerworld & printables only) - delayed for now (because of makerword blocking "robot" requests)
+- [x] Editing uploaded models (metadata, files, BOM) via "Edit model" on the model page
+- [x] Preview in the create/edit wizard showing how the model detail page will look
 - [x] Bill of Materials (BOM) for models
   - filament, heat set inserts etc
   - Item (name), quantitiy, link (optional), image (optional)

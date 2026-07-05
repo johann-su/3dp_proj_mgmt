@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { and, asc, eq, inArray } from "drizzle-orm";
-import { Download, ExternalLink, FileBox, Wrench } from "lucide-react";
+import { Download, ExternalLink, FileBox, Pencil, Wrench } from "lucide-react";
 import { db } from "@/db";
 import { collectionModels, collections, models } from "@/db/schema";
 import { getSession } from "@/lib/auth";
@@ -10,7 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
-import { ImageGallery } from "./image-gallery";
+import { ImageGallery } from "@/components/image-gallery";
 import { DeleteModelButton } from "./delete-model-button";
 import { AddToCollection, type CollectionOption } from "./add-to-collection";
 
@@ -80,7 +80,7 @@ export default async function ModelPage({
       <div className="grid gap-8 lg:grid-cols-[1fr_400px]">
         <div>
           <ImageGallery
-            images={images.map((img) => ({ id: img.id, filename: img.filename }))}
+            images={images.map((img) => ({ src: `/api/files/${img.id}` }))}
             title={model.title}
           />
 
@@ -101,7 +101,7 @@ export default async function ModelPage({
                 {model.bomItems.map((item) => (
                   <div
                     key={item.id}
-                    className="flex items-center gap-3 border rounded-md px-3 py-2"
+                    className="flex min-w-0 items-center gap-3 border rounded-md px-3 py-2"
                   >
                     {item.imageUrl ? (
                       // eslint-disable-next-line @next/next/no-img-element
@@ -185,7 +185,7 @@ export default async function ModelPage({
               {printFiles.map((file) => (
                 <div
                   key={file.id}
-                  className="flex items-center gap-3 border rounded-md px-3 py-2"
+                  className="flex min-w-0 items-center gap-3 border rounded-md px-3 py-2"
                 >
                   <FileBox className="size-4 text-muted-foreground shrink-0" />
                   <div className="min-w-0">
@@ -215,7 +215,15 @@ export default async function ModelPage({
           {isOwner && (
             <>
               <Separator />
-              <DeleteModelButton modelId={model.id} />
+              <div className="flex items-center gap-2">
+                <Button asChild variant="outline" size="sm">
+                  <Link href={`/models/${model.id}/edit`}>
+                    <Pencil className="size-4" />
+                    Edit model
+                  </Link>
+                </Button>
+                <DeleteModelButton modelId={model.id} />
+              </div>
             </>
           )}
         </div>
