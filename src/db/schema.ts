@@ -106,17 +106,19 @@ export const bambuCredentials = pgTable("bambu_credentials", {
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
 
-// Per-user Onshape API key (created at dev-portal.onshape.com/keys), used to
-// import and sync models from Onshape. The secret key is stored encrypted at
-// rest — see src/lib/crypto.ts.
+// Per-user Onshape OAuth2 tokens ("Sign in with Onshape", see
+// src/lib/onshape/oauth.ts), used to import and sync models from Onshape.
+// Both tokens are stored encrypted at rest — see src/lib/crypto.ts. The
+// refresh token is rotated on every access-token refresh.
 export const onshapeCredentials = pgTable("onshape_credentials", {
   userId: text("user_id")
     .primaryKey()
     .references(() => user.id, { onDelete: "cascade" }),
-  // Display name/email resolved from Onshape when the key was saved.
+  // Display name/email resolved from Onshape when the account was connected.
   account: text("account").notNull(),
-  accessKey: text("access_key").notNull(),
-  secretKeyCipher: text("secret_key_cipher").notNull(),
+  accessTokenCipher: text("access_token_cipher").notNull(),
+  refreshTokenCipher: text("refresh_token_cipher").notNull(),
+  accessTokenExpiresAt: timestamp("access_token_expires_at").notNull(),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });

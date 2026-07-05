@@ -7,7 +7,7 @@ import { modelFiles, models } from "@/db/schema";
 import { getSession } from "@/lib/auth";
 import { s3, S3_BUCKET } from "@/lib/s3";
 import { stageStream } from "@/lib/storage";
-import { getOnshapeCredential } from "@/lib/onshape/credentials";
+import { getOnshapeAccessToken } from "@/lib/onshape/credentials";
 import {
   exportPinnedSteps,
   getCurrentMicroversion,
@@ -64,19 +64,20 @@ export async function POST(
   }
   const wvm = pin.wvm as "w";
 
-  const keys = await getOnshapeCredential(session.user.id);
-  if (!keys) {
+  const accessToken = await getOnshapeAccessToken(session.user.id);
+  if (!accessToken) {
     return NextResponse.json(
-      { error: "Connect your Onshape account under Settings → Onshape first" },
+      { error: "Sign in with Onshape under Settings → Onshape first" },
       { status: 400 },
     );
   }
+  const auth = { accessToken };
 
   try {
     // Read the microversion before exporting so a concurrent edit makes the
     // stored value stale (next sync re-runs) instead of being skipped.
     const microversion = await getCurrentMicroversion(
-      keys,
+      auth,
       pin.documentId,
       wvm,
       pin.wvmId,
@@ -88,7 +89,7 @@ export async function POST(
       });
     }
 
-    const { exports, warnings } = await exportPinnedSteps(keys, {
+    const { exports, warnings } = await exportPinnedSteps(auth, {
       documentId: pin.documentId,
       wvm,
       wvmId: pin.wvmId,
@@ -97,7 +98,7 @@ export async function POST(
 
     // Stage every export before touching the database: replacing the files is
     // all-or-nothing so a mid-way failure can't leave the model half-synced.
-    const headers = onshapeAuthHeaders(keys);
+    const headers = onshapeAuthHeaders(auth);
     const staged: { elementId: string; file: Awaited<ReturnType<typeof stageStream>> }[] =
       [];
     for (const file of exports) {

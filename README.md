@@ -28,7 +28,7 @@ After MVP works:
 - [ ] Have optional PDF's associated with a model for build instructions, product manual etc
 - [ ] Markdown support for Description
 - [ ] Show collections on homescreen
-- [x] Onshape integration (via per-user API keys, see Architecture notes)
+- [x] Onshape integration (via "Sign in with Onshape" OAuth, see Architecture notes)
   - import models from onshape (paste onshape document url -> backend exports
     the tabs as `.step` and downloads them)
   - sync with onshape ("Sync from Onshape" on the model page re-exports when
@@ -124,9 +124,17 @@ discovery URL that failed.
   exchanges each print profile for a short-lived presigned URL that streams to
   S3 like any other asset. Without a connection, only metadata + images import.
 - **Onshape integration** (`src/lib/onshape/`, `src/lib/import/onshape.ts`)
-  authenticates with a per-user API key (created at dev-portal.onshape.com/keys,
-  entered under **Settings → Onshape**, secret key encrypted at rest like the
-  Bambu token) — no OAuth app registration per deployment needed. Importing a
+  authenticates with OAuth2 ("Sign in with Onshape", the flow behind
+  [passport-onshape](https://github.com/onshape/passport-onshape), implemented
+  directly in `src/lib/onshape/oauth.ts`): the self-hoster registers one OAuth
+  app at dev-portal.onshape.com (redirect URL
+  `{BETTER_AUTH_URL}/api/onshape/callback`, read documents + profile scopes)
+  and sets `ONSHAPE_CLIENT_ID`/`ONSHAPE_CLIENT_SECRET`; users then connect
+  under **Settings → Onshape** via consent screen — no API keys to copy.
+  Access + refresh tokens are stored encrypted at rest like the Bambu token,
+  access tokens are refreshed transparently (~60 min lifetime, rotated refresh
+  tokens), and a connection that can no longer be refreshed is dropped so the
+  user simply reconnects. Importing a
   `cad.onshape.com/documents/…` URL reads the document metadata + thumbnail and
   runs an asynchronous STEP export of the linked tab (or of every Part
   Studio/Assembly tab), polling `GET /translations/{tid}` until done; the

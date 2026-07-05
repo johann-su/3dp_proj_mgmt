@@ -1,8 +1,9 @@
 CREATE TABLE "onshape_credentials" (
 	"user_id" text PRIMARY KEY NOT NULL,
 	"account" text NOT NULL,
-	"access_key" text NOT NULL,
-	"secret_key_cipher" text NOT NULL,
+	"access_token_cipher" text NOT NULL,
+	"refresh_token_cipher" text NOT NULL,
+	"access_token_expires_at" timestamp NOT NULL,
 	"created_at" timestamp DEFAULT now() NOT NULL,
 	"updated_at" timestamp DEFAULT now() NOT NULL
 );

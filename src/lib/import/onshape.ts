@@ -1,5 +1,5 @@
 // Onshape importer — unlike MakerWorld/Printables there is no anonymous
-// metadata API: every call needs the user's API key (Settings → Onshape).
+// metadata API: every call needs the user's OAuth token (Settings → Onshape).
 // Metadata comes from the document info endpoint, the preview image from the
 // document thumbnail, and the model files are asynchronous STEP exports of the
 // pinned tab (…/e/{eid} in the URL) or of every Part Studio/Assembly tab.
@@ -11,7 +11,7 @@ import {
   onshapeAuthHeaders,
   onshapeDocumentUrl,
   OnshapeError,
-  type OnshapeKeys,
+  type OnshapeAuth,
   type OnshapePin,
 } from "@/lib/onshape/api";
 import { ImportError, type ImportedProject, type RemoteAsset } from "./types";
@@ -33,11 +33,11 @@ function pickThumbnail(
 
 export async function importFromOnshape(
   pin: OnshapePin,
-  keys: OnshapeKeys | null,
+  auth: OnshapeAuth | null,
 ): Promise<ImportedProject> {
-  if (!keys) {
+  if (!auth) {
     throw new ImportError(
-      "Importing from Onshape needs your API key — connect it under Settings → Onshape first.",
+      "Importing from Onshape needs a connected account — sign in with Onshape under Settings → Onshape first.",
     );
   }
   if (pin.wvm === "m") {
@@ -47,7 +47,7 @@ export async function importFromOnshape(
   }
 
   try {
-    const document = await getDocument(keys, pin.documentId);
+    const document = await getDocument(auth, pin.documentId);
 
     // URLs without /w|v/ pin to the default workspace.
     let wvm = pin.wvm;
@@ -61,7 +61,7 @@ export async function importFromOnshape(
       wvmId = defaultWorkspace;
     }
 
-    const headers = onshapeAuthHeaders(keys);
+    const headers = onshapeAuthHeaders(auth);
     const assets: RemoteAsset[] = [];
 
     const thumbnail = pickThumbnail(document.thumbnail?.sizes);
@@ -78,10 +78,10 @@ export async function importFromOnshape(
     // export, the stored value is stale and the next sync picks the change up.
     const microversion =
       wvm === "w"
-        ? await getCurrentMicroversion(keys, pin.documentId, wvm, wvmId)
+        ? await getCurrentMicroversion(auth, pin.documentId, wvm, wvmId)
         : null;
 
-    const { exports, warnings } = await exportPinnedSteps(keys, {
+    const { exports, warnings } = await exportPinnedSteps(auth, {
       documentId: pin.documentId,
       wvm,
       wvmId,

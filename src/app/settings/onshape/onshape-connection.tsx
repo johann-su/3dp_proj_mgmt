@@ -3,19 +3,23 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { CheckCircle2, KeyRound, Unplug } from "lucide-react";
-import { connectOnshape, disconnectOnshape } from "./actions";
+import { CheckCircle2, LogIn, Unplug } from "lucide-react";
+import { disconnectOnshape } from "./actions";
 import type { OnshapeConnectionStatus } from "@/lib/onshape/credentials";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Card, CardContent } from "@/components/ui/card";
 
-export function OnshapeConnection({ status }: { status: OnshapeConnectionStatus }) {
+export function OnshapeConnection({
+  status,
+  configured,
+  redirectUri,
+}: {
+  status: OnshapeConnectionStatus;
+  configured: boolean;
+  redirectUri: string;
+}) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
-  const [accessKey, setAccessKey] = useState("");
-  const [secretKey, setSecretKey] = useState("");
 
   async function handleDisconnect() {
     setBusy(true);
@@ -37,7 +41,7 @@ export function OnshapeConnection({ status }: { status: OnshapeConnectionStatus 
           <div className="min-w-0">
             <div className="text-sm font-medium">Connected</div>
             <div className="text-xs text-muted-foreground truncate">
-              {status.account} · key {status.accessKey?.slice(0, 8)}…
+              {status.account}
             </div>
           </div>
           <Button
@@ -55,62 +59,46 @@ export function OnshapeConnection({ status }: { status: OnshapeConnectionStatus 
     );
   }
 
-  async function handleConnect(e: React.FormEvent<HTMLFormElement>) {
-    e.preventDefault();
-    setBusy(true);
-    const res = await connectOnshape({ accessKey, secretKey });
-    setBusy(false);
-    if ("error" in res) {
-      toast.error(res.error);
-      return;
-    }
-    toast.success("Onshape connected");
-    router.refresh();
-  }
-
-  return (
-    <Card>
-      <CardContent className="py-5">
-        <form onSubmit={handleConnect} className="grid gap-4">
-          <div className="grid gap-2">
-            <Label htmlFor="onshape-access-key">Access key</Label>
-            <Input
-              id="onshape-access-key"
-              required
-              autoComplete="off"
-              value={accessKey}
-              onChange={(e) => setAccessKey(e.target.value)}
-            />
-          </div>
-          <div className="grid gap-2">
-            <Label htmlFor="onshape-secret-key">Secret key</Label>
-            <Input
-              id="onshape-secret-key"
-              type="password"
-              required
-              autoComplete="off"
-              value={secretKey}
-              onChange={(e) => setSecretKey(e.target.value)}
-            />
-          </div>
-          <Button type="submit" disabled={busy}>
-            <KeyRound className="size-4" />
-            {busy ? "Checking key…" : "Connect"}
-          </Button>
-          <p className="text-xs text-muted-foreground">
-            Create an API key at{" "}
+  if (!configured) {
+    return (
+      <Card>
+        <CardContent className="py-5 grid gap-2 text-sm text-muted-foreground">
+          <p className="font-medium text-foreground">
+            Onshape sign-in is not configured on this server.
+          </p>
+          <p>
+            The administrator needs to create an OAuth application at{" "}
             <a
-              href="https://dev-portal.onshape.com/keys"
+              href="https://dev-portal.onshape.com/oauthApps"
               target="_blank"
               rel="noopener noreferrer"
               className="underline"
             >
-              dev-portal.onshape.com/keys
+              dev-portal.onshape.com
             </a>{" "}
-            with at least the <em>Read</em> scope. The secret key is stored
-            encrypted and is only used to read and export your documents.
+            with the redirect URL <code className="break-all">{redirectUri}</code>{" "}
+            and permission to read documents and profile information, then set{" "}
+            <code>ONSHAPE_CLIENT_ID</code> and <code>ONSHAPE_CLIENT_SECRET</code>.
           </p>
-        </form>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  return (
+    <Card>
+      <CardContent className="py-5 grid gap-4">
+        <Button asChild className="justify-self-start">
+          <a href="/api/onshape/authorize">
+            <LogIn className="size-4" />
+            Sign in with Onshape
+          </a>
+        </Button>
+        <p className="text-xs text-muted-foreground">
+          You will be sent to Onshape to approve read access to your documents.
+          Only the resulting tokens are stored (encrypted) — never your Onshape
+          password. Disconnect here at any time.
+        </p>
       </CardContent>
     </Card>
   );

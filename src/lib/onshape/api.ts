@@ -1,8 +1,9 @@
 // Onshape REST API client (https://onshape-public.github.io/docs/). Auth is a
-// per-user API key sent as HTTP Basic (accessKey:secretKey). STEP exports are
-// asynchronous translations: POST …/export/step returns a translation id that
-// is polled until DONE, then the result is downloaded from the externaldata
-// endpoint. Endpoint shapes verified against cad.onshape.com/api/openapi.
+// per-user OAuth2 access token sent as a Bearer header (see
+// src/lib/onshape/oauth.ts for the flow). STEP exports are asynchronous
+// translations: POST …/export/step returns a translation id that is polled
+// until DONE, then the result is downloaded from the externaldata endpoint.
+// Endpoint shapes verified against cad.onshape.com/api/openapi.
 
 export const ONSHAPE_HOST = "cad.onshape.com";
 const API_BASE = `https://${ONSHAPE_HOST}/api/v6`;
@@ -50,14 +51,12 @@ export function onshapeDocumentUrl(pin: {
   return pin.elementId ? `${base}/e/${pin.elementId}` : base;
 }
 
-export type OnshapeKeys = {
-  accessKey: string;
-  secretKey: string;
+export type OnshapeAuth = {
+  accessToken: string;
 };
 
-export function onshapeAuthHeaders(keys: OnshapeKeys): Record<string, string> {
-  const basic = Buffer.from(`${keys.accessKey}:${keys.secretKey}`).toString("base64");
-  return { Authorization: `Basic ${basic}` };
+export function onshapeAuthHeaders(auth: OnshapeAuth): Record<string, string> {
+  return { Authorization: `Bearer ${auth.accessToken}` };
 }
 
 export class OnshapeError extends Error {
@@ -70,14 +69,14 @@ export class OnshapeError extends Error {
 }
 
 async function onshapeFetch<T>(
-  keys: OnshapeKeys,
+  auth: OnshapeAuth,
   path: string,
   init?: { method?: "POST"; body?: unknown },
 ): Promise<T> {
   const res = await fetch(`${API_BASE}${path}`, {
     method: init?.method ?? "GET",
     headers: {
-      ...onshapeAuthHeaders(keys),
+      ...onshapeAuthHeaders(auth),
       Accept: "application/json",
       ...(init?.body !== undefined ? { "Content-Type": "application/json" } : {}),
     },
@@ -85,7 +84,7 @@ async function onshapeFetch<T>(
   });
   if (res.status === 401) {
     throw new OnshapeError(
-      "Onshape rejected your API key — reconnect it in Settings → Onshape",
+      "Your Onshape connection expired — reconnect it in Settings → Onshape",
       401,
     );
   }
@@ -103,15 +102,16 @@ async function onshapeFetch<T>(
 
 export type OnshapeSessionInfo = { name?: string; email?: string };
 
-// Cheap authenticated call used to validate API keys when they are saved.
-// Invalid keys don't 401 here — Onshape falls back to an anonymous session and
-// answers 204 No Content — so only a 200 with a body counts as valid.
-export async function getSessionInfo(keys: OnshapeKeys): Promise<OnshapeSessionInfo> {
+// Fetches the connected user's identity (for the settings page display).
+// Invalid credentials don't necessarily 401 here — Onshape falls back to an
+// anonymous session and answers 204 No Content — so only a 200 with a body
+// counts as authenticated.
+export async function getSessionInfo(auth: OnshapeAuth): Promise<OnshapeSessionInfo> {
   const res = await fetch(`${API_BASE}/users/sessioninfo`, {
-    headers: { ...onshapeAuthHeaders(keys), Accept: "application/json" },
+    headers: { ...onshapeAuthHeaders(auth), Accept: "application/json" },
   });
   if (res.status !== 200) {
-    throw new OnshapeError("Onshape rejected these API keys", 401);
+    throw new OnshapeError("Onshape did not accept the connection", 401);
   }
   return (await res.json()) as OnshapeSessionInfo;
 }
@@ -124,10 +124,10 @@ export type OnshapeDocument = {
 };
 
 export async function getDocument(
-  keys: OnshapeKeys,
+  auth: OnshapeAuth,
   documentId: string,
 ): Promise<OnshapeDocument> {
-  return onshapeFetch<OnshapeDocument>(keys, `/documents/${documentId}`);
+  return onshapeFetch<OnshapeDocument>(auth, `/documents/${documentId}`);
 }
 
 export type OnshapeElement = {
@@ -137,25 +137,25 @@ export type OnshapeElement = {
 };
 
 export async function getElements(
-  keys: OnshapeKeys,
+  auth: OnshapeAuth,
   documentId: string,
   wvm: "w" | "v",
   wvmId: string,
 ): Promise<OnshapeElement[]> {
   return onshapeFetch<OnshapeElement[]>(
-    keys,
+    auth,
     `/documents/d/${documentId}/${wvm}/${wvmId}/elements`,
   );
 }
 
 export async function getCurrentMicroversion(
-  keys: OnshapeKeys,
+  auth: OnshapeAuth,
   documentId: string,
   wvm: "w" | "v",
   wvmId: string,
 ): Promise<string | null> {
   const info = await onshapeFetch<{ microversion?: string }>(
-    keys,
+    auth,
     `/documents/d/${documentId}/${wvm}/${wvmId}/currentmicroversion`,
   );
   return info.microversion ?? null;
@@ -177,13 +177,13 @@ const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 // Exports one element as STEP and returns an authenticated download URL for
 // the resulting file (the caller streams it to S3 with the same auth headers).
 export async function exportStep(
-  keys: OnshapeKeys,
+  auth: OnshapeAuth,
   pin: { documentId: string; wvm: "w" | "v"; wvmId: string },
   element: { id: string; elementType: string; name: string },
 ): Promise<string> {
   const resource = element.elementType === "ASSEMBLY" ? "assemblies" : "partstudios";
   const started = await onshapeFetch<TranslationInfo>(
-    keys,
+    auth,
     `/${resource}/d/${pin.documentId}/${pin.wvm}/${pin.wvmId}/e/${element.id}/export/step`,
     { method: "POST", body: { storeInDocument: false, notifyUser: false } },
   );
@@ -200,7 +200,7 @@ export async function exportStep(
     }
     await sleep(delay);
     delay = Math.min(delay * 1.5, 5000);
-    translation = await onshapeFetch<TranslationInfo>(keys, `/translations/${started.id}`);
+    translation = await onshapeFetch<TranslationInfo>(auth, `/translations/${started.id}`);
   }
   if (translation.requestState === "FAILED") {
     throw new OnshapeError(
@@ -232,11 +232,11 @@ function stepFilename(name: string): string {
 // URL contains /e/{eid}, otherwise every Part Studio and Assembly tab (capped).
 // Used by both the URL importer and the sync endpoint so they stay in lockstep.
 export async function exportPinnedSteps(
-  keys: OnshapeKeys,
+  auth: OnshapeAuth,
   pin: { documentId: string; wvm: "w" | "v"; wvmId: string; elementId: string | null },
 ): Promise<{ exports: OnshapeExport[]; warnings: string[] }> {
   const warnings: string[] = [];
-  const elements = (await getElements(keys, pin.documentId, pin.wvm, pin.wvmId)).filter(
+  const elements = (await getElements(auth, pin.documentId, pin.wvm, pin.wvmId)).filter(
     (e): e is { id: string; name: string; elementType: string } =>
       isOnshapeId(e.id) &&
       (e.elementType === "PARTSTUDIO" || e.elementType === "ASSEMBLY"),
@@ -263,7 +263,7 @@ export async function exportPinnedSteps(
   const exports: OnshapeExport[] = [];
   const usedNames = new Set<string>();
   for (const element of selected) {
-    const url = await exportStep(keys, pin, {
+    const url = await exportStep(auth, pin, {
       id: element.id,
       elementType: element.elementType,
       name: element.name || element.id,

@@ -8,7 +8,7 @@ import { importFromPrintables, parsePrintablesUrl } from "@/lib/import/printable
 import { importFromOnshape } from "@/lib/import/onshape";
 import { parseOnshapeUrl } from "@/lib/onshape/api";
 import { getBambuCredential } from "@/lib/bambu/credentials";
-import { getOnshapeCredential } from "@/lib/onshape/credentials";
+import { getOnshapeAccessToken } from "@/lib/onshape/credentials";
 
 export const runtime = "nodejs";
 // Downloading large model files from the source platform can take a while.
@@ -80,8 +80,11 @@ export async function POST(req: NextRequest) {
       if (printablesId) {
         project = await importFromPrintables(url, printablesId);
       } else if (onshapePin) {
-        const keys = await getOnshapeCredential(session.user.id);
-        project = await importFromOnshape(onshapePin, keys);
+        const accessToken = await getOnshapeAccessToken(session.user.id);
+        project = await importFromOnshape(
+          onshapePin,
+          accessToken ? { accessToken } : null,
+        );
       } else {
         return NextResponse.json(
           {

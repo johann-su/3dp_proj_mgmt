@@ -68,7 +68,7 @@ export function ImportForm() {
             document link (cad.onshape.com/documents/…) to export its tabs as{" "}
             <code>.step</code> files — requires{" "}
             <Link href="/settings/onshape" className="underline">
-              connecting your Onshape API key
+              signing in with your Onshape account
             </Link>
             .
           </p>

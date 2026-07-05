@@ -1,5 +1,5 @@
 {
-  "id": "b6a62207-ee8a-4a37-a0b5-3ab2c3d9b13a",
+  "id": "cb279ccb-b881-4748-bee9-8b5adb6d06ac",
   "prevId": "f97465af-147b-4526-abb3-4f36dcada9d3",
   "version": "7",
   "dialect": "postgresql",
@@ -694,15 +694,21 @@
           "primaryKey": false,
           "notNull": true
         },
-        "access_key": {
-          "name": "access_key",
+        "access_token_cipher": {
+          "name": "access_token_cipher",
           "type": "text",
           "primaryKey": false,
           "notNull": true
         },
-        "secret_key_cipher": {
-          "name": "secret_key_cipher",
+        "refresh_token_cipher": {
+          "name": "refresh_token_cipher",
           "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "access_token_expires_at": {
+          "name": "access_token_expires_at",
+          "type": "timestamp",
           "primaryKey": false,
           "notNull": true
         },
