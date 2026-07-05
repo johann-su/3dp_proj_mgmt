@@ -22,6 +22,34 @@
       "when": 1783192771999,
       "tag": "0002_bom",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1783251418352,
+      "tag": "0003_source-url-and-bambu",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1783269971987,
+      "tag": "0004_icy_preak",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1783288438555,
+      "tag": "0005_fair_lester",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1783289657721,
+      "tag": "0006_silent_mentor",
+      "breakpoints": true
     }
   ]
 }

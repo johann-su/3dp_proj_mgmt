@@ -2,8 +2,10 @@ import {
   bigint,
   boolean,
   integer,
+  jsonb,
   pgTable,
   primaryKey,
+  real,
   text,
   timestamp,
   uuid,
@@ -80,11 +82,73 @@ export const models = pgTable("models", {
   userId: text("user_id")
     .notNull()
     .references(() => user.id, { onDelete: "cascade" }),
+  // makerworld/printables/onshape URL this model was imported from. For
+  // Onshape it is the canonical document pin
+  // (…/documents/{did}/w|v/{wvmid}[/e/{eid}]) that sync re-exports from.
+  sourceUrl: text("source_url"),
+  // Microversion of the Onshape workspace at the last import/sync; null for
+  // models not imported from Onshape (and for version-pinned imports, which
+  // are immutable snapshots).
+  onshapeMicroversion: text("onshape_microversion"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
 
-export type FileKind = "model" | "image";
+// Per-user Bambu Cloud credential, used to download MakerWorld .3mf files
+// (which require an authenticated Bambu account). The access token is stored
+// encrypted at rest — see src/lib/crypto.ts.
+export const bambuCredentials = pgTable("bambu_credentials", {
+  userId: text("user_id")
+    .primaryKey()
+    .references(() => user.id, { onDelete: "cascade" }),
+  account: text("account").notNull(),
+  region: text("region").$type<"global" | "china">().notNull().default("global"),
+  tokenCipher: text("token_cipher").notNull(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+// Per-user Onshape OAuth2 tokens ("Sign in with Onshape", see
+// src/lib/onshape/oauth.ts), used to import and sync models from Onshape.
+// Both tokens are stored encrypted at rest — see src/lib/crypto.ts. The
+// refresh token is rotated on every access-token refresh.
+export const onshapeCredentials = pgTable("onshape_credentials", {
+  userId: text("user_id")
+    .primaryKey()
+    .references(() => user.id, { onDelete: "cascade" }),
+  // Display name/email resolved from Onshape when the account was connected.
+  account: text("account").notNull(),
+  accessTokenCipher: text("access_token_cipher").notNull(),
+  refreshTokenCipher: text("refresh_token_cipher").notNull(),
+  accessTokenExpiresAt: timestamp("access_token_expires_at").notNull(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export type FileKind = "model" | "image" | "pdf";
+
+// Print-estimate lifecycle of a .3mf model file (see src/lib/slicer.ts):
+// pending  queued for the slicer service (or the service is unreachable)
+// ok       estimates present — read from embedded Bambu slice_info metadata
+//          ("embedded") or produced by the headless slicer ("slicer")
+// failed   the slicer could not slice the file (sliceError has the reason)
+// null     not applicable (images, pdfs, .step files, uploads that predate
+//          the slicer feature)
+export type SliceStatus = "pending" | "ok" | "failed";
+export type SliceSource = "embedded" | "slicer";
+
+// The hardware a .3mf project was set up for, extracted from its embedded
+// slicer config (Bambu/Orca project_settings.config or PrusaSlicer
+// Slic3r_PE.config) — see get3mfPrinterInfo in src/lib/threemf-remote.ts.
+// Deliberately not the full process settings (layer height, infill, …): only
+// what a visitor needs to judge "can I print this on my setup". filamentTypes
+// lists the filaments the objects actually use, not every AMS slot.
+export type PrinterInfo = {
+  model?: string; // "Bambu Lab P1S"
+  nozzleDiameterMm?: number;
+  bedType?: string; // "Textured PEI Plate"
+  filamentTypes?: string[]; // ["PETG"]
+};
 
 export const modelFiles = pgTable("model_files", {
   id: uuid("id").primaryKey().defaultRandom(),
@@ -97,6 +161,14 @@ export const modelFiles = pgTable("model_files", {
   size: bigint("size", { mode: "number" }).notNull(),
   contentType: text("content_type").notNull(),
   position: integer("position").notNull().default(0),
+  // Onshape element this file was exported from; sync replaces these files.
+  onshapeElementId: text("onshape_element_id"),
+  sliceStatus: text("slice_status").$type<SliceStatus>(),
+  sliceSource: text("slice_source").$type<SliceSource>(),
+  printTimeSeconds: integer("print_time_seconds"),
+  filamentGrams: real("filament_grams"),
+  sliceError: text("slice_error"),
+  printerInfo: jsonb("printer_info").$type<PrinterInfo>(),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 

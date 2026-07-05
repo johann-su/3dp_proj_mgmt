@@ -9,6 +9,7 @@
 // - Auxiliaries/**              Makerworld project pictures
 
 import { unzip, type Unzipped, type UnzipFileInfo } from "fflate";
+import { htmlishToText } from "@/lib/html";
 
 export type ThreeMfMetadata = {
   title?: string;
@@ -84,35 +85,8 @@ function unzipWanted(data: Uint8Array): Promise<Unzipped> {
   });
 }
 
-function decodeEntities(value: string) {
-  return value
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
-    .replace(/&quot;/g, '"')
-    .replace(/&apos;/g, "'")
-    .replace(/&nbsp;/g, " ")
-    .replace(/&#(\d+);/g, (_, code) => String.fromCodePoint(Number(code)))
-    .replace(/&amp;/g, "&");
-}
-
 // Bambu Studio double-escapes the Description metadata and stores HTML in it
-// (e.g. "&amp;lt;h3&amp;gt;..."). Decode until stable, then flatten to text.
-function htmlishToText(raw: string): string {
-  let text = raw;
-  for (let i = 0; i < 4; i++) {
-    const decoded = decodeEntities(text);
-    if (decoded === text) break;
-    text = decoded;
-  }
-  return text
-    .replace(/<br\s*\/?>/gi, "\n")
-    .replace(/<\/(p|h[1-6]|li|div)>/gi, "\n")
-    .replace(/<[^>]+>/g, "")
-    .replace(/[ \t]+\n/g, "\n")
-    .replace(/\n{3,}/g, "\n\n")
-    .trim();
-}
-
+// (e.g. "&amp;lt;h3&amp;gt;...") — htmlishToText handles both.
 function coreMetadata(xmlHead: string, name: string): string | undefined {
   const match = xmlHead.match(
     new RegExp(`<metadata\\s+name="${name}"[^>]*>([\\s\\S]*?)</metadata>`, "i"),

@@ -1,0 +1,29 @@
+export type RemoteAsset = {
+  url: string;
+  filename: string;
+  kind: "model" | "image";
+  // Extra request headers for sources that gate downloads behind auth
+  // (Onshape API downloads need the user's Basic auth header).
+  headers?: Record<string, string>;
+  // Onshape element the asset was exported from; stored on the model file so
+  // sync can replace exactly these files.
+  onshapeElementId?: string;
+};
+
+export type ImportedProject = {
+  source: "makerworld" | "printables" | "onshape";
+  sourceUrl: string;
+  title: string;
+  description: string;
+  tags: string[];
+  assets: RemoteAsset[];
+  warnings: string[];
+  // Workspace microversion at export time (Onshape only, workspace pins only);
+  // stored on the model so sync can tell whether the document changed.
+  onshapeMicroversion?: string | null;
+};
+
+export class ImportError extends Error {}
+
+export const IMPORT_USER_AGENT =
+  "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36";
