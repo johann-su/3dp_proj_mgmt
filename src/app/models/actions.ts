@@ -5,23 +5,24 @@ import { redirect } from "next/navigation";
 import { and, eq, inArray } from "drizzle-orm";
 import { DeleteObjectsCommand } from "@aws-sdk/client-s3";
 import { db } from "@/db";
-import { bomItems, modelFiles, models, modelTags, tags } from "@/db/schema";
+import {
+  bomItems,
+  modelFiles,
+  models,
+  modelTags,
+  tags,
+  type FileKind,
+} from "@/db/schema";
 import { getSession } from "@/lib/auth";
 import { sanitizeBomItems, type BomItemInput } from "@/lib/bom";
-import {
-  s3,
-  S3_BUCKET,
-  MODEL_EXTENSIONS,
-  IMAGE_EXTENSIONS,
-  fileExtension,
-} from "@/lib/s3";
+import { s3, S3_BUCKET, allowedExtensions, fileExtension } from "@/lib/s3";
 
 export type UploadedFile = {
   key: string;
   filename: string;
   size: number;
   contentType: string;
-  kind: "model" | "image";
+  kind: FileKind;
 };
 
 export type CreateModelInput = {
@@ -104,8 +105,7 @@ function validateUploads(files: UploadedFile[]): string | null {
     if (!/^uploads\/[0-9a-f-]{36}\/[a-zA-Z0-9._-]+$/.test(file.key)) {
       return "Invalid file reference";
     }
-    const allowed = file.kind === "model" ? MODEL_EXTENSIONS : IMAGE_EXTENSIONS;
-    if (!allowed.includes(fileExtension(file.filename))) {
+    if (!allowedExtensions(file.kind).includes(fileExtension(file.filename))) {
       return `File type not allowed: ${file.filename}`;
     }
   }
@@ -291,6 +291,10 @@ export async function updateModel(
       ...kept.filter((f) => f.kind === "model").map((f) => f.id),
       ...input.newFiles
         .map((file, i) => (file.kind === "model" ? insertedIds[i] : null))
+        .filter((id): id is string => id !== null),
+      ...kept.filter((f) => f.kind === "pdf").map((f) => f.id),
+      ...input.newFiles
+        .map((file, i) => (file.kind === "pdf" ? insertedIds[i] : null))
         .filter((id): id is string => id !== null),
       ...orderedImageIds,
     ];

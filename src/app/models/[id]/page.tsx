@@ -1,7 +1,14 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { and, asc, eq, inArray } from "drizzle-orm";
-import { Download, ExternalLink, FileBox, Pencil, Wrench } from "lucide-react";
+import {
+  Download,
+  ExternalLink,
+  FileBox,
+  FileText,
+  Pencil,
+  Wrench,
+} from "lucide-react";
 import { db } from "@/db";
 import { collectionModels, collections, models } from "@/db/schema";
 import { getSession } from "@/lib/auth";
@@ -12,6 +19,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { ImageGallery } from "@/components/image-gallery";
+import { Markdown } from "@/components/markdown";
 import { DeleteModelButton } from "./delete-model-button";
 import { AddToCollection, type CollectionOption } from "./add-to-collection";
 import { OpenInSlicer } from "./open-in-slicer";
@@ -46,6 +54,7 @@ export default async function ModelPage({
 
   const images = model.files.filter((f) => f.kind === "image");
   const printFiles = model.files.filter((f) => f.kind === "model");
+  const pdfFiles = model.files.filter((f) => f.kind === "pdf");
   const isOwner = session?.user.id === model.userId;
   const makerworldUrl = model.sourceUrl?.includes("makerworld")
     ? model.sourceUrl
@@ -150,9 +159,7 @@ export default async function ModelPage({
           <div className="mt-8">
             <h2 className="text-lg font-semibold mb-2">Description</h2>
             {model.description ? (
-              <p className="whitespace-pre-wrap text-sm leading-relaxed">
-                {model.description}
-              </p>
+              <Markdown>{model.description}</Markdown>
             ) : (
               <p className="text-sm text-muted-foreground">No description.</p>
             )}
@@ -246,6 +253,50 @@ export default async function ModelPage({
               })}
             </CardContent>
           </Card>
+
+          {pdfFiles.length > 0 && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base">
+                  Documents ({pdfFiles.length})
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="grid gap-2">
+                {pdfFiles.map((file) => (
+                  <div
+                    key={file.id}
+                    className="flex min-w-0 items-center gap-3 border rounded-md px-3 py-2"
+                  >
+                    <FileText className="size-4 text-muted-foreground shrink-0" />
+                    <div className="min-w-0">
+                      <a
+                        href={`/api/files/${file.id}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="block text-sm font-medium truncate hover:underline"
+                      >
+                        {file.filename}
+                      </a>
+                      <div className="text-xs text-muted-foreground">
+                        {formatBytes(file.size)}
+                      </div>
+                    </div>
+                    <Button
+                      asChild
+                      size="icon"
+                      variant="ghost"
+                      className="ml-auto shrink-0"
+                      aria-label={`Download ${file.filename}`}
+                    >
+                      <a href={`/api/files/${file.id}?download=1`}>
+                        <Download className="size-4" />
+                      </a>
+                    </Button>
+                  </div>
+                ))}
+              </CardContent>
+            </Card>
+          )}
 
           {isOwner && (
             <>

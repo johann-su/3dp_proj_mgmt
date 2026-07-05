@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { MODEL_EXTENSIONS, IMAGE_EXTENSIONS, fileExtension } from "@/lib/s3";
+import { allowedExtensions, fileExtension } from "@/lib/s3";
 import { stageStream } from "@/lib/storage";
 import { getSession } from "@/lib/auth";
 
@@ -13,15 +13,15 @@ export async function POST(req: NextRequest) {
 
   const filename = req.nextUrl.searchParams.get("filename");
   const kind = req.nextUrl.searchParams.get("kind");
-  if (!filename || (kind !== "model" && kind !== "image")) {
+  if (!filename || (kind !== "model" && kind !== "image" && kind !== "pdf")) {
     return NextResponse.json(
-      { error: "filename and kind (model|image) are required" },
+      { error: "filename and kind (model|image|pdf) are required" },
       { status: 400 },
     );
   }
 
   const ext = fileExtension(filename);
-  const allowed = kind === "model" ? MODEL_EXTENSIONS : IMAGE_EXTENSIONS;
+  const allowed = allowedExtensions(kind);
   if (!allowed.includes(ext)) {
     return NextResponse.json(
       { error: `File type ${ext || "(none)"} not allowed. Allowed: ${allowed.join(", ")}` },
@@ -33,7 +33,11 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Empty request body" }, { status: 400 });
   }
 
-  const contentType = req.headers.get("content-type") || "application/octet-stream";
+  // Pin the PDF content type so browsers open it inline instead of downloading.
+  const contentType =
+    kind === "pdf"
+      ? "application/pdf"
+      : req.headers.get("content-type") || "application/octet-stream";
   const staged = await stageStream(filename, req.body, contentType);
 
   return NextResponse.json({ ...staged, kind });
