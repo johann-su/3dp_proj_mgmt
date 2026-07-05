@@ -1,0 +1,101 @@
+import Link from "next/link";
+import { FolderOpen, Layers, User } from "lucide-react";
+
+export type CollectionCardData = {
+  id: string;
+  title: string;
+  user: { name: string };
+  collectionModels: {
+    model: {
+      id: string;
+      files: { id: string }[];
+    };
+  }[];
+};
+
+export function CollectionCard({
+  collection,
+}: {
+  collection: CollectionCardData;
+}) {
+  const covers = collection.collectionModels
+    .map((cm) => cm.model.files[0])
+    .filter(Boolean)
+    .slice(0, 4);
+  const totalModels = collection.collectionModels.length;
+  const overflow = totalModels - 4;
+
+  return (
+    <Link href={`/collections/${collection.id}`} className="group block">
+      {/* Stacked card effect */}
+      <div className="relative">
+        <div className="absolute inset-x-2 -bottom-1.5 h-full rounded-xl bg-muted/60 border border-border/40" />
+        <div className="absolute inset-x-1 -bottom-0.5 h-full rounded-xl bg-muted/80 border border-border/50" />
+
+        {/* Main card */}
+        <div className="relative rounded-xl overflow-hidden shadow-sm transition-shadow group-hover:shadow-lg border border-border/60 bg-card">
+          {/* 2×2 image grid */}
+          <div className="aspect-[4/3] grid grid-cols-2 grid-rows-2 bg-muted">
+            {covers.length === 0 ? (
+              <div className="col-span-2 row-span-2 flex items-center justify-center">
+                <FolderOpen className="size-10 text-muted-foreground/40" />
+              </div>
+            ) : (
+              <>
+                {[0, 1, 2, 3].map((i) => {
+                  const file = covers[i];
+                  const isLast = i === 3 && overflow > 0;
+                  return (
+                    <div
+                      key={i}
+                      className="relative overflow-hidden bg-muted"
+                      style={{
+                        borderRight: i % 2 === 0 ? "1px solid hsl(var(--border) / 0.3)" : undefined,
+                        borderBottom: i < 2 ? "1px solid hsl(var(--border) / 0.3)" : undefined,
+                      }}
+                    >
+                      {file ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                          src={`/api/files/${file.id}`}
+                          alt=""
+                          className="w-full h-full object-cover transition-transform group-hover:scale-105"
+                        />
+                      ) : (
+                        <div className="w-full h-full bg-muted" />
+                      )}
+                      {isLast && (
+                        <div className="absolute inset-0 bg-black/60 flex items-center justify-center">
+                          <span className="text-white font-bold text-lg">
+                            +{overflow}
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </>
+            )}
+          </div>
+
+          {/* Info bar */}
+          <div className="px-3 py-2.5">
+            <div className="font-semibold truncate text-sm leading-snug">
+              {collection.title}
+            </div>
+            <div className="flex items-center gap-3 mt-1 text-xs text-muted-foreground">
+              <span className="flex items-center gap-1">
+                <Layers className="size-3" />
+                {totalModels} model{totalModels === 1 ? "" : "s"}
+              </span>
+              <span className="flex items-center gap-1">
+                <User className="size-3" />
+                {collection.user.name}
+              </span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </Link>
+  );
+}

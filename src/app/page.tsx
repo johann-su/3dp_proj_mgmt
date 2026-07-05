@@ -2,8 +2,9 @@ import Link from "next/link";
 import { and, desc, eq, ilike, or } from "drizzle-orm";
 import { Box, Search } from "lucide-react";
 import { db } from "@/db";
-import { models } from "@/db/schema";
+import { collections, models } from "@/db/schema";
 import { ModelCard } from "@/components/model-card";
+import { CollectionCard } from "@/components/collection-card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -31,6 +32,28 @@ export default async function HomePage({
   if (activeCategory) {
     conditions.push(eq(models.categoryId, activeCategory.id));
   }
+
+  const recentCollections = await db.query.collections.findMany({
+    orderBy: desc(collections.createdAt),
+    limit: 8,
+    with: {
+      user: { columns: { name: true } },
+      collectionModels: {
+        with: {
+          model: {
+            columns: { id: true },
+            with: {
+              files: {
+                where: (f, { eq }) => eq(f.kind, "image"),
+                orderBy: (f, { asc }) => asc(f.position),
+                limit: 1,
+              },
+            },
+          },
+        },
+      },
+    },
+  });
 
   const results = await db.query.models.findMany({
     where: conditions.length > 0 ? and(...conditions) : undefined,
@@ -91,6 +114,29 @@ export default async function HomePage({
             </Badge>
           </Link>
         ))}
+      </div>
+
+      {recentCollections.length > 0 && (
+        <div className="mb-10">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-xl font-semibold tracking-tight">Collections</h2>
+            <Link
+              href="/collections"
+              className="text-sm text-muted-foreground hover:text-foreground transition-colors"
+            >
+              See all
+            </Link>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
+            {recentCollections.map((collection) => (
+              <CollectionCard key={collection.id} collection={collection} />
+            ))}
+          </div>
+        </div>
+      )}
+
+      <div className="mb-4">
+        <h2 className="text-xl font-semibold tracking-tight">Models</h2>
       </div>
 
       {results.length === 0 ? (

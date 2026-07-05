@@ -38,9 +38,11 @@ After MVP works:
   - sync with onshape ("Sync from Onshape" on the model page re-exports when
     the document changed; a `…/v/…` version link pins an immutable snapshot)
   - edit in onshape button for models imported from onshape -> opens this model in onshape editor
-- [ ] third slicing backend container running libslicr3d / prusa slicer headless
+- [ ] third slicing backend container (in addition to nextjs and postgres) running libslicr3d / prusa slicer headless
   - if an unsliced .3mf file is uploaded, slice it to estimate print time & material use
   - flag failure to slice correctly (ie let user know they (mistakenly) uploaded an unslicable file)
+- [ ] Replace header with shadcn sidebar component
+- [ ] Add dedicated user settings page for onshape and bambu connection
 
 Substantial effort features in the future:
 - [ ] parametric models with [OpenSCAD](https://openscad.org/) - lower priority if onshape integration works
