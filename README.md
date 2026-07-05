@@ -1,12 +1,12 @@
 # 3D printing project management
 
-This project should be a self hostable project management platform for .3mf / .step / .stl files. Its structure should mirror [Makerworld](https://makerworld.com) or [Printables](https://printables) - just being completely self hostable.
+This project should be a self hostable project management platform for .3mf files (stl/step upload was removed to keep the UI and ingestion simple — 3mf is a container with embedded metadata and images). Its structure should mirror [Makerworld](https://makerworld.com) or [Printables](https://printables) - just being completely self hostable.
 
 ## Features
 
 MVP:
-- [x] Creating a model (ie one or multiple .3mf / .step / .stl files that together make up one coherent model)
-- [x] Upload .3mf / .step / .stl file
+- [x] Creating a model (ie one or multiple .3mf files that together make up one coherent model)
+- [x] Upload .3mf file
 - [x] Add metadata (title, description, images, category, tags)
 - [x] A homepage where the models are listed and searchable
 - [x] A details page for every model when clicking on it where the project files can be downloaded (like makerworlds print profiles tab)
@@ -15,16 +15,16 @@ After MVP works:
 - [x] Prefill title, description, images and a printer tag (e.g. "bambu p1s") from uploaded .3mf files
 - [x] Collections: folders/groups of models (per user, "Add to collection" on model pages)
 - [x] Import from other platforms (makerworld & printables only) — metadata and
-  images via the public `api.bambulab.com` design API (which avoids the
-  Cloudflare wall on makerworld.com pages). MakerWorld `.3mf` downloads work once
-  the user connects a Bambu Cloud account under Settings → Bambu Cloud
-  (otherwise the .3mf is added manually)
-- [ ] Bill of Materials (BOM) for models
+  images always import; MakerWorld `.3mf` downloads work once the user connects a
+  Bambu Cloud account under Settings → Bambu Cloud (see Architecture notes)
+- [x] Bill of Materials (BOM) for models
   - filament, heat set inserts etc
   - Item (name), quantitiy, link (optional), image (optional)
-  - downloadable as csv
+  - downloadable as csv (`GET /api/models/{id}/bom`)
   - displayed on the model page above the description, below the images
-  - upload csv in model creation menu or wizzard
+  - upload csv in model creation wizard (columns: name, quantity, link, image —
+    header aliases like qty/url/picture work too) or add rows manually
+- [ ] Open in OrcaSlicer / BambuStudio option which opens the app on the users pc and opens the .3mf file in it (as an alternative to "download .3mf")
 
 ## Tech stack
 
@@ -70,10 +70,16 @@ docker compose --profile app up -d --build
 
 Set `OIDC_ISSUER`, `OIDC_CLIENT_ID` and `OIDC_CLIENT_SECRET` to show an SSO button
 below the email/password form on the sign-in page (`OIDC_PROVIDER_NAME` customizes
-the button label). The issuer must serve `/.well-known/openid-configuration`, and
-the client must be registered with the redirect URI
-`{BETTER_AUTH_URL}/api/auth/oauth2/callback/oidc`. Works with Authentik, Keycloak,
-Pocket ID, and any other standard OIDC provider.
+the button label). The issuer must serve `/.well-known/openid-configuration`
+(a full discovery URL is also accepted), and the client must be registered with the
+redirect URI `{BETTER_AUTH_URL}/api/auth/oauth2/callback/oidc`. Users are created on
+first SSO login, and an SSO login with the same email links to an existing
+email/password account.
+
+**Authentik:** the issuer is per application, not the domain root — use
+`https://<host>/application/o/<app-slug>/` (shown as "OpenID Configuration Issuer"
+in the provider settings). A wrong issuer is logged at server start with the exact
+discovery URL that failed.
 
 ## Architecture notes
 

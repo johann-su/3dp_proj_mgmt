@@ -19,15 +19,15 @@
     {
       "idx": 2,
       "version": "7",
-      "when": 1783189201408,
-      "tag": "0002_source-url",
+      "when": 1783192771999,
+      "tag": "0002_bom",
       "breakpoints": true
     },
     {
       "idx": 3,
       "version": "7",
-      "when": 1783250731260,
-      "tag": "0003_bambu-credentials",
+      "when": 1783251418352,
+      "tag": "0003_source-url-and-bambu",
       "breakpoints": true
     }
   ]

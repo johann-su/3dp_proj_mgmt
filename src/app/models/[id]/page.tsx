@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { and, asc, eq, inArray } from "drizzle-orm";
-import { Download, ExternalLink, FileBox } from "lucide-react";
+import { Download, ExternalLink, FileBox, Pencil, Wrench } from "lucide-react";
 import { db } from "@/db";
 import { collectionModels, collections, models } from "@/db/schema";
 import { getSession } from "@/lib/auth";
@@ -10,7 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
-import { ImageGallery } from "./image-gallery";
+import { ImageGallery } from "@/components/image-gallery";
 import { DeleteModelButton } from "./delete-model-button";
 import { AddToCollection, type CollectionOption } from "./add-to-collection";
 
@@ -35,6 +35,7 @@ export default async function ModelPage({
         category: true,
         files: { orderBy: (f, { asc }) => asc(f.position) },
         modelTags: { with: { tag: true } },
+        bomItems: { orderBy: (b, { asc }) => asc(b.position) },
       },
     }),
     getSession(),
@@ -79,9 +80,63 @@ export default async function ModelPage({
       <div className="grid gap-8 lg:grid-cols-[1fr_400px]">
         <div>
           <ImageGallery
-            images={images.map((img) => ({ id: img.id, filename: img.filename }))}
+            images={images.map((img) => ({ src: `/api/files/${img.id}` }))}
             title={model.title}
           />
+
+          {model.bomItems.length > 0 && (
+            <Card className="mt-8">
+              <CardHeader className="flex flex-row items-center justify-between">
+                <CardTitle className="text-base">
+                  Bill of materials ({model.bomItems.length})
+                </CardTitle>
+                <Button asChild size="sm" variant="outline">
+                  <a href={`/api/models/${model.id}/bom`}>
+                    <Download className="size-4" />
+                    Download CSV
+                  </a>
+                </Button>
+              </CardHeader>
+              <CardContent className="grid gap-2">
+                {model.bomItems.map((item) => (
+                  <div
+                    key={item.id}
+                    className="flex min-w-0 items-center gap-3 border rounded-md px-3 py-2"
+                  >
+                    {item.imageUrl ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={item.imageUrl}
+                        alt={item.name}
+                        className="size-10 rounded object-cover bg-muted shrink-0"
+                      />
+                    ) : (
+                      <div className="size-10 rounded bg-muted flex items-center justify-center shrink-0">
+                        <Wrench className="size-4 text-muted-foreground/60" />
+                      </div>
+                    )}
+                    <div className="min-w-0">
+                      <div className="text-sm font-medium truncate">{item.name}</div>
+                      {item.link && (
+                        <a
+                          href={item.link}
+                          target="_blank"
+                          rel="noopener noreferrer nofollow"
+                          className="text-xs text-primary hover:underline inline-flex items-center gap-1"
+                        >
+                          <ExternalLink className="size-3" />
+                          {new URL(item.link).hostname}
+                        </a>
+                      )}
+                    </div>
+                    <span className="ml-auto shrink-0 text-sm text-muted-foreground">
+                      ×&nbsp;{item.quantity}
+                    </span>
+                  </div>
+                ))}
+              </CardContent>
+            </Card>
+          )}
 
           <div className="mt-8">
             <h2 className="text-lg font-semibold mb-2">Description</h2>
@@ -142,7 +197,7 @@ export default async function ModelPage({
               {printFiles.map((file) => (
                 <div
                   key={file.id}
-                  className="flex items-center gap-3 border rounded-md px-3 py-2"
+                  className="flex min-w-0 items-center gap-3 border rounded-md px-3 py-2"
                 >
                   <FileBox className="size-4 text-muted-foreground shrink-0" />
                   <div className="min-w-0">
@@ -172,7 +227,15 @@ export default async function ModelPage({
           {isOwner && (
             <>
               <Separator />
-              <DeleteModelButton modelId={model.id} />
+              <div className="flex items-center gap-2">
+                <Button asChild variant="outline" size="sm">
+                  <Link href={`/models/${model.id}/edit`}>
+                    <Pencil className="size-4" />
+                    Edit model
+                  </Link>
+                </Button>
+                <DeleteModelButton modelId={model.id} />
+              </div>
             </>
           )}
         </div>
