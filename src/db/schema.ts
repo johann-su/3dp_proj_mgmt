@@ -2,8 +2,10 @@ import {
   bigint,
   boolean,
   integer,
+  jsonb,
   pgTable,
   primaryKey,
+  real,
   text,
   timestamp,
   uuid,
@@ -125,6 +127,29 @@ export const onshapeCredentials = pgTable("onshape_credentials", {
 
 export type FileKind = "model" | "image" | "pdf";
 
+// Print-estimate lifecycle of a .3mf model file (see src/lib/slicer.ts):
+// pending  queued for the slicer service (or the service is unreachable)
+// ok       estimates present — read from embedded Bambu slice_info metadata
+//          ("embedded") or produced by the headless slicer ("slicer")
+// failed   the slicer could not slice the file (sliceError has the reason)
+// null     not applicable (images, pdfs, .step files, uploads that predate
+//          the slicer feature)
+export type SliceStatus = "pending" | "ok" | "failed";
+export type SliceSource = "embedded" | "slicer";
+
+// The hardware a .3mf project was set up for, extracted from its embedded
+// slicer config (Bambu/Orca project_settings.config or PrusaSlicer
+// Slic3r_PE.config) — see get3mfPrinterInfo in src/lib/threemf-remote.ts.
+// Deliberately not the full process settings (layer height, infill, …): only
+// what a visitor needs to judge "can I print this on my setup". filamentTypes
+// lists the filaments the objects actually use, not every AMS slot.
+export type PrinterInfo = {
+  model?: string; // "Bambu Lab P1S"
+  nozzleDiameterMm?: number;
+  bedType?: string; // "Textured PEI Plate"
+  filamentTypes?: string[]; // ["PETG"]
+};
+
 export const modelFiles = pgTable("model_files", {
   id: uuid("id").primaryKey().defaultRandom(),
   modelId: uuid("model_id")
@@ -138,6 +163,12 @@ export const modelFiles = pgTable("model_files", {
   position: integer("position").notNull().default(0),
   // Onshape element this file was exported from; sync replaces these files.
   onshapeElementId: text("onshape_element_id"),
+  sliceStatus: text("slice_status").$type<SliceStatus>(),
+  sliceSource: text("slice_source").$type<SliceSource>(),
+  printTimeSeconds: integer("print_time_seconds"),
+  filamentGrams: real("filament_grams"),
+  sliceError: text("slice_error"),
+  printerInfo: jsonb("printer_info").$type<PrinterInfo>(),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 

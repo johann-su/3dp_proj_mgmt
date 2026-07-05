@@ -30,8 +30,8 @@ export default async function OnshapeSettingsPage({
   ]);
 
   return (
-    <div className="mx-auto max-w-lg px-4 py-8">
-      <h1 className="text-2xl font-semibold mb-1">Onshape connection</h1>
+    <div className="max-w-lg">
+      <h1 className="text-lg font-semibold mb-1">Onshape connection</h1>
       <p className="text-sm text-muted-foreground mb-6">
         Sign in with your Onshape account to import models from
         cad.onshape.com (documents are exported as <code>.step</code> files),

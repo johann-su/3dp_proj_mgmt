@@ -20,6 +20,11 @@ export function formatDuration(totalSeconds: number) {
   return minutes === 0 ? `${hours} h` : `${hours} h ${minutes} min`;
 }
 
+// 3.72 -> "3.7 g", 25.4 -> "25 g"
+export function formatGrams(grams: number) {
+  return `${grams >= 10 ? Math.round(grams) : Math.max(grams, 0.1).toFixed(1)} g`;
+}
+
 export function formatDate(date: Date) {
   return date.toLocaleDateString("en-US", {
     year: "numeric",
