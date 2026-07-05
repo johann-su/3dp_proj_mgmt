@@ -453,6 +453,7 @@ export function ModelForm({
   const [stagedModelFiles, setStagedModelFiles] = useState<UploadedFile[]>([]);
   const [stagedImageFiles, setStagedImageFiles] = useState<UploadedFile[]>([]);
   const [sourceUrl, setSourceUrl] = useState<string | null>(null);
+  const [onshapeMicroversion, setOnshapeMicroversion] = useState<string | null>(null);
 
   const hasModelFile =
     existingModelFiles.length > 0 ||
@@ -473,6 +474,7 @@ export function ModelForm({
       setDescription(draft.description ?? "");
       setTags((draft.tags ?? []).join(", "));
       setSourceUrl(draft.sourceUrl ?? null);
+      setOnshapeMicroversion(draft.onshapeMicroversion ?? null);
       setStagedModelFiles((draft.files ?? []).filter((f) => f.kind === "model"));
       setStagedImageFiles((draft.files ?? []).filter((f) => f.kind === "image"));
       setStep(2);
@@ -657,6 +659,7 @@ export function ModelForm({
           ],
           bom,
           sourceUrl,
+          onshapeMicroversion,
         });
       }
       if (result?.error) {

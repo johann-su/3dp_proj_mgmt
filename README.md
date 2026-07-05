@@ -32,10 +32,15 @@ After MVP works:
   - GitHub-flavored markdown (react-markdown + remark-gfm); raw HTML is never
     rendered
 - [ ] Show collections on homescreen
-- [ ] Onshape integration (has open api and supports oidc for third party tools)
-  - import models from onshape (paste onshape project url -> backend exports step and downloads)
-  - sync with onshape (if onshape model changes, these changes are reflected in the model - maybe with onshape branch pinning)
+- [x] Onshape integration (via "Sign in with Onshape" OAuth, see Architecture notes)
+  - import models from onshape (paste onshape document url -> backend exports
+    the tabs as `.step` and downloads them)
+  - sync with onshape ("Sync from Onshape" on the model page re-exports when
+    the document changed; a `…/v/…` version link pins an immutable snapshot)
   - edit in onshape button for models imported from onshape -> opens this model in onshape editor
+- [ ] third slicing backend container running libslicr3d / prusa slicer headless
+  - if an unsliced .3mf file is uploaded, slice it to estimate print time & material use
+  - flag failure to slice correctly (ie let user know they (mistakenly) uploaded an unslicable file)
 
 Substantial effort features in the future:
 - [ ] parametric models with [OpenSCAD](https://openscad.org/) - lower priority if onshape integration works
@@ -122,4 +127,27 @@ discovery URL that failed.
   by `BAMBU_TOKEN_SECRET`/`BETTER_AUTH_SECRET`). At import time the token
   exchanges each print profile for a short-lived presigned URL that streams to
   S3 like any other asset. Without a connection, only metadata + images import.
+- **Onshape integration** (`src/lib/onshape/`, `src/lib/import/onshape.ts`)
+  authenticates with OAuth2 ("Sign in with Onshape", the flow behind
+  [passport-onshape](https://github.com/onshape/passport-onshape), implemented
+  directly in `src/lib/onshape/oauth.ts`): the self-hoster registers one OAuth
+  app at dev-portal.onshape.com (redirect URL
+  `{BETTER_AUTH_URL}/api/onshape/callback`, read documents + profile scopes)
+  and sets `ONSHAPE_CLIENT_ID`/`ONSHAPE_CLIENT_SECRET`; users then connect
+  under **Settings → Onshape** via consent screen — no API keys to copy.
+  Access + refresh tokens are stored encrypted at rest like the Bambu token,
+  access tokens are refreshed transparently (~60 min lifetime, rotated refresh
+  tokens), and a connection that can no longer be refreshed is dropped so the
+  user simply reconnects. Importing a
+  `cad.onshape.com/documents/…` URL reads the document metadata + thumbnail and
+  runs an asynchronous STEP export of the linked tab (or of every Part
+  Studio/Assembly tab), polling `GET /translations/{tid}` until done; the
+  resulting `.step` files stream to S3 like any other asset (`.step` is the one
+  exception to the 3mf-only upload rule). The canonical document URL is stored
+  as the model's `sourceUrl` (doubling as the "Edit in Onshape" link) together
+  with the workspace microversion; "Sync from Onshape" (owner-only,
+  `POST /api/models/{id}/onshape-sync`) compares the current microversion and
+  re-exports, replacing the previously imported files (tracked via
+  `model_files.onshape_element_id`). Workspace (`…/w/…`) links follow the
+  branch; version (`…/v/…`) links pin an immutable snapshot and never sync.
 - **Search** is Postgres `ILIKE` over title/description plus category filtering.

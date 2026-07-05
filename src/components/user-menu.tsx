@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Box, CircleUser, Cloud, FolderOpen, LogOut } from "lucide-react";
+import { Box, CircleUser, Cloud, FolderOpen, LogOut, Shapes } from "lucide-react";
 import { signOut } from "@/lib/auth-client";
 import { Button } from "@/components/ui/button";
 import {
@@ -46,6 +46,12 @@ export function UserMenu({ name, email }: { name: string; email: string }) {
           <Link href="/settings/bambu">
             <Cloud className="size-4" />
             Bambu Cloud
+          </Link>
+        </DropdownMenuItem>
+        <DropdownMenuItem asChild>
+          <Link href="/settings/onshape">
+            <Shapes className="size-4" />
+            Onshape
           </Link>
         </DropdownMenuItem>
         <DropdownMenuSeparator />
