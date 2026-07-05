@@ -14,8 +14,9 @@ import { s3, S3_BUCKET } from "@/lib/s3";
 
 export type SliceInfo = {
   plateCount: number;
-  // Sum over all plates; null for unsliced files (no time predictions).
+  // Sums over all plates; null for unsliced files (no predictions).
   printTimeSeconds: number | null;
+  filamentGrams: number | null;
 };
 
 const MODEL_SETTINGS_PATH = "metadata/model_settings.config";
@@ -140,6 +141,7 @@ async function read(key: string, size: number): Promise<SliceInfo | null> {
   };
 
   let printTimeSeconds: number | null = null;
+  let filamentGrams: number | null = null;
   let plateCount = 0;
   const sliceEntry = readable(SLICE_INFO_PATH);
   if (sliceEntry) {
@@ -148,6 +150,9 @@ async function read(key: string, size: number): Promise<SliceInfo | null> {
       plateCount = countPlates(xml);
       for (const match of xml.matchAll(/key="prediction"\s+value="(\d+)"/g)) {
         printTimeSeconds = (printTimeSeconds ?? 0) + Number(match[1]);
+      }
+      for (const match of xml.matchAll(/key="weight"\s+value="([\d.]+)"/g)) {
+        filamentGrams = (filamentGrams ?? 0) + Number(match[1]);
       }
     }
   }
@@ -163,7 +168,7 @@ async function read(key: string, size: number): Promise<SliceInfo | null> {
   if (plateCount === 0) plateCount = platePngCount;
   if (plateCount === 0) return null;
 
-  return { plateCount, printTimeSeconds };
+  return { plateCount, printTimeSeconds, filamentGrams };
 }
 
 // Returns null for non-Bambu archives (no plate information at all) or on any

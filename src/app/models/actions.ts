@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
+import { after } from "next/server";
 import { and, eq, inArray } from "drizzle-orm";
 import { DeleteObjectsCommand } from "@aws-sdk/client-s3";
 import { db } from "@/db";
@@ -16,13 +17,14 @@ import {
 import { getSession } from "@/lib/auth";
 import { sanitizeBomItems, type BomItemInput } from "@/lib/bom";
 import { s3, S3_BUCKET, allowedExtensions, fileExtension } from "@/lib/s3";
+import { processPendingSlices, sliceEligible } from "@/lib/slicer";
 
 export type UploadedFile = {
   key: string;
   filename: string;
   size: number;
   contentType: string;
-  kind: "model" | "image";
+  kind: FileKind;
   // Set on files exported by the Onshape importer; lets sync replace them.
   onshapeElementId?: string;
 };
@@ -176,6 +178,9 @@ export async function createModel(
         position: position++,
         onshapeElementId:
           file.kind === "model" ? onshapeId(file.onshapeElementId) : null,
+        sliceStatus: sliceEligible(file.kind, file.filename)
+          ? ("pending" as const)
+          : null,
       })),
     );
 
@@ -196,6 +201,9 @@ export async function createModel(
 
     return model.id;
   });
+
+  // Estimate print time & filament use once the response is sent.
+  after(() => processPendingSlices(modelId));
 
   revalidatePath("/");
   redirect(`/models/${modelId}`);
@@ -270,6 +278,9 @@ export async function updateModel(
             size: file.size,
             contentType: file.contentType,
             position: i,
+            sliceStatus: sliceEligible(file.kind, file.filename)
+              ? ("pending" as const)
+              : null,
           })),
         )
         .returning({ id: modelFiles.id, position: modelFiles.position });
@@ -346,6 +357,9 @@ export async function updateModel(
       }),
     );
   }
+
+  // Estimate print time & filament use once the response is sent.
+  after(() => processPendingSlices(model.id));
 
   revalidatePath("/");
   revalidatePath(`/models/${model.id}`);

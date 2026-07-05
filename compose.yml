@@ -16,6 +16,15 @@ services:
       timeout: 5s
       retries: 10
 
+  # Headless PrusaSlicer wrapped in a small HTTP service (./slicer). Slices
+  # unsliced .3mf uploads to estimate print time & filament use. The port is
+  # published so `npm run dev` on the host can reach it too.
+  slicer:
+    build: ./slicer
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+
   # Full self-hosted deployment: docker compose --profile app up -d --build
   app:
     profiles: ["app"]
@@ -39,6 +48,8 @@ services:
       S3_SECRET_ACCESS_KEY: ${S3_SECRET_ACCESS_KEY:?}
       S3_BUCKET: ${S3_BUCKET:-models}
       S3_FORCE_PATH_STYLE: ${S3_FORCE_PATH_STYLE:-true}
+      # Headless slicer service for print time / filament estimates
+      SLICER_URL: http://slicer:8000
     depends_on:
       postgres:
         condition: service_healthy

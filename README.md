@@ -38,9 +38,12 @@ After MVP works:
   - sync with onshape ("Sync from Onshape" on the model page re-exports when
     the document changed; a `…/v/…` version link pins an immutable snapshot)
   - edit in onshape button for models imported from onshape -> opens this model in onshape editor
-- [ ] third slicing backend container (in addition to nextjs and postgres) running libslicr3d / prusa slicer headless
+- [x] third slicing backend container (in addition to nextjs and postgres) running libslicr3d / prusa slicer headless
   - if an unsliced .3mf file is uploaded, slice it to estimate print time & material use
   - flag failure to slice correctly (ie let user know they (mistakenly) uploaded an unslicable file)
+  - implemented as the `slicer` service in `compose.yml` wrapping the
+    PrusaSlicer CLI (libslic3r has no maintained standalone bindings, so the
+    container uses the `prusa-slicer` binary headless — see Architecture notes)
 - [ ] Replace header with shadcn sidebar component
 - [ ] Add dedicated user settings page for onshape and bambu connection
 
@@ -64,7 +67,7 @@ Requirements: Node 22+, Docker, and an S3-compatible storage (AWS S3, MinIO, Gar
 
 ```sh
 cp .env.example .env       # then fill in BETTER_AUTH_SECRET and your S3 settings
-docker compose up -d       # starts Postgres on :5432
+docker compose up -d       # starts Postgres on :5432 and the slicer service on :8000
 npm install
 npm run db:migrate         # apply SQL migrations from ./drizzle + seed categories
 npm run dev
@@ -152,4 +155,20 @@ discovery URL that failed.
   re-exports, replacing the previously imported files (tracked via
   `model_files.onshape_element_id`). Workspace (`…/w/…`) links follow the
   branch; version (`…/v/…`) links pin an immutable snapshot and never sync.
+- **Print estimates** come from two sources. Files sliced in Bambu Studio /
+  OrcaSlicer embed per-plate predictions in `Metadata/slice_info.config`, which
+  are read directly from S3 via ranged GETs (`src/lib/threemf-remote.ts`).
+  Unsliced `.3mf` files are sent to the **slicer service** (`slicer/`, the
+  third compose container): a zero-dependency Node HTTP wrapper around the
+  headless PrusaSlicer CLI (Debian's `prusa-slicer` package) that slices with a
+  generic 0.4 mm/PLA profile (`slicer/config.ini`) and parses print time and
+  filament use from the G-code footer. Slicing runs in the background after
+  upload (`after()` in the model actions, `src/lib/slicer.ts`); results land on
+  `model_files` (`slice_status`, `print_time_seconds`, `filament_grams`, …).
+  Slicer-derived numbers are approximations (uploads rarely carry
+  PrusaSlicer-readable settings) and shown with a `~` prefix; files PrusaSlicer
+  cannot slice are flagged on the model page so the uploader notices a broken
+  or unprintable file. `.step` files and files uploaded before this feature are
+  skipped. The service is optional: without `SLICER_URL`, unsliced files simply
+  show no estimates and stay `pending`.
 - **Search** is Postgres `ILIKE` over title/description plus category filtering.

@@ -7,12 +7,13 @@ import {
   FileBox,
   FileText,
   Pencil,
+  SquarePen,
   Wrench,
 } from "lucide-react";
 import { db } from "@/db";
 import { collectionModels, collections, models } from "@/db/schema";
 import { getSession } from "@/lib/auth";
-import { formatBytes, formatDate, formatDuration } from "@/lib/format";
+import { formatBytes, formatDate, formatDuration, formatGrams } from "@/lib/format";
 import { get3mfSliceInfo } from "@/lib/threemf-remote";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -252,11 +253,23 @@ export default async function ModelPage({
             <CardContent className="grid gap-2">
               {printFiles.map((file, index) => {
                 const info = sliceInfos[index];
+                // Embedded Bambu predictions (live or persisted) take priority;
+                // values from the headless slicer's generic profile are
+                // approximations and marked with "~".
+                const persisted = file.sliceStatus === "ok";
+                const approx = persisted && file.sliceSource === "slicer";
+                const printTime =
+                  info?.printTimeSeconds ??
+                  (persisted ? file.printTimeSeconds : null);
+                const grams =
+                  info?.filamentGrams ?? (persisted ? file.filamentGrams : null);
                 const meta = [
                   formatBytes(file.size),
                   info && `${info.plateCount} ${info.plateCount === 1 ? "plate" : "plates"}`,
-                  info?.printTimeSeconds != null &&
-                    formatDuration(info.printTimeSeconds),
+                  printTime != null &&
+                    `${approx ? "~" : ""}${formatDuration(printTime)}`,
+                  grams != null && `${approx ? "~" : ""}${formatGrams(grams)}`,
+                  file.sliceStatus === "pending" && "estimating…",
                 ]
                   .filter(Boolean)
                   .join(" · ");
@@ -271,6 +284,14 @@ export default async function ModelPage({
                         {file.filename}
                       </div>
                       <div className="text-xs text-muted-foreground">{meta}</div>
+                      {file.sliceStatus === "failed" && (
+                        <div
+                          className="text-xs text-destructive"
+                          title={file.sliceError ?? undefined}
+                        >
+                          Couldn&apos;t be sliced — the file may not be printable
+                        </div>
+                      )}
                     </div>
                     <div className="ml-auto flex shrink-0 items-center gap-1">
                       <OpenInSlicer

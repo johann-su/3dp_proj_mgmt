@@ -4,6 +4,7 @@ import {
   integer,
   pgTable,
   primaryKey,
+  real,
   text,
   timestamp,
   uuid,
@@ -125,6 +126,16 @@ export const onshapeCredentials = pgTable("onshape_credentials", {
 
 export type FileKind = "model" | "image" | "pdf";
 
+// Print-estimate lifecycle of a .3mf model file (see src/lib/slicer.ts):
+// pending  queued for the slicer service (or the service is unreachable)
+// ok       estimates present — read from embedded Bambu slice_info metadata
+//          ("embedded") or produced by the headless slicer ("slicer")
+// failed   the slicer could not slice the file (sliceError has the reason)
+// null     not applicable (images, pdfs, .step files, uploads that predate
+//          the slicer feature)
+export type SliceStatus = "pending" | "ok" | "failed";
+export type SliceSource = "embedded" | "slicer";
+
 export const modelFiles = pgTable("model_files", {
   id: uuid("id").primaryKey().defaultRandom(),
   modelId: uuid("model_id")
@@ -138,6 +149,11 @@ export const modelFiles = pgTable("model_files", {
   position: integer("position").notNull().default(0),
   // Onshape element this file was exported from; sync replaces these files.
   onshapeElementId: text("onshape_element_id"),
+  sliceStatus: text("slice_status").$type<SliceStatus>(),
+  sliceSource: text("slice_source").$type<SliceSource>(),
+  printTimeSeconds: integer("print_time_seconds"),
+  filamentGrams: real("filament_grams"),
+  sliceError: text("slice_error"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
