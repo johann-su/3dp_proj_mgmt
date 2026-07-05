@@ -14,7 +14,7 @@ MVP:
 After MVP works:
 - [x] Prefill title, description, images and a printer tag (e.g. "bambu p1s") from uploaded .3mf files
 - [x] Collections: folders/groups of models (per user, "Add to collection" on model pages)
-- [ ] Import from other platforms (makerworld & printables only)
+- [ ] Import from other platforms (makerworld & printables only) - delayed for now (because of makerword blocking "robot" requests)
 - [x] Bill of Materials (BOM) for models
   - filament, heat set inserts etc
   - Item (name), quantitiy, link (optional), image (optional)
@@ -67,10 +67,16 @@ docker compose --profile app up -d --build
 
 Set `OIDC_ISSUER`, `OIDC_CLIENT_ID` and `OIDC_CLIENT_SECRET` to show an SSO button
 below the email/password form on the sign-in page (`OIDC_PROVIDER_NAME` customizes
-the button label). The issuer must serve `/.well-known/openid-configuration`, and
-the client must be registered with the redirect URI
-`{BETTER_AUTH_URL}/api/auth/oauth2/callback/oidc`. Works with Authentik, Keycloak,
-Pocket ID, and any other standard OIDC provider.
+the button label). The issuer must serve `/.well-known/openid-configuration`
+(a full discovery URL is also accepted), and the client must be registered with the
+redirect URI `{BETTER_AUTH_URL}/api/auth/oauth2/callback/oidc`. Users are created on
+first SSO login, and an SSO login with the same email links to an existing
+email/password account.
+
+**Authentik:** the issuer is per application, not the domain root — use
+`https://<host>/application/o/<app-slug>/` (shown as "OpenID Configuration Issuer"
+in the provider settings). A wrong issuer is logged at server start with the exact
+discovery URL that failed.
 
 ## Architecture notes
 
