@@ -5,6 +5,7 @@ import { fileExtension, IMAGE_EXTENSIONS } from "@/lib/s3";
 import { ImportError, IMPORT_USER_AGENT, type ImportedProject } from "@/lib/import/types";
 import { importFromMakerworld, parseMakerworldUrl } from "@/lib/import/makerworld";
 import { importFromPrintables, parsePrintablesUrl } from "@/lib/import/printables";
+import { getBambuCredential } from "@/lib/bambu/credentials";
 
 export const runtime = "nodejs";
 // Downloading large model files from the source platform can take a while.
@@ -58,7 +59,11 @@ export async function POST(req: NextRequest) {
   try {
     let project: ImportedProject;
     if (parseMakerworldUrl(url)) {
-      project = await importFromMakerworld(url);
+      const cred = await getBambuCredential(session.user.id);
+      project = await importFromMakerworld(
+        url,
+        cred ? { token: cred.token, region: cred.region } : {},
+      );
     } else {
       const printablesId = parsePrintablesUrl(url);
       if (printablesId) {

@@ -14,7 +14,11 @@ MVP:
 After MVP works:
 - [x] Prefill title, description, images and a printer tag (e.g. "bambu p1s") from uploaded .3mf files
 - [x] Collections: folders/groups of models (per user, "Add to collection" on model pages)
-- [ ] Import from other platforms (makerworld & printables only)
+- [x] Import from other platforms (makerworld & printables only) — metadata and
+  images via the public `api.bambulab.com` design API (which avoids the
+  Cloudflare wall on makerworld.com pages). MakerWorld `.3mf` downloads work once
+  the user connects a Bambu Cloud account under Settings → Bambu Cloud
+  (otherwise the .3mf is added manually)
 - [ ] Bill of Materials (BOM) for models
   - filament, heat set inserts etc
   - Item (name), quantitiy, link (optional), image (optional)
@@ -82,4 +86,17 @@ Pocket ID, and any other standard OIDC provider.
   unpacked in the browser (fflate) and title/description (`3D/3dmodel.model`), printer
   name (`Metadata/project_settings.config` / `slice_info.config`) and preview images
   (`Auxiliaries/`, `Metadata/plate_*.png`, thumbnails) prefill the form.
+- **URL import** (`POST /api/import`, `src/lib/import/`) fetches a model's public
+  metadata + images server-side and stages them to S3 for the create form.
+  MakerWorld uses the anonymous `api.bambulab.com/v1/design-service/design/{id}`
+  JSON API (the makerworld.com pages themselves are Cloudflare-gated); Printables
+  uses its public GraphQL API, which also yields anonymous file download links.
+  MakerWorld file downloads require a Bambu Cloud login: a user connects their
+  account at **Settings → Bambu Cloud** (`src/app/settings/bambu/`, backed by
+  `src/lib/bambu/`), which logs in via `api.bambulab.com` (handling email-code
+  and TOTP two-factor) or accepts a pasted `token` cookie. The resulting access
+  token is stored **encrypted at rest** (AES-256-GCM, `src/lib/crypto.ts`, keyed
+  by `BAMBU_TOKEN_SECRET`/`BETTER_AUTH_SECRET`). At import time the token
+  exchanges each print profile for a short-lived presigned URL that streams to
+  S3 like any other asset. Without a connection, only metadata + images import.
 - **Search** is Postgres `ILIKE` over title/description plus category filtering.

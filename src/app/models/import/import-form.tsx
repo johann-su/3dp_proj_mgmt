@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { CloudDownload } from "lucide-react";
@@ -57,10 +58,13 @@ export function ImportForm() {
           </Button>
           <p className="text-xs text-muted-foreground">
             Printables: metadata, images and model files are imported.
-            MakerWorld: metadata and images only (file downloads require a
-            Bambu account) — and MakerWorld may block server-side access
-            entirely; in that case download the .3mf in your browser and
-            upload it, the metadata is read from the file automatically.
+            MakerWorld: metadata and images always import; the <code>.3mf</code>
+            files import too once you{" "}
+            <Link href="/settings/bambu" className="underline">
+              connect your Bambu account
+            </Link>
+            . Otherwise download the .3mf in your browser and upload it — the
+            metadata is read from the file automatically.
           </p>
         </form>
       </CardContent>
