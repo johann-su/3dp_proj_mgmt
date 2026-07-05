@@ -3,7 +3,7 @@ FROM debian:trixie-slim
 # prusa-slicer's CLI slices fully headless (no X server needed); nodejs runs
 # the thin HTTP wrapper in server.mjs.
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends prusa-slicer nodejs \
+    && apt-get install -y --no-install-recommends prusa-slicer nodejs unzip \
     && rm -rf /var/lib/apt/lists/*
 
 RUN useradd --system --create-home slicer

@@ -273,6 +273,19 @@ export default async function ModelPage({
                 ]
                   .filter(Boolean)
                   .join(" · ");
+                // Hardware the project was set up for (see PrinterInfo).
+                const printer = file.printerInfo;
+                const printerLine =
+                  printer &&
+                  [
+                    printer.model,
+                    printer.nozzleDiameterMm != null &&
+                      `${printer.nozzleDiameterMm} mm nozzle`,
+                    printer.filamentTypes?.join(" / "),
+                    printer.bedType?.toLowerCase(),
+                  ]
+                    .filter(Boolean)
+                    .join(" · ");
                 return (
                   <div
                     key={file.id}
@@ -284,6 +297,11 @@ export default async function ModelPage({
                         {file.filename}
                       </div>
                       <div className="text-xs text-muted-foreground">{meta}</div>
+                      {printerLine && (
+                        <div className="text-xs text-muted-foreground">
+                          {printerLine}
+                        </div>
+                      )}
                       {file.sliceStatus === "failed" && (
                         <div
                           className="text-xs text-destructive"

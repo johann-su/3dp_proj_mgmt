@@ -2,6 +2,7 @@ import {
   bigint,
   boolean,
   integer,
+  jsonb,
   pgTable,
   primaryKey,
   real,
@@ -136,6 +137,19 @@ export type FileKind = "model" | "image" | "pdf";
 export type SliceStatus = "pending" | "ok" | "failed";
 export type SliceSource = "embedded" | "slicer";
 
+// The hardware a .3mf project was set up for, extracted from its embedded
+// slicer config (Bambu/Orca project_settings.config or PrusaSlicer
+// Slic3r_PE.config) — see get3mfPrinterInfo in src/lib/threemf-remote.ts.
+// Deliberately not the full process settings (layer height, infill, …): only
+// what a visitor needs to judge "can I print this on my setup". filamentTypes
+// lists the filaments the objects actually use, not every AMS slot.
+export type PrinterInfo = {
+  model?: string; // "Bambu Lab P1S"
+  nozzleDiameterMm?: number;
+  bedType?: string; // "Textured PEI Plate"
+  filamentTypes?: string[]; // ["PETG"]
+};
+
 export const modelFiles = pgTable("model_files", {
   id: uuid("id").primaryKey().defaultRandom(),
   modelId: uuid("model_id")
@@ -154,6 +168,7 @@ export const modelFiles = pgTable("model_files", {
   printTimeSeconds: integer("print_time_seconds"),
   filamentGrams: real("filament_grams"),
   sliceError: text("slice_error"),
+  printerInfo: jsonb("printer_info").$type<PrinterInfo>(),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 

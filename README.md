@@ -44,6 +44,11 @@ After MVP works:
   - implemented as the `slicer` service in `compose.yml` wrapping the
     PrusaSlicer CLI (libslic3r has no maintained standalone bindings, so the
     container uses the `prusa-slicer` binary headless — see Architecture notes)
+  - slices with the settings embedded in the file (printer kinematics, speeds,
+    layer height, infill, the filament the objects actually use, …); a generic
+    0.4 mm/PLA profile is only the fallback for files without settings
+  - the selected hardware (printer model, nozzle, build plate, filament) is
+    stored on the file (`model_files.printer_info`) and shown on the model page
 - [ ] Replace header with shadcn sidebar component
 - [ ] Add dedicated user settings page for onshape and bambu connection
 
@@ -160,15 +165,26 @@ discovery URL that failed.
   are read directly from S3 via ranged GETs (`src/lib/threemf-remote.ts`).
   Unsliced `.3mf` files are sent to the **slicer service** (`slicer/`, the
   third compose container): a zero-dependency Node HTTP wrapper around the
-  headless PrusaSlicer CLI (Debian's `prusa-slicer` package) that slices with a
-  generic 0.4 mm/PLA profile (`slicer/config.ini`) and parses print time and
-  filament use from the G-code footer. Slicing runs in the background after
-  upload (`after()` in the model actions, `src/lib/slicer.ts`); results land on
-  `model_files` (`slice_status`, `print_time_seconds`, `filament_grams`, …).
-  Slicer-derived numbers are approximations (uploads rarely carry
-  PrusaSlicer-readable settings) and shown with a `~` prefix; files PrusaSlicer
-  cannot slice are flagged on the model page so the uploader notices a broken
-  or unprintable file. `.step` files and files uploaded before this feature are
-  skipped. The service is optional: without `SLICER_URL`, unsliced files simply
-  show no estimates and stay `pending`.
+  headless PrusaSlicer CLI (Debian's `prusa-slicer` package) that parses print
+  time and filament use from the G-code footer. The service honors the
+  settings embedded in the file — Bambu/Orca `project_settings.config` keys
+  are translated to their PrusaSlicer equivalents (machine limits, speeds,
+  accelerations, layer height, infill, and the filament of the extruder the
+  objects actually use), PrusaSlicer projects load their own `Slic3r_PE.config`
+  — falling back to a generic 0.4 mm/PLA profile (`slicer/config.ini`) for
+  files without settings. Only whitelisted keys are copied (a crafted archive
+  can't smuggle in `post_process` scripts), and the bed is a huge virtual
+  plate so multi-plate Bambu projects (whose world coordinates extend far past
+  the physical bed) still slice; estimates are totals across all plates.
+  Slicing runs in the background after upload (`after()` in the model actions,
+  `src/lib/slicer.ts`); results land on `model_files` (`slice_status`,
+  `print_time_seconds`, `filament_grams`, …) together with the hardware the
+  project was set up for (`printer_info`: printer model, nozzle, build plate,
+  used filaments), which the model page shows per file. Slicer-derived numbers
+  are still approximations (PrusaSlicer's time estimator, not the printer's
+  firmware) and shown with a `~` prefix; files PrusaSlicer cannot slice are
+  flagged on the model page so the uploader notices a broken or unprintable
+  file. `.step` files and files uploaded before this feature are skipped. The
+  service is optional: without `SLICER_URL`, unsliced files simply show no
+  estimates and stay `pending`.
 - **Search** is Postgres `ILIKE` over title/description plus category filtering.

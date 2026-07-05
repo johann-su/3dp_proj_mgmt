@@ -18,7 +18,7 @@ import { and, eq } from "drizzle-orm";
 import { db } from "@/db";
 import { modelFiles } from "@/db/schema";
 import { s3, S3_BUCKET, fileExtension } from "@/lib/s3";
-import { get3mfSliceInfo } from "@/lib/threemf-remote";
+import { get3mfPrinterInfo, get3mfSliceInfo } from "@/lib/threemf-remote";
 
 // Keep in sync with MAX_BODY_BYTES in slicer/server.mjs.
 const MAX_SLICE_BYTES = 256 * 1024 * 1024;
@@ -64,6 +64,17 @@ async function markFailed(file: FileRow, error: string) {
 }
 
 async function estimateFile(file: FileRow, slicerUrl: string | undefined) {
+  // The hardware the project was set up for (printer, nozzle, plate,
+  // filament) is worth keeping even when estimation later fails or the
+  // slicer service is down.
+  const printerInfo = await get3mfPrinterInfo(file.s3Key, file.size);
+  if (printerInfo) {
+    await db
+      .update(modelFiles)
+      .set({ printerInfo })
+      .where(eq(modelFiles.id, file.id));
+  }
+
   // Already-sliced files carry their real predictions — no need to re-slice
   // with a generic profile.
   const embedded = await get3mfSliceInfo(file.s3Key, file.size);
