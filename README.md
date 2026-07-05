@@ -25,8 +25,12 @@ After MVP works:
   - upload csv in model creation wizard (columns: name, quantity, link, image —
     header aliases like qty/url/picture work too) or add rows manually
 - [x] Open in OrcaSlicer / BambuStudio option which opens the app on the users pc and opens the .3mf file in it (as an alternative to "download .3mf")
-- [ ] Have optional PDF's associated with a model for build instructions, product manual etc
-- [ ] Markdown support for Description
+- [x] Have optional PDF's associated with a model for build instructions, product manual etc
+  - added in the wizard's details step ("Documents"), shown on the model page
+    below the files card — opens inline in the browser, downloadable
+- [x] Markdown support for Description
+  - GitHub-flavored markdown (react-markdown + remark-gfm); raw HTML is never
+    rendered
 - [ ] Show collections on homescreen
 - [x] Onshape integration (via "Sign in with Onshape" OAuth, see Architecture notes)
   - import models from onshape (paste onshape document url -> backend exports

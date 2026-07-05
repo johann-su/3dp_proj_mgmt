@@ -22,6 +22,16 @@ export const S3_BUCKET = process.env.S3_BUCKET ?? "models";
 // files; the upload UI still only offers .3mf.
 export const MODEL_EXTENSIONS = [".3mf", ".step", ".stp"];
 export const IMAGE_EXTENSIONS = [".png", ".jpg", ".jpeg", ".webp", ".gif"];
+// Optional documents attached to a model (build instructions, manual, …)
+export const PDF_EXTENSIONS = [".pdf"];
+
+export function allowedExtensions(kind: "model" | "image" | "pdf") {
+  return kind === "model"
+    ? MODEL_EXTENSIONS
+    : kind === "pdf"
+      ? PDF_EXTENSIONS
+      : IMAGE_EXTENSIONS;
+}
 
 export function fileExtension(filename: string) {
   const dot = filename.lastIndexOf(".");

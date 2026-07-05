@@ -10,6 +10,7 @@ import {
   CloudDownload,
   Eye,
   FileBox,
+  FileText,
   ImageIcon,
   Pencil,
   X,
@@ -45,7 +46,7 @@ export type ExistingFile = {
   id: string;
   filename: string;
   size: number;
-  kind: "model" | "image";
+  kind: "model" | "image" | "pdf";
 };
 
 // Prefilled values when editing; absent when creating a new model.
@@ -82,8 +83,12 @@ function newImageEntry(file: File): ImageEntry {
 
 const MODEL_ACCEPT = ".3mf";
 const IMAGE_ACCEPT = ".png,.jpg,.jpeg,.webp,.gif";
+const PDF_ACCEPT = ".pdf";
 
-async function uploadFile(file: File, kind: "model" | "image"): Promise<UploadedFile> {
+async function uploadFile(
+  file: File,
+  kind: "model" | "image" | "pdf",
+): Promise<UploadedFile> {
   const params = new URLSearchParams({ filename: file.name, kind });
   const res = await fetch(`/api/upload?${params}`, {
     method: "POST",
@@ -422,6 +427,10 @@ export function ModelForm({
     () => model?.files.filter((f) => f.kind === "model") ?? [],
   );
   const [modelFiles, setModelFiles] = useState<File[]>([]);
+  const [existingPdfFiles, setExistingPdfFiles] = useState<ExistingFile[]>(
+    () => model?.files.filter((f) => f.kind === "pdf") ?? [],
+  );
+  const [pdfFiles, setPdfFiles] = useState<File[]>([]);
   const [images, setImages] = useState<ImageEntry[]>(() =>
     (model?.files ?? [])
       .filter((f) => f.kind === "image")
@@ -587,8 +596,9 @@ export function ModelForm({
       // Images upload in display order so their positions (and the cover)
       // match what the user arranged.
       const newImages = images.filter((image) => image.type === "new");
-      const toUpload: { file: File; kind: "model" | "image" }[] = [
+      const toUpload: { file: File; kind: "model" | "image" | "pdf" }[] = [
         ...modelFiles.map((file) => ({ file, kind: "model" as const })),
+        ...pdfFiles.map((file) => ({ file, kind: "pdf" as const })),
         ...newImages.map((image) => ({ file: image.file, kind: "image" as const })),
       ];
       const uploaded: UploadedFile[] = [];
@@ -604,11 +614,12 @@ export function ModelForm({
         setStatus("Saving changes…");
         const keptIds = new Set([
           ...existingModelFiles.map((f) => f.id),
+          ...existingPdfFiles.map((f) => f.id),
           ...images
             .filter((image) => image.type === "existing")
             .map((image) => image.id),
         ]);
-        let uploadIndex = modelFiles.length;
+        let uploadIndex = modelFiles.length + pdfFiles.length;
         const imageOrder: ImageOrderRef[] = images.map((image) =>
           image.type === "existing"
             ? { existingId: image.id }
@@ -630,9 +641,10 @@ export function ModelForm({
       } else {
         setStatus("Creating model…");
         // Order determines position (and the cover = first image): staged
-        // model files, freshly uploaded models, staged images, new images.
+        // model files, freshly uploaded models, PDFs, staged images, new images.
         const uploadedImages = uploaded.filter((f) => f.kind === "image");
         const uploadedModels = uploaded.filter((f) => f.kind === "model");
+        const uploadedPdfs = uploaded.filter((f) => f.kind === "pdf");
         result = await createModel({
           title,
           description,
@@ -641,6 +653,7 @@ export function ModelForm({
           files: [
             ...stagedModelFiles,
             ...uploadedModels,
+            ...uploadedPdfs,
             ...stagedImageFiles,
             ...uploadedImages,
           ],
@@ -712,12 +725,17 @@ export function ModelForm({
             </div>
 
             <div className="grid gap-2">
-              <Label htmlFor="description">Description</Label>
+              <div className="flex items-baseline justify-between">
+                <Label htmlFor="description">Description</Label>
+                <span className="text-xs text-muted-foreground">
+                  Markdown supported
+                </span>
+              </div>
               <Textarea
                 id="description"
                 name="description"
                 rows={6}
-                placeholder="What is it, how to print it, material recommendations…"
+                placeholder="What is it, how to print it, material recommendations… Markdown works: **bold**, - lists, [links](https://…)"
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
               />
@@ -752,6 +770,19 @@ export function ModelForm({
             </div>
 
             <BomEditor items={bom} setItems={setBom} />
+
+            <FilePicker
+              label="Documents (optional)"
+              hint="Click to add PDFs — build instructions, product manual, …"
+              accept={PDF_ACCEPT}
+              files={pdfFiles}
+              setFiles={setPdfFiles}
+              existing={existingPdfFiles}
+              removeExisting={(id) =>
+                setExistingPdfFiles((files) => files.filter((f) => f.id !== id))
+              }
+              icon={<FileText className="size-6" />}
+            />
 
             {stagedModelFiles.length > 0 && (
               <div className="grid gap-2">
@@ -822,6 +853,13 @@ export function ModelForm({
                 size: f.size,
               })),
               ...modelFiles.map((f) => ({ filename: f.name, size: f.size })),
+            ],
+            pdfFiles: [
+              ...existingPdfFiles.map((f) => ({
+                filename: f.filename,
+                size: f.size,
+              })),
+              ...pdfFiles.map((f) => ({ filename: f.name, size: f.size })),
             ],
             userName,
             createdAt: model?.createdAt ?? new Date(),

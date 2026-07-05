@@ -123,7 +123,7 @@ export const onshapeCredentials = pgTable("onshape_credentials", {
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
 
-export type FileKind = "model" | "image";
+export type FileKind = "model" | "image" | "pdf";
 
 export const modelFiles = pgTable("model_files", {
   id: uuid("id").primaryKey().defaultRandom(),
