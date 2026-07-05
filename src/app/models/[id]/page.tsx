@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { and, asc, eq, inArray } from "drizzle-orm";
-import { Download, ExternalLink, FileBox, Pencil, Wrench } from "lucide-react";
+import { Download, ExternalLink, FileBox, Pencil, SquarePen, Wrench } from "lucide-react";
 import { db } from "@/db";
 import { collectionModels, collections, models } from "@/db/schema";
 import { getSession } from "@/lib/auth";
@@ -12,9 +12,11 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { ImageGallery } from "@/components/image-gallery";
+import { parseOnshapeUrl } from "@/lib/onshape/api";
 import { DeleteModelButton } from "./delete-model-button";
 import { AddToCollection, type CollectionOption } from "./add-to-collection";
 import { OpenInSlicer } from "./open-in-slicer";
+import { OnshapeSyncButton } from "./onshape-sync-button";
 
 export const dynamic = "force-dynamic";
 
@@ -50,6 +52,22 @@ export default async function ModelPage({
   const makerworldUrl = model.sourceUrl?.includes("makerworld")
     ? model.sourceUrl
     : undefined;
+
+  let sourceName: string | undefined;
+  let onshapePin: ReturnType<typeof parseOnshapeUrl> = null;
+  if (model.sourceUrl) {
+    try {
+      const source = new URL(model.sourceUrl);
+      onshapePin = parseOnshapeUrl(source);
+      sourceName = onshapePin
+        ? "Onshape"
+        : source.hostname.includes("makerworld")
+          ? "MakerWorld"
+          : "Printables";
+    } catch {
+      // malformed sourceUrl — omit the source link
+    }
+  }
 
   const sliceInfos = await Promise.all(
     printFiles.map((f) => get3mfSliceInfo(f.s3Key, f.size)),
@@ -165,7 +183,7 @@ export default async function ModelPage({
             <p className="text-sm text-muted-foreground mt-1">
               by {model.user.name} · {formatDate(model.createdAt)}
             </p>
-            {model.sourceUrl && (
+            {model.sourceUrl && sourceName && (
               <a
                 href={model.sourceUrl}
                 target="_blank"
@@ -173,11 +191,33 @@ export default async function ModelPage({
                 className="inline-flex items-center gap-1 text-sm text-primary hover:underline mt-1"
               >
                 <ExternalLink className="size-3.5" />
-                Imported from{" "}
-                {model.sourceUrl.includes("makerworld") ? "MakerWorld" : "Printables"}
+                Imported from {sourceName}
               </a>
             )}
           </div>
+
+          {onshapePin && model.sourceUrl && (
+            <div className="flex flex-wrap items-center gap-2">
+              <Button asChild variant="outline" size="sm">
+                <a
+                  href={model.sourceUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  <SquarePen className="size-4" />
+                  Edit in Onshape
+                </a>
+              </Button>
+              {isOwner &&
+                (onshapePin.wvm === "v" ? (
+                  <span className="text-xs text-muted-foreground">
+                    Pinned to an Onshape version
+                  </span>
+                ) : (
+                  <OnshapeSyncButton modelId={model.id} />
+                ))}
+            </div>
+          )}
 
           <div className="flex flex-wrap gap-1.5">
             {model.category && (

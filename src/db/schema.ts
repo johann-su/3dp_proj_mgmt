@@ -80,8 +80,14 @@ export const models = pgTable("models", {
   userId: text("user_id")
     .notNull()
     .references(() => user.id, { onDelete: "cascade" }),
-  // makerworld/printables URL this model was imported from
+  // makerworld/printables/onshape URL this model was imported from. For
+  // Onshape it is the canonical document pin
+  // (…/documents/{did}/w|v/{wvmid}[/e/{eid}]) that sync re-exports from.
   sourceUrl: text("source_url"),
+  // Microversion of the Onshape workspace at the last import/sync; null for
+  // models not imported from Onshape (and for version-pinned imports, which
+  // are immutable snapshots).
+  onshapeMicroversion: text("onshape_microversion"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
@@ -100,6 +106,21 @@ export const bambuCredentials = pgTable("bambu_credentials", {
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
 
+// Per-user Onshape API key (created at dev-portal.onshape.com/keys), used to
+// import and sync models from Onshape. The secret key is stored encrypted at
+// rest — see src/lib/crypto.ts.
+export const onshapeCredentials = pgTable("onshape_credentials", {
+  userId: text("user_id")
+    .primaryKey()
+    .references(() => user.id, { onDelete: "cascade" }),
+  // Display name/email resolved from Onshape when the key was saved.
+  account: text("account").notNull(),
+  accessKey: text("access_key").notNull(),
+  secretKeyCipher: text("secret_key_cipher").notNull(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
 export type FileKind = "model" | "image";
 
 export const modelFiles = pgTable("model_files", {
@@ -113,6 +134,8 @@ export const modelFiles = pgTable("model_files", {
   size: bigint("size", { mode: "number" }).notNull(),
   contentType: text("content_type").notNull(),
   position: integer("position").notNull().default(0),
+  // Onshape element this file was exported from; sync replaces these files.
+  onshapeElementId: text("onshape_element_id"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 

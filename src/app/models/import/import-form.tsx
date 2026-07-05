@@ -64,7 +64,13 @@ export function ImportForm() {
               connect your Bambu account
             </Link>
             . Otherwise download the .3mf in your browser and upload it — the
-            metadata is read from the file automatically.
+            metadata is read from the file automatically. Onshape: paste a
+            document link (cad.onshape.com/documents/…) to export its tabs as{" "}
+            <code>.step</code> files — requires{" "}
+            <Link href="/settings/onshape" className="underline">
+              connecting your Onshape API key
+            </Link>
+            .
           </p>
         </form>
       </CardContent>

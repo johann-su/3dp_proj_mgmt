@@ -22,6 +22,8 @@ export type UploadedFile = {
   size: number;
   contentType: string;
   kind: "model" | "image";
+  // Set on files exported by the Onshape importer; lets sync replace them.
+  onshapeElementId?: string;
 };
 
 export type CreateModelInput = {
@@ -32,6 +34,8 @@ export type CreateModelInput = {
   files: UploadedFile[];
   bom?: BomItemInput[];
   sourceUrl?: string | null;
+  // Workspace microversion at import time (Onshape imports only).
+  onshapeMicroversion?: string | null;
 };
 
 function validateSourceUrl(raw: string | null | undefined): string | null | undefined {
@@ -41,7 +45,9 @@ function validateSourceUrl(raw: string | null | undefined): string | null | unde
     const host = url.hostname;
     if (
       url.protocol === "https:" &&
-      (/(^|\.)makerworld\.com$/.test(host) || /(^|\.)printables\.com$/.test(host))
+      (/(^|\.)makerworld\.com$/.test(host) ||
+        /(^|\.)printables\.com$/.test(host) ||
+        host === "cad.onshape.com")
     ) {
       // Drop tracking params (?from=recommend etc.); keep the hash, which on
       // MakerWorld identifies the print profile.
@@ -123,7 +129,7 @@ export async function createModel(
 
   const uploads = input.files;
   if (!uploads.some((f) => f.kind === "model")) {
-    return { error: "At least one .3mf file is required" };
+    return { error: "At least one model file (.3mf or .step) is required" };
   }
   const uploadError = validateUploads(uploads);
   if (uploadError) return { error: uploadError };
@@ -134,8 +140,14 @@ export async function createModel(
 
   const sourceUrl = validateSourceUrl(input.sourceUrl);
   if (sourceUrl === undefined) {
-    return { error: "Source URL must be a MakerWorld or Printables link" };
+    return { error: "Source URL must be a MakerWorld, Printables or Onshape link" };
   }
+
+  // Onshape sync metadata only makes sense on models imported from Onshape.
+  const isOnshape = !!sourceUrl && sourceUrl.includes("//cad.onshape.com/");
+  const onshapeId = (value: string | null | undefined) =>
+    isOnshape && value && /^[0-9a-f]{24}$/.test(value) ? value : null;
+  const onshapeMicroversion = onshapeId(input.onshapeMicroversion);
 
   const tagNames = normalizeTagNames(input.tags);
 
@@ -148,6 +160,7 @@ export async function createModel(
         categoryId: input.categoryId || null,
         userId: session.user.id,
         sourceUrl,
+        onshapeMicroversion,
       })
       .returning({ id: models.id });
 
@@ -161,6 +174,8 @@ export async function createModel(
         size: file.size,
         contentType: file.contentType,
         position: position++,
+        onshapeElementId:
+          file.kind === "model" ? onshapeId(file.onshapeElementId) : null,
       })),
     );
 
@@ -217,7 +232,7 @@ export async function updateModel(
   const hasModelFile =
     kept.some((f) => f.kind === "model") ||
     input.newFiles.some((f) => f.kind === "model");
-  if (!hasModelFile) return { error: "At least one .3mf file is required" };
+  if (!hasModelFile) return { error: "At least one model file (.3mf or .step) is required" };
 
   await db.transaction(async (tx) => {
     await tx

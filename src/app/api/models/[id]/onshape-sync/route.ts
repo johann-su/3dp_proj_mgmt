@@ -1,0 +1,169 @@
+import { NextRequest, NextResponse } from "next/server";
+import { revalidatePath } from "next/cache";
+import { eq, inArray } from "drizzle-orm";
+import { DeleteObjectsCommand } from "@aws-sdk/client-s3";
+import { db } from "@/db";
+import { modelFiles, models } from "@/db/schema";
+import { getSession } from "@/lib/auth";
+import { s3, S3_BUCKET } from "@/lib/s3";
+import { stageStream } from "@/lib/storage";
+import { getOnshapeCredential } from "@/lib/onshape/credentials";
+import {
+  exportPinnedSteps,
+  getCurrentMicroversion,
+  onshapeAuthHeaders,
+  OnshapeError,
+  parseOnshapeUrl,
+} from "@/lib/onshape/api";
+
+export const runtime = "nodejs";
+// STEP exports are asynchronous on Onshape's side and can take a while.
+export const maxDuration = 300;
+
+// Re-exports the model's Onshape source and replaces the files that came from
+// Onshape (modelFiles.onshapeElementId). Only workspace pins can change;
+// version pins are immutable snapshots and are reported as up to date.
+export async function POST(
+  _req: NextRequest,
+  { params }: { params: Promise<{ id: string }> },
+) {
+  const session = await getSession();
+  if (!session) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const { id } = await params;
+  const model = await db.query.models.findFirst({
+    where: eq(models.id, id),
+    with: { files: true },
+  });
+  if (!model) {
+    return NextResponse.json({ error: "Model not found" }, { status: 404 });
+  }
+  if (model.userId !== session.user.id) {
+    return NextResponse.json({ error: "Not your model" }, { status: 403 });
+  }
+
+  let pin = null;
+  try {
+    pin = model.sourceUrl ? parseOnshapeUrl(new URL(model.sourceUrl)) : null;
+  } catch {
+    // malformed sourceUrl — handled below
+  }
+  if (!pin || pin.wvm === "m" || !pin.wvmId) {
+    return NextResponse.json(
+      { error: "This model is not linked to an Onshape document" },
+      { status: 400 },
+    );
+  }
+  if (pin.wvm === "v") {
+    return NextResponse.json({
+      status: "up-to-date",
+      message: "Pinned to an Onshape version — versions never change.",
+    });
+  }
+  const wvm = pin.wvm as "w";
+
+  const keys = await getOnshapeCredential(session.user.id);
+  if (!keys) {
+    return NextResponse.json(
+      { error: "Connect your Onshape account under Settings → Onshape first" },
+      { status: 400 },
+    );
+  }
+
+  try {
+    // Read the microversion before exporting so a concurrent edit makes the
+    // stored value stale (next sync re-runs) instead of being skipped.
+    const microversion = await getCurrentMicroversion(
+      keys,
+      pin.documentId,
+      wvm,
+      pin.wvmId,
+    );
+    if (microversion && microversion === model.onshapeMicroversion) {
+      return NextResponse.json({
+        status: "up-to-date",
+        message: "Already up to date with Onshape.",
+      });
+    }
+
+    const { exports, warnings } = await exportPinnedSteps(keys, {
+      documentId: pin.documentId,
+      wvm,
+      wvmId: pin.wvmId,
+      elementId: pin.elementId,
+    });
+
+    // Stage every export before touching the database: replacing the files is
+    // all-or-nothing so a mid-way failure can't leave the model half-synced.
+    const headers = onshapeAuthHeaders(keys);
+    const staged: { elementId: string; file: Awaited<ReturnType<typeof stageStream>> }[] =
+      [];
+    for (const file of exports) {
+      const res = await fetch(file.url, { headers, redirect: "follow" });
+      if (!res.ok || !res.body) {
+        throw new OnshapeError(`Download failed for ${file.filename} (${res.status})`);
+      }
+      staged.push({
+        elementId: file.elementId,
+        file: await stageStream(file.filename, res.body, "model/step"),
+      });
+    }
+
+    const replaced = model.files.filter((f) => f.onshapeElementId !== null);
+    await db.transaction(async (tx) => {
+      if (replaced.length > 0) {
+        await tx.delete(modelFiles).where(
+          inArray(
+            modelFiles.id,
+            replaced.map((f) => f.id),
+          ),
+        );
+      }
+      let position = Math.max(0, ...model.files.map((f) => f.position + 1));
+      await tx.insert(modelFiles).values(
+        staged.map(({ elementId, file }) => ({
+          modelId: model.id,
+          kind: "model" as const,
+          filename: file.filename,
+          s3Key: file.key,
+          size: file.size,
+          contentType: file.contentType,
+          position: position++,
+          onshapeElementId: elementId,
+        })),
+      );
+      await tx
+        .update(models)
+        .set({ onshapeMicroversion: microversion, updatedAt: new Date() })
+        .where(eq(models.id, model.id));
+    });
+
+    if (replaced.length > 0) {
+      await s3.send(
+        new DeleteObjectsCommand({
+          Bucket: S3_BUCKET,
+          Delete: { Objects: replaced.map((f) => ({ Key: f.s3Key })) },
+        }),
+      );
+    }
+
+    revalidatePath(`/models/${model.id}`);
+    revalidatePath("/");
+    return NextResponse.json({
+      status: "updated",
+      files: staged.map(({ file }) => file.filename),
+      warnings,
+    });
+  } catch (err) {
+    if (err instanceof OnshapeError) {
+      return NextResponse.json({ error: err.message }, { status: 502 });
+    }
+    console.error("Onshape sync failed", err);
+    return NextResponse.json(
+      { error: "Sync failed — try again in a moment" },
+      { status: 500 },
+    );
+  }
+}

@@ -5,7 +5,10 @@ import { fileExtension, IMAGE_EXTENSIONS } from "@/lib/s3";
 import { ImportError, IMPORT_USER_AGENT, type ImportedProject } from "@/lib/import/types";
 import { importFromMakerworld, parseMakerworldUrl } from "@/lib/import/makerworld";
 import { importFromPrintables, parsePrintablesUrl } from "@/lib/import/printables";
+import { importFromOnshape } from "@/lib/import/onshape";
+import { parseOnshapeUrl } from "@/lib/onshape/api";
 import { getBambuCredential } from "@/lib/bambu/credentials";
+import { getOnshapeCredential } from "@/lib/onshape/credentials";
 
 export const runtime = "nodejs";
 // Downloading large model files from the source platform can take a while.
@@ -21,6 +24,8 @@ const CONTENT_TYPES: Record<string, string> = {
   ".webp": "image/webp",
   ".gif": "image/gif",
   ".3mf": "model/3mf",
+  ".step": "model/step",
+  ".stp": "model/step",
 };
 
 export type ImportDraft = {
@@ -35,8 +40,10 @@ export type ImportDraft = {
     size: number;
     contentType: string;
     kind: "model" | "image";
+    onshapeElementId?: string;
   }[];
   warnings: string[];
+  onshapeMicroversion?: string | null;
 };
 
 export async function POST(req: NextRequest) {
@@ -69,13 +76,17 @@ export async function POST(req: NextRequest) {
       );
     } else {
       const printablesId = parsePrintablesUrl(url);
+      const onshapePin = printablesId ? null : parseOnshapeUrl(url);
       if (printablesId) {
         project = await importFromPrintables(url, printablesId);
+      } else if (onshapePin) {
+        const keys = await getOnshapeCredential(session.user.id);
+        project = await importFromOnshape(onshapePin, keys);
       } else {
         return NextResponse.json(
           {
             error:
-              "Unsupported URL — paste a MakerWorld (makerworld.com/…/models/…) or Printables (printables.com/model/…) model link",
+              "Unsupported URL — paste a MakerWorld (makerworld.com/…/models/…), Printables (printables.com/model/…) or Onshape (cad.onshape.com/documents/…) link",
           },
           { status: 400 },
         );
@@ -90,12 +101,13 @@ export async function POST(req: NextRequest) {
       tags: project.tags,
       files: [],
       warnings: [...project.warnings],
+      onshapeMicroversion: project.onshapeMicroversion ?? null,
     };
 
     for (const asset of project.assets) {
       try {
         const res = await fetch(asset.url, {
-          headers: { "User-Agent": IMPORT_USER_AGENT },
+          headers: { "User-Agent": IMPORT_USER_AGENT, ...asset.headers },
           redirect: "follow",
         });
         if (!res.ok || !res.body) {
@@ -117,7 +129,13 @@ export async function POST(req: NextRequest) {
           res.headers.get("content-type")?.split(";")[0] ??
           "application/octet-stream";
         const staged = await stageStream(asset.filename, res.body, contentType);
-        draft.files.push({ ...staged, kind: asset.kind });
+        draft.files.push({
+          ...staged,
+          kind: asset.kind,
+          ...(asset.onshapeElementId
+            ? { onshapeElementId: asset.onshapeElementId }
+            : {}),
+        });
       } catch {
         draft.warnings.push(`Download failed for ${asset.filename}`);
       }
