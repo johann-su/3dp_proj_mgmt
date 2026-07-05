@@ -24,7 +24,20 @@ After MVP works:
   - displayed on the model page above the description, below the images
   - upload csv in model creation wizard (columns: name, quantity, link, image —
     header aliases like qty/url/picture work too) or add rows manually
-- [ ] Open in OrcaSlicer / BambuStudio option which opens the app on the users pc and opens the .3mf file in it (as an alternative to "download .3mf")
+- [x] Open in OrcaSlicer / BambuStudio option which opens the app on the users pc and opens the .3mf file in it (as an alternative to "download .3mf")
+- [ ] Have optional PDF's associated with a model for build instructions, product manual etc
+- [ ] Markdown support for Description
+- [ ] Show collections on homescreen
+- [ ] Onshape integration (has open api and supports oidc for third party tools)
+  - import models from onshape (paste onshape project url -> backend exports step and downloads)
+  - sync with onshape (if onshape model changes, these changes are reflected in the model - maybe with onshape branch pinning)
+  - edit in onshape button for models imported from onshape -> opens this model in onshape editor
+
+Substantial effort features in the future:
+- [ ] parametric models with [OpenSCAD](https://openscad.org/) - lower priority if onshape integration works
+- [ ] integration with (bambu) 3d printer - slicer integration makes this sort off redundant
+  - send jobs to the printer
+  - monitor print jobs
 
 ## Tech stack
 

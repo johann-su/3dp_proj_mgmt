@@ -8,6 +8,10 @@ export const s3 = new S3Client({
     accessKeyId: process.env.S3_ACCESS_KEY_ID ?? "",
     secretAccessKey: process.env.S3_SECRET_ACCESS_KEY ?? "",
   },
+  // Non-AWS servers (Garage) return bogus x-amz-checksum-* headers that trip
+  // the SDK's default flexible-checksum validation.
+  requestChecksumCalculation: "WHEN_REQUIRED",
+  responseChecksumValidation: "WHEN_REQUIRED",
 });
 
 export const S3_BUCKET = process.env.S3_BUCKET ?? "models";
