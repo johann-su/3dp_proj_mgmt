@@ -24,6 +24,7 @@ After MVP works:
   - displayed on the model page above the description, below the images
   - upload csv in model creation wizard (columns: name, quantity, link, image —
     header aliases like qty/url/picture work too) or add rows manually
+- [ ] Open in OrcaSlicer / BambuStudio option which opens the app on the users pc and opens the .3mf file in it (as an alternative to "download .3mf")
 
 ## Tech stack
 
