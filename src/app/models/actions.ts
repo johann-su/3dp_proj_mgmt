@@ -43,6 +43,9 @@ function validateSourceUrl(raw: string | null | undefined): string | null | unde
       url.protocol === "https:" &&
       (/(^|\.)makerworld\.com$/.test(host) || /(^|\.)printables\.com$/.test(host))
     ) {
+      // Drop tracking params (?from=recommend etc.); keep the hash, which on
+      // MakerWorld identifies the print profile.
+      url.search = "";
       return url.toString();
     }
   } catch {

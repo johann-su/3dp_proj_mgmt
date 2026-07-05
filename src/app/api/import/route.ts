@@ -55,6 +55,9 @@ export async function POST(req: NextRequest) {
   if (url.protocol !== "https:" && url.protocol !== "http:") {
     return NextResponse.json({ error: "Enter a valid http(s) URL" }, { status: 400 });
   }
+  // Drop tracking params (?from=recommend etc.) so the stored source URL and
+  // the draft shown in the form are canonical. The importers only use the path.
+  url.search = "";
 
   try {
     let project: ImportedProject;
