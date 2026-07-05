@@ -12,8 +12,8 @@ export default async function BambuSettingsPage() {
   const status = await getBambuStatus(session.user.id);
 
   return (
-    <div className="mx-auto max-w-lg px-4 py-8">
-      <h1 className="text-2xl font-semibold mb-1">Bambu Cloud connection</h1>
+    <div className="max-w-lg">
+      <h1 className="text-lg font-semibold mb-1">Bambu Cloud connection</h1>
       <p className="text-sm text-muted-foreground mb-6">
         Link your Bambu Lab account to download <code>.3mf</code> files when
         importing from MakerWorld. MakerWorld requires a signed-in Bambu account

@@ -31,7 +31,7 @@ After MVP works:
 - [x] Markdown support for Description
   - GitHub-flavored markdown (react-markdown + remark-gfm); raw HTML is never
     rendered
-- [ ] Show collections on homescreen
+- [x] Show collections on homescreen
 - [x] Onshape integration (via "Sign in with Onshape" OAuth, see Architecture notes)
   - import models from onshape (paste onshape document url -> backend exports
     the tabs as `.step` and downloads them)
@@ -49,8 +49,8 @@ After MVP works:
     0.4 mm/PLA profile is only the fallback for files without settings
   - the selected hardware (printer model, nozzle, build plate, filament) is
     stored on the file (`model_files.printer_info`) and shown on the model page
-- [ ] Replace header with shadcn sidebar component
-- [ ] Add dedicated user settings page for onshape and bambu connection
+- [x] Replace header with shadcn sidebar component
+- [x] Add dedicated user settings page for onshape and bambu connection
 
 Substantial effort features in the future:
 - [ ] parametric models with [OpenSCAD](https://openscad.org/) - lower priority if onshape integration works
