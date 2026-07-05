@@ -24,7 +24,7 @@ export function UserMenu({ name, email }: { name: string; email: string }) {
           <CircleUser className="size-5" />
         </Button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end">
+      <DropdownMenuContent align="end" className="w-64 p-2">
         <DropdownMenuLabel>
           <div className="font-medium">{name}</div>
           <div className="text-xs text-muted-foreground font-normal">{email}</div>

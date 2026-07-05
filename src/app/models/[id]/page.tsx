@@ -1,7 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { and, asc, eq, inArray } from "drizzle-orm";
-import { Download, ExternalLink, FileBox, Pencil, SquarePen, Wrench } from "lucide-react";
 import {
   Download,
   ExternalLink,

@@ -33,7 +33,7 @@ export async function SiteHeader() {
                     <ChevronDown className="size-3.5 opacity-70" />
                   </Button>
                 </DropdownMenuTrigger>
-                <DropdownMenuContent align="end">
+                <DropdownMenuContent align="end" className="w-64 p-2">
                   <DropdownMenuItem asChild>
                     <Link href="/models/new">
                       <Box className="size-4" />
