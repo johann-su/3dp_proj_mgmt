@@ -55,6 +55,9 @@ test("buildExportRequest sends 3MF through the generic translations route", () =
   assert.equal(path, `/partstudios/d/${DID}/w/${WID}/e/${EID}/translations`);
   assert.equal(body.formatName, "3MF");
   assert.equal(body.storeInDocument, false);
+  // Mesh exports fail with "Invalid 3MF detail parameters" without these.
+  assert.equal(body.resolution, "fine");
+  assert.equal(body.unit, "millimeter");
 });
 
 test("buildExportRequest uses the assemblies resource for assembly tabs", () => {
