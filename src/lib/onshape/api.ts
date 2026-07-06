@@ -1,11 +1,14 @@
 // Onshape REST API client (https://onshape-public.github.io/docs/). Auth is a
 // per-user OAuth2 access token sent as a Bearer header (see
 // src/lib/onshape/oauth.ts for the flow). Model exports are asynchronous
-// translations: POST …/export/3MF returns a translation id that is polled
-// until DONE, then the result is downloaded from the externaldata endpoint.
-// 3MF is preferred over STEP so the headless slicer can slice the file (STEP
-// is not a print format). Endpoint shapes verified against
-// cad.onshape.com/api/openapi.
+// translations: starting one returns a translation id that is polled until
+// DONE, then the result is downloaded from the externaldata endpoint. Onshape
+// only has format-specific export routes for glTF/OBJ/STEP; every other
+// format (including 3MF) starts via the generic …/translations route with
+// formatName in the body (see buildExportRequest). Exports are always 3MF so
+// the headless slicer can slice the file (STEP is not a print format).
+// Endpoint shapes verified against cad.onshape.com/api/openapi and
+// https://onshape-public.github.io/docs/api-adv/translation/.
 
 export const ONSHAPE_HOST = "cad.onshape.com";
 const API_BASE = `https://${ONSHAPE_HOST}/api/v6`;
@@ -170,28 +173,47 @@ type TranslationInfo = {
   resultExternalDataIds?: string[];
 };
 
-// How long to wait for one STEP export. Exports of typical hobby models take
+// How long to wait for one export. Exports of typical hobby models take
 // seconds; the importing route caps the whole request at 300s anyway.
 const TRANSLATION_TIMEOUT_MS = 240_000;
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
-// Exports one element (as 3MF by default) and returns an authenticated
-// download URL for the resulting file (the caller streams it to S3 with the
-// same auth headers). 3MF keeps the export sliceable; STEP stays available for
-// callers that need CAD interchange.
+// Builds the request that starts an async 3MF export. There is no dedicated
+// …/export/3mf route (the docs list format-specific routes for glTF/OBJ/STEP
+// only — POST …/export/3MF 404s, which the UI surfaces as "document not
+// found"), so the export goes through the generic …/translations route with
+// the format named in the body.
+export function buildExportRequest(
+  elementType: string,
+  pin: { documentId: string; wvm: "w" | "v"; wvmId: string },
+  elementId: string,
+): { path: string; body: Record<string, unknown> } {
+  const resource = elementType === "ASSEMBLY" ? "assemblies" : "partstudios";
+  return {
+    path: `/${resource}/d/${pin.documentId}/${pin.wvm}/${pin.wvmId}/e/${elementId}/translations`,
+    body: {
+      formatName: "3MF",
+      storeInDocument: false,
+      notifyUser: false,
+      translate: true,
+    },
+  };
+}
+
+// Exports one element as 3MF and returns an authenticated download URL for
+// the resulting file (the caller streams it to S3 with the same auth
+// headers). 3MF rather than a CAD format so the headless slicer can slice it.
 export async function exportModel(
   auth: OnshapeAuth,
   pin: { documentId: string; wvm: "w" | "v"; wvmId: string },
   element: { id: string; elementType: string; name: string },
-  format: "step" | "3MF" = "3MF",
 ): Promise<string> {
-  const resource = element.elementType === "ASSEMBLY" ? "assemblies" : "partstudios";
-  const started = await onshapeFetch<TranslationInfo>(
-    auth,
-    `/${resource}/d/${pin.documentId}/${pin.wvm}/${pin.wvmId}/e/${element.id}/export/${format}`,
-    { method: "POST", body: { storeInDocument: false, notifyUser: false } },
-  );
+  const request = buildExportRequest(element.elementType, pin, element.id);
+  const started = await onshapeFetch<TranslationInfo>(auth, request.path, {
+    method: "POST",
+    body: request.body,
+  });
   if (!started.id) {
     throw new OnshapeError(`Onshape did not start the export of "${element.name}"`);
   }
@@ -269,16 +291,11 @@ export async function exportPinnedModels(
   const exports: OnshapeExport[] = [];
   const usedNames = new Set<string>();
   for (const element of selected) {
-    const url = await exportModel(
-      auth,
-      pin,
-      {
-        id: element.id,
-        elementType: element.elementType,
-        name: element.name || element.id,
-      },
-      "3MF",
-    );
+    const url = await exportModel(auth, pin, {
+      id: element.id,
+      elementType: element.elementType,
+      name: element.name || element.id,
+    });
     let filename = modelFilename(element.name || element.id);
     if (usedNames.has(filename.toLowerCase())) {
       filename = modelFilename(`${element.name || "model"}-${element.id.slice(0, 6)}`);
