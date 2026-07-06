@@ -183,7 +183,10 @@ const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 // …/export/3mf route (the docs list format-specific routes for glTF/OBJ/STEP
 // only — POST …/export/3MF 404s, which the UI surfaces as "document not
 // found"), so the export goes through the generic …/translations route with
-// the format named in the body.
+// the format named in the body. Mesh formats also require tessellation detail
+// settings (BTTranslateFormatParams: a resolution preset or custom
+// tolerances, plus the unit) — without them the translation fails with
+// "Invalid 3MF detail parameters were specified".
 export function buildExportRequest(
   elementType: string,
   pin: { documentId: string; wvm: "w" | "v"; wvmId: string },
@@ -197,6 +200,8 @@ export function buildExportRequest(
       storeInDocument: false,
       notifyUser: false,
       translate: true,
+      resolution: "fine",
+      unit: "millimeter",
     },
   };
 }

@@ -134,6 +134,13 @@ touching it:
   "Document not found" error. See `buildExportRequest` in
   `src/lib/onshape/api.ts` and
   <https://onshape-public.github.io/docs/api-adv/translation/>.
+- **Mesh formats need tessellation detail parameters**: translations to mesh
+  formats (3MF, STL, …) must include a `resolution` preset
+  (`fine|medium|coarse`, lowercase) — or custom `angularTolerance` /
+  `distanceTolerance` / `maximumChordLength` values — plus the `unit`, or the
+  translation starts fine but then FAILs with "Invalid 3MF detail parameters
+  were specified". CAD formats like STEP don't take these. The full request
+  schema is `BTTranslateFormatParams` in `cad.onshape.com/api/openapi`.
 - **We export 3MF only** so the headless slicer can slice the result; the
   legacy STEP export path was removed on purpose — don't reintroduce it.
 - **Part Studios vs Assemblies** use different URL resources (`partstudios` /
