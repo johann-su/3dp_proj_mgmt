@@ -1,0 +1,1 @@
+ALTER TABLE "bom_items" ADD COLUMN "section" text;

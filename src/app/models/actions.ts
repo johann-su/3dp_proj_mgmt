@@ -192,6 +192,7 @@ export async function createModel(
           quantity: item.quantity,
           link: item.link,
           imageUrl: item.imageUrl,
+          section: item.section,
           position: i,
         })),
       );
@@ -340,6 +341,7 @@ export async function updateModel(
           quantity: item.quantity,
           link: item.link,
           imageUrl: item.imageUrl,
+          section: item.section,
           position: i,
         })),
       );

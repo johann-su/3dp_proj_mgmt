@@ -53,6 +53,7 @@ export default async function EditModelPage({
             quantity: item.quantity,
             link: item.link,
             imageUrl: item.imageUrl,
+            section: item.section,
           })),
           files: model.files.map((file) => ({
             id: file.id,

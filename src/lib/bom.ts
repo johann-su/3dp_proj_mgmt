@@ -6,6 +6,9 @@ export type BomItemInput = {
   quantity: string;
   link: string | null;
   imageUrl: string | null;
+  // Section heading the item is grouped under; null = ungrouped. CSV
+  // import/export ignores sections — the format is a flat list.
+  section: string | null;
 };
 
 export const MAX_BOM_ITEMS = 200;
@@ -45,6 +48,7 @@ export function sanitizeBomItems(
       quantity: (item.quantity.trim() || "1").slice(0, 50),
       link,
       imageUrl,
+      section: item.section?.trim().slice(0, 100) || null,
     });
   }
   return { items: cleaned };
@@ -124,7 +128,13 @@ export function parseBomCsv(text: string): { items: BomItemInput[] } | { error: 
   }
 
   const items: BomItemInput[] = dataRows.map((row) => {
-    const item: BomItemInput = { name: "", quantity: "", link: null, imageUrl: null };
+    const item: BomItemInput = {
+      name: "",
+      quantity: "",
+      link: null,
+      imageUrl: null,
+      section: null,
+    };
     row.forEach((cell, i) => {
       const column = columns[i];
       if (column) item[column] = cell.trim() as never;

@@ -18,12 +18,20 @@ export const onshapeOAuthEnabled = Boolean(clientId && clientSecret);
 // CSRF state cookie shared by the authorize and callback routes.
 export const OAUTH_STATE_COOKIE = "onshape-oauth-state";
 
-export function onshapeRedirectUri(): string {
+// The app's public origin. Derived from BETTER_AUTH_URL rather than the
+// incoming request: behind a reverse proxy `req.url` is the internal bind
+// address (e.g. http://0.0.0.0:3000), so redirects built from it send the
+// browser to a host it can't reach.
+export function appUrl(path: string): URL {
   const base = (process.env.BETTER_AUTH_URL ?? "http://localhost:3000").replace(
     /\/+$/,
     "",
   );
-  return `${base}/api/onshape/callback`;
+  return new URL(path, base);
+}
+
+export function onshapeRedirectUri(): string {
+  return appUrl("/api/onshape/callback").toString();
 }
 
 export function buildAuthorizeUrl(state: string): string {

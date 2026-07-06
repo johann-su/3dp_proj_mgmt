@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Box, ChevronLeft, ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -14,6 +14,17 @@ export function ImageGallery({
   title: string;
 }) {
   const [selected, setSelected] = useState(0);
+  const thumbRefs = useRef<(HTMLButtonElement | null)[]>([]);
+
+  const index = Math.min(selected, images.length - 1);
+
+  useEffect(() => {
+    thumbRefs.current[index]?.scrollIntoView({
+      behavior: "smooth",
+      block: "nearest",
+      inline: "nearest",
+    });
+  }, [index]);
 
   if (images.length === 0) {
     return (
@@ -23,7 +34,6 @@ export function ImageGallery({
     );
   }
 
-  const index = Math.min(selected, images.length - 1);
   const current = images[index];
 
   function step(direction: -1 | 1) {
@@ -68,6 +78,9 @@ export function ImageGallery({
           {images.map((image, i) => (
             <button
               key={image.src}
+              ref={(el) => {
+                thumbRefs.current[i] = el;
+              }}
               type="button"
               onClick={() => setSelected(i)}
               className={cn(

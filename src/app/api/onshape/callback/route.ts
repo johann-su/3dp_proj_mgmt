@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
 import { getSessionInfo } from "@/lib/onshape/api";
 import {
+  appUrl,
   exchangeCode,
   OAUTH_STATE_COOKIE,
   onshapeOAuthEnabled,
@@ -16,7 +17,7 @@ export const runtime = "nodejs";
 export async function GET(req: NextRequest) {
   const settings = (error?: string) => {
     const res = NextResponse.redirect(
-      new URL(`/settings/onshape${error ? `?error=${error}` : ""}`, req.url),
+      appUrl(`/settings/onshape${error ? `?error=${error}` : ""}`),
     );
     res.cookies.delete({ name: OAUTH_STATE_COOKIE, path: "/api/onshape" });
     return res;
@@ -24,7 +25,7 @@ export async function GET(req: NextRequest) {
 
   const session = await getSession();
   if (!session) {
-    return NextResponse.redirect(new URL("/sign-in", req.url));
+    return NextResponse.redirect(appUrl("/sign-in"));
   }
   if (!onshapeOAuthEnabled) {
     return settings("not-configured");

@@ -1,13 +1,6 @@
 "use client";
 
-import {
-  Download,
-  ExternalLink,
-  Eye,
-  FileBox,
-  FileText,
-  Wrench,
-} from "lucide-react";
+import { Download, Eye, FileBox, FileText } from "lucide-react";
 import type { BomItemInput } from "@/lib/bom";
 import { formatBytes, formatDate } from "@/lib/format";
 import { Badge } from "@/components/ui/badge";
@@ -15,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ImageGallery } from "@/components/image-gallery";
 import { Markdown } from "@/components/markdown";
+import { BomList } from "./bom-list";
 
 export type ModelPreviewData = {
   title: string;
@@ -28,14 +22,6 @@ export type ModelPreviewData = {
   userName: string;
   createdAt: Date;
 };
-
-function linkHostname(link: string) {
-  try {
-    return new URL(link).hostname;
-  } catch {
-    return link;
-  }
-}
 
 // Mirrors the layout of the model detail page (src/app/models/[id]/page.tsx)
 // so the wizard can show how a model will look before it is saved.
@@ -64,40 +50,8 @@ export function ModelPreview({ data }: { data: ModelPreviewData }) {
                     Download CSV
                   </Button>
                 </CardHeader>
-                <CardContent className="grid gap-2">
-                  {bomItems.map((item, i) => (
-                    <div
-                      key={i}
-                      className="flex min-w-0 items-center gap-3 border rounded-md px-3 py-2"
-                    >
-                      {item.imageUrl ? (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img
-                          src={item.imageUrl}
-                          alt={item.name}
-                          className="size-10 rounded object-cover bg-muted shrink-0"
-                        />
-                      ) : (
-                        <div className="size-10 rounded bg-muted flex items-center justify-center shrink-0">
-                          <Wrench className="size-4 text-muted-foreground/60" />
-                        </div>
-                      )}
-                      <div className="min-w-0">
-                        <div className="text-sm font-medium truncate">
-                          {item.name}
-                        </div>
-                        {item.link && (
-                          <span className="text-xs text-primary inline-flex items-center gap-1">
-                            <ExternalLink className="size-3" />
-                            {linkHostname(item.link)}
-                          </span>
-                        )}
-                      </div>
-                      <span className="ml-auto shrink-0 text-sm text-muted-foreground">
-                        ×&nbsp;{item.quantity.trim() || "1"}
-                      </span>
-                    </div>
-                  ))}
+                <CardContent>
+                  <BomList items={bomItems} interactive={false} />
                 </CardContent>
               </Card>
             )}
