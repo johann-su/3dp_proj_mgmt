@@ -48,7 +48,9 @@ export function ModelCard({ model }: { model: ModelCardData }) {
                   />
                 </div>
               </TooltipTrigger>
-              <TooltipContent>{platformLabels[platform]}</TooltipContent>
+              <TooltipContent side="right">
+                {platformLabels[platform]}
+              </TooltipContent>
             </Tooltip>
           )}
         </div>
