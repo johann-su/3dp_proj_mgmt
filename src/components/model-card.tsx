@@ -2,6 +2,11 @@ import Link from "next/link";
 import { Box } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { platformFromSourceUrl, platformLabels } from "@/lib/platform";
 
 export type ModelCardData = {
@@ -32,17 +37,21 @@ export function ModelCard({ model }: { model: ModelCardData }) {
             <Box className="size-10 text-muted-foreground/50" />
           )}
           {platform && (
-            <div
-              className="absolute left-2 top-2 flex size-8 items-center justify-center rounded-lg bg-white/90 p-1.5 shadow-sm ring-1 ring-black/5 backdrop-blur"
-              title={`Imported from ${platformLabels[platform]}`}
-            >
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src={`/logos/${platform}.svg`}
-                alt={`${platformLabels[platform]} logo`}
-                className="size-full object-contain"
-              />
-            </div>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <div className="absolute left-2 top-2 flex size-8 items-center justify-center rounded-lg bg-white/90 p-1.5 shadow-sm ring-1 ring-black/5 backdrop-blur">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={`/logos/${platform}.svg`}
+                    alt={`${platformLabels[platform]} logo`}
+                    className="size-full object-contain"
+                  />
+                </div>
+              </TooltipTrigger>
+              <TooltipContent side="right">
+                {platformLabels[platform]}
+              </TooltipContent>
+            </Tooltip>
           )}
         </div>
         <CardContent className="p-3">
