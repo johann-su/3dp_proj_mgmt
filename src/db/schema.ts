@@ -183,6 +183,9 @@ export const bomItems = pgTable("bom_items", {
   quantity: text("quantity").notNull().default("1"),
   link: text("link"),
   imageUrl: text("image_url"),
+  // Optional user-named section ("Electronics", "Screws", …); null items are
+  // ungrouped. Ordering comes from `position`; sections are contiguous runs.
+  section: text("section"),
   position: integer("position").notNull().default(0),
 });
 

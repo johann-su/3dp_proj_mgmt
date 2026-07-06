@@ -14,7 +14,6 @@ import {
   SquarePen,
   TriangleAlert,
   Weight,
-  Wrench,
 } from "lucide-react";
 import { db } from "@/db";
 import { collectionModels, collections, models } from "@/db/schema";
@@ -29,6 +28,7 @@ import { Separator } from "@/components/ui/separator";
 import { ImageGallery } from "@/components/image-gallery";
 import { parseOnshapeUrl } from "@/lib/onshape/api";
 import { Markdown } from "@/components/markdown";
+import { BomList } from "../bom-list";
 import { DeleteModelButton } from "./delete-model-button";
 import { AddToCollection, type CollectionOption } from "./add-to-collection";
 import { OpenInSlicer } from "./open-in-slicer";
@@ -149,43 +149,8 @@ export default async function ModelPage({
                   </a>
                 </Button>
               </CardHeader>
-              <CardContent className="grid gap-2">
-                {model.bomItems.map((item) => (
-                  <div
-                    key={item.id}
-                    className="flex min-w-0 items-center gap-3 border rounded-md px-3 py-2"
-                  >
-                    {item.imageUrl ? (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img
-                        src={item.imageUrl}
-                        alt={item.name}
-                        className="size-10 rounded object-cover bg-muted shrink-0"
-                      />
-                    ) : (
-                      <div className="size-10 rounded bg-muted flex items-center justify-center shrink-0">
-                        <Wrench className="size-4 text-muted-foreground/60" />
-                      </div>
-                    )}
-                    <div className="min-w-0">
-                      <div className="text-sm font-medium truncate">{item.name}</div>
-                      {item.link && (
-                        <a
-                          href={item.link}
-                          target="_blank"
-                          rel="noopener noreferrer nofollow"
-                          className="text-xs text-primary hover:underline inline-flex items-center gap-1"
-                        >
-                          <ExternalLink className="size-3" />
-                          {new URL(item.link).hostname}
-                        </a>
-                      )}
-                    </div>
-                    <span className="ml-auto shrink-0 text-sm text-muted-foreground">
-                      ×&nbsp;{item.quantity}
-                    </span>
-                  </div>
-                ))}
+              <CardContent>
+                <BomList items={model.bomItems} />
               </CardContent>
             </Card>
           )}

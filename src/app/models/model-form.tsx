@@ -61,14 +61,19 @@ export type ModelFormInitial = {
   createdAt: Date;
 };
 
-// One image in the wizard, in display order: either already stored on the
-// model (edit mode) or freshly picked (src is an object URL then).
+// One image in the wizard, in display order: already stored on the model
+// (edit mode), staged in S3 by a URL import (create mode), or freshly
+// picked (src is an object URL then).
 type ImageEntry = {
   key: string;
   src: string;
   filename: string;
   size: number;
-} & ({ type: "existing"; id: string } | { type: "new"; file: File });
+} & (
+  | { type: "existing"; id: string }
+  | { type: "staged"; staged: UploadedFile }
+  | { type: "new"; file: File }
+);
 
 function newImageEntry(file: File): ImageEntry {
   return {
@@ -77,6 +82,17 @@ function newImageEntry(file: File): ImageEntry {
     file,
     src: URL.createObjectURL(file),
     filename: file.name,
+    size: file.size,
+  };
+}
+
+function stagedImageEntry(file: UploadedFile): ImageEntry {
+  return {
+    key: file.key,
+    type: "staged",
+    staged: file,
+    src: `/api/uploads/preview?key=${encodeURIComponent(file.key)}`,
+    filename: file.filename,
     size: file.size,
   };
 }
@@ -105,14 +121,18 @@ async function uploadFile(
 function FileRow({
   name,
   size,
+  imported,
   onRemove,
 }: {
   name: string;
   size: number;
+  // Marks files pulled in by URL import (already staged in S3).
+  imported?: boolean;
   onRemove: () => void;
 }) {
   return (
     <li className="flex min-w-0 items-center gap-2 text-sm border rounded-md px-3 py-2">
+      {imported && <CloudDownload className="size-3.5 text-primary shrink-0" />}
       <span className="truncate">{name}</span>
       <span className="text-muted-foreground ml-auto shrink-0">
         {formatBytes(size)}
@@ -131,44 +151,6 @@ function FileRow({
   );
 }
 
-// Files pulled in by URL import — already staged in S3, shown read-only-ish
-// with a remove control (there is no local File to preview).
-function StagedFileList({
-  files,
-  onRemove,
-}: {
-  files: UploadedFile[];
-  onRemove: (key: string) => void;
-}) {
-  if (files.length === 0) return null;
-  return (
-    <ul className="grid gap-1">
-      {files.map((file) => (
-        <li
-          key={file.key}
-          className="flex min-w-0 items-center gap-2 text-sm border rounded-md px-3 py-2"
-        >
-          <CloudDownload className="size-3.5 text-primary shrink-0" />
-          <span className="truncate">{file.filename}</span>
-          <span className="text-muted-foreground ml-auto shrink-0">
-            {formatBytes(file.size)}
-          </span>
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon"
-            className="size-6 shrink-0"
-            aria-label={`Remove ${file.filename}`}
-            onClick={() => onRemove(file.key)}
-          >
-            <X className="size-3.5" />
-          </Button>
-        </li>
-      ))}
-    </ul>
-  );
-}
-
 function FilePicker({
   label,
   hint,
@@ -177,6 +159,8 @@ function FilePicker({
   setFiles,
   existing,
   removeExisting,
+  staged,
+  removeStaged,
   onFilesAdded,
   icon,
 }: {
@@ -187,11 +171,15 @@ function FilePicker({
   setFiles: (files: File[]) => void;
   existing?: ExistingFile[];
   removeExisting?: (id: string) => void;
+  // Files pulled in by URL import — already staged in S3.
+  staged?: UploadedFile[];
+  removeStaged?: (key: string) => void;
   onFilesAdded?: (added: File[]) => void;
   icon: React.ReactNode;
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
-  const hasFiles = files.length > 0 || (existing?.length ?? 0) > 0;
+  const hasFiles =
+    files.length > 0 || (existing?.length ?? 0) > 0 || (staged?.length ?? 0) > 0;
 
   return (
     <div className="grid gap-2">
@@ -227,6 +215,15 @@ function FilePicker({
               name={file.filename}
               size={file.size}
               onRemove={() => removeExisting?.(file.id)}
+            />
+          ))}
+          {staged?.map((file) => (
+            <FileRow
+              key={file.key}
+              name={file.filename}
+              size={file.size}
+              imported
+              onRemove={() => removeStaged?.(file.key)}
             />
           ))}
           {files.map((file, i) => (
@@ -319,6 +316,14 @@ function ImagePicker({
               {i === 0 && (
                 <span className="absolute top-1 left-1 rounded bg-primary text-primary-foreground text-[10px] font-medium px-1.5 py-0.5">
                   Cover
+                </span>
+              )}
+              {image.type === "staged" && (
+                <span
+                  className="absolute top-1 right-1 rounded bg-primary text-primary-foreground p-1"
+                  title="Imported from source"
+                >
+                  <CloudDownload className="size-3" />
                 </span>
               )}
               <div className="absolute inset-x-0 bottom-0 flex items-center justify-between p-1 bg-gradient-to-t from-black/60 to-transparent">
@@ -448,10 +453,9 @@ export function ModelForm({
   const [status, setStatus] = useState<string | null>(null);
   const [extracting, setExtracting] = useState(0);
 
-  // Files pulled in by URL import (already staged in S3) and the source link,
-  // only used when creating a new model.
+  // Model files pulled in by URL import (already staged in S3) and the source
+  // link, only used when creating a new model. Staged images live in `images`.
   const [stagedModelFiles, setStagedModelFiles] = useState<UploadedFile[]>([]);
-  const [stagedImageFiles, setStagedImageFiles] = useState<UploadedFile[]>([]);
   const [sourceUrl, setSourceUrl] = useState<string | null>(null);
   const [onshapeMicroversion, setOnshapeMicroversion] = useState<string | null>(null);
 
@@ -476,7 +480,11 @@ export function ModelForm({
       setSourceUrl(draft.sourceUrl ?? null);
       setOnshapeMicroversion(draft.onshapeMicroversion ?? null);
       setStagedModelFiles((draft.files ?? []).filter((f) => f.kind === "model"));
-      setStagedImageFiles((draft.files ?? []).filter((f) => f.kind === "image"));
+      setImages(
+        (draft.files ?? [])
+          .filter((f) => f.kind === "image")
+          .map(stagedImageEntry),
+      );
       setStep(2);
       toast.success("Model imported — review and save");
       for (const warning of draft.warnings ?? []) {
@@ -641,10 +649,20 @@ export function ModelForm({
       } else {
         setStatus("Creating model…");
         // Order determines position (and the cover = first image): staged
-        // model files, freshly uploaded models, PDFs, staged images, new images.
+        // model files, freshly uploaded models, PDFs, then images as arranged
+        // in the wizard (staged and new interleaved).
         const uploadedImages = uploaded.filter((f) => f.kind === "image");
         const uploadedModels = uploaded.filter((f) => f.kind === "model");
         const uploadedPdfs = uploaded.filter((f) => f.kind === "pdf");
+        // uploadedImages holds the new images in `images` order, so walking
+        // `images` and consuming them one by one restores the arrangement.
+        let uploadedIndex = 0;
+        const orderedImages: UploadedFile[] = [];
+        for (const image of images) {
+          if (image.type === "staged") orderedImages.push(image.staged);
+          else if (image.type === "new")
+            orderedImages.push(uploadedImages[uploadedIndex++]);
+        }
         result = await createModel({
           title,
           description,
@@ -654,8 +672,7 @@ export function ModelForm({
             ...stagedModelFiles,
             ...uploadedModels,
             ...uploadedPdfs,
-            ...stagedImageFiles,
-            ...uploadedImages,
+            ...orderedImages,
           ],
           bom,
           sourceUrl,
@@ -689,14 +706,12 @@ export function ModelForm({
               removeExisting={(id) =>
                 setExistingModelFiles((files) => files.filter((f) => f.id !== id))
               }
-              onFilesAdded={importFrom3mf}
-              icon={<FileBox className="size-6" />}
-            />
-            <StagedFileList
-              files={stagedModelFiles}
-              onRemove={(key) =>
+              staged={stagedModelFiles}
+              removeStaged={(key) =>
                 setStagedModelFiles((prev) => prev.filter((f) => f.key !== key))
               }
+              onFilesAdded={importFrom3mf}
+              icon={<FileBox className="size-6" />}
             />
             <Button
               type="button"
@@ -784,20 +799,6 @@ export function ModelForm({
               icon={<FileText className="size-6" />}
             />
 
-            {stagedModelFiles.length > 0 && (
-              <div className="grid gap-2">
-                <Label>Imported model files</Label>
-                <StagedFileList
-                  files={stagedModelFiles}
-                  onRemove={(key) =>
-                    setStagedModelFiles((prev) =>
-                      prev.filter((f) => f.key !== key),
-                    )
-                  }
-                />
-              </div>
-            )}
-
             <ImagePicker
               images={images}
               onAdd={addImages}
@@ -805,20 +806,6 @@ export function ModelForm({
               onMove={moveImage}
               onReorder={reorderImage}
             />
-
-            {stagedImageFiles.length > 0 && (
-              <div className="grid gap-2">
-                <Label>Imported images</Label>
-                <StagedFileList
-                  files={stagedImageFiles}
-                  onRemove={(key) =>
-                    setStagedImageFiles((prev) =>
-                      prev.filter((f) => f.key !== key),
-                    )
-                  }
-                />
-              </div>
-            )}
 
             {sourceUrl && (
               <p className="text-sm text-muted-foreground">
@@ -849,6 +836,10 @@ export function ModelForm({
             images: images.map((image) => ({ src: image.src })),
             printFiles: [
               ...existingModelFiles.map((f) => ({
+                filename: f.filename,
+                size: f.size,
+              })),
+              ...stagedModelFiles.map((f) => ({
                 filename: f.filename,
                 size: f.size,
               })),

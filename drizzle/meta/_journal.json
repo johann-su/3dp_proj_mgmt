@@ -50,6 +50,13 @@
       "when": 1783289657721,
       "tag": "0006_silent_mentor",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1783348292067,
+      "tag": "0007_solid_azazel",
+      "breakpoints": true
     }
   ]
 }
