@@ -1,9 +1,11 @@
 // Onshape REST API client (https://onshape-public.github.io/docs/). Auth is a
 // per-user OAuth2 access token sent as a Bearer header (see
-// src/lib/onshape/oauth.ts for the flow). STEP exports are asynchronous
-// translations: POST …/export/step returns a translation id that is polled
+// src/lib/onshape/oauth.ts for the flow). Model exports are asynchronous
+// translations: POST …/export/3MF returns a translation id that is polled
 // until DONE, then the result is downloaded from the externaldata endpoint.
-// Endpoint shapes verified against cad.onshape.com/api/openapi.
+// 3MF is preferred over STEP so the headless slicer can slice the file (STEP
+// is not a print format). Endpoint shapes verified against
+// cad.onshape.com/api/openapi.
 
 export const ONSHAPE_HOST = "cad.onshape.com";
 const API_BASE = `https://${ONSHAPE_HOST}/api/v6`;
@@ -174,17 +176,20 @@ const TRANSLATION_TIMEOUT_MS = 240_000;
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
-// Exports one element as STEP and returns an authenticated download URL for
-// the resulting file (the caller streams it to S3 with the same auth headers).
-export async function exportStep(
+// Exports one element (as 3MF by default) and returns an authenticated
+// download URL for the resulting file (the caller streams it to S3 with the
+// same auth headers). 3MF keeps the export sliceable; STEP stays available for
+// callers that need CAD interchange.
+export async function exportModel(
   auth: OnshapeAuth,
   pin: { documentId: string; wvm: "w" | "v"; wvmId: string },
   element: { id: string; elementType: string; name: string },
+  format: "step" | "3MF" = "3MF",
 ): Promise<string> {
   const resource = element.elementType === "ASSEMBLY" ? "assemblies" : "partstudios";
   const started = await onshapeFetch<TranslationInfo>(
     auth,
-    `/${resource}/d/${pin.documentId}/${pin.wvm}/${pin.wvmId}/e/${element.id}/export/step`,
+    `/${resource}/d/${pin.documentId}/${pin.wvm}/${pin.wvmId}/e/${element.id}/export/${format}`,
     { method: "POST", body: { storeInDocument: false, notifyUser: false } },
   );
   if (!started.id) {
@@ -223,15 +228,16 @@ export type OnshapeExport = {
 
 const MAX_EXPORT_ELEMENTS = 8;
 
-function stepFilename(name: string): string {
+function modelFilename(name: string): string {
   const base = name.trim().replace(/[^a-zA-Z0-9._ -]/g, "_") || "model";
-  return `${base}.step`;
+  return `${base}.3mf`;
 }
 
-// Exports the elements a document pin refers to: the pinned element when the
-// URL contains /e/{eid}, otherwise every Part Studio and Assembly tab (capped).
-// Used by both the URL importer and the sync endpoint so they stay in lockstep.
-export async function exportPinnedSteps(
+// Exports the elements a document pin refers to as 3MF: the pinned element when
+// the URL contains /e/{eid}, otherwise every Part Studio and Assembly tab
+// (capped). Used by both the URL importer and the sync endpoint so they stay in
+// lockstep.
+export async function exportPinnedModels(
   auth: OnshapeAuth,
   pin: { documentId: string; wvm: "w" | "v"; wvmId: string; elementId: string | null },
 ): Promise<{ exports: OnshapeExport[]; warnings: string[] }> {
@@ -263,14 +269,19 @@ export async function exportPinnedSteps(
   const exports: OnshapeExport[] = [];
   const usedNames = new Set<string>();
   for (const element of selected) {
-    const url = await exportStep(auth, pin, {
-      id: element.id,
-      elementType: element.elementType,
-      name: element.name || element.id,
-    });
-    let filename = stepFilename(element.name || element.id);
+    const url = await exportModel(
+      auth,
+      pin,
+      {
+        id: element.id,
+        elementType: element.elementType,
+        name: element.name || element.id,
+      },
+      "3MF",
+    );
+    let filename = modelFilename(element.name || element.id);
     if (usedNames.has(filename.toLowerCase())) {
-      filename = stepFilename(`${element.name || "model"}-${element.id.slice(0, 6)}`);
+      filename = modelFilename(`${element.name || "model"}-${element.id.slice(0, 6)}`);
     }
     usedNames.add(filename.toLowerCase());
     exports.push({ elementId: element.id, filename, url });

@@ -28,7 +28,7 @@ import { Separator } from "@/components/ui/separator";
 import { ImageGallery } from "@/components/image-gallery";
 import { parseOnshapeUrl } from "@/lib/onshape/api";
 import { Markdown } from "@/components/markdown";
-import { BomList } from "../bom-list";
+import { BomSection } from "./bom-section";
 import { DeleteModelButton } from "./delete-model-button";
 import { AddToCollection, type CollectionOption } from "./add-to-collection";
 import { OpenInSlicer } from "./open-in-slicer";
@@ -137,22 +137,7 @@ export default async function ModelPage({
           />
 
           {model.bomItems.length > 0 && (
-            <Card className="mt-8">
-              <CardHeader className="flex flex-row items-center justify-between">
-                <CardTitle className="text-base">
-                  Bill of materials ({model.bomItems.length})
-                </CardTitle>
-                <Button asChild size="sm" variant="outline">
-                  <a href={`/api/models/${model.id}/bom`}>
-                    <Download className="size-4" />
-                    Download CSV
-                  </a>
-                </Button>
-              </CardHeader>
-              <CardContent>
-                <BomList items={model.bomItems} />
-              </CardContent>
-            </Card>
+            <BomSection modelId={model.id} items={model.bomItems} />
           )}
 
           <div className="mt-8">

@@ -3,12 +3,12 @@
 import { useState } from "react";
 import Link from "next/link";
 import { toast } from "sonner";
-import { FolderPlus } from "lucide-react";
+import { Check, FolderPlus } from "lucide-react";
 import { toggleModelInCollection } from "@/app/collections/actions";
+import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
-  DropdownMenuCheckboxItem,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuLabel,
@@ -60,17 +60,33 @@ export function AddToCollection({
             You have no collections yet.
           </DropdownMenuLabel>
         ) : (
-          collections.map((collection) => (
-            <DropdownMenuCheckboxItem
-              key={collection.id}
-              checked={checked[collection.id] ?? false}
-              onCheckedChange={(next) => toggle(collection.id, next === true)}
-              // keep the menu open so several collections can be toggled
-              onSelect={(e) => e.preventDefault()}
-            >
-              <span className="truncate">{collection.title}</span>
-            </DropdownMenuCheckboxItem>
-          ))
+          collections.map((collection) => {
+            const isChecked = checked[collection.id] ?? false;
+            return (
+              <DropdownMenuItem
+                key={collection.id}
+                // keep the menu open so several collections can be toggled
+                onSelect={(e) => {
+                  e.preventDefault();
+                  toggle(collection.id, !isChecked);
+                }}
+                className="justify-between gap-2"
+              >
+                <span className="truncate">{collection.title}</span>
+                <span
+                  aria-hidden
+                  className={cn(
+                    "flex size-4 shrink-0 items-center justify-center rounded-[4px] border transition-colors",
+                    isChecked
+                      ? "border-primary bg-primary text-primary-foreground"
+                      : "border-input",
+                  )}
+                >
+                  {isChecked && <Check className="size-3" strokeWidth={3} />}
+                </span>
+              </DropdownMenuItem>
+            );
+          })
         )}
         <DropdownMenuSeparator />
         <DropdownMenuItem asChild>

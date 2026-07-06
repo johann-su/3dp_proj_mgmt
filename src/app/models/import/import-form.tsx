@@ -57,16 +57,15 @@ export function ImportForm() {
             {fetching ? "Fetching model… this can take a moment" : "Fetch model"}
           </Button>
           <p className="text-xs text-muted-foreground">
-            Printables: metadata, images and model files are imported.
+            Printables: metadata, images and model files are imported. <br />
             MakerWorld: metadata and images always import; the <code>.3mf</code>
             files import too once you{" "}
             <Link href="/settings/bambu" className="underline">
               connect your Bambu account
             </Link>
-            . Otherwise download the .3mf in your browser and upload it — the
-            metadata is read from the file automatically. Onshape: paste a
-            document link (cad.onshape.com/documents/…) to export its tabs as{" "}
-            <code>.step</code> files — requires{" "}
+            . Otherwise download the .3mf in your browser and upload it — the metadata is read from the file automatically. <br />
+            Onshape: paste a document link (cad.onshape.com/documents/…) to export its tabs as{" "}
+            <code>.3mf</code> files — requires{" "}
             <Link href="/settings/onshape" className="underline">
               signing in with your Onshape account
             </Link>

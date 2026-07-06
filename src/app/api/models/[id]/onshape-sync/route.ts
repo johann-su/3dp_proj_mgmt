@@ -7,9 +7,10 @@ import { modelFiles, models } from "@/db/schema";
 import { getSession } from "@/lib/auth";
 import { s3, S3_BUCKET } from "@/lib/s3";
 import { stageStream } from "@/lib/storage";
+import { sliceEligible } from "@/lib/slicer";
 import { getOnshapeAccessToken } from "@/lib/onshape/credentials";
 import {
-  exportPinnedSteps,
+  exportPinnedModels,
   getCurrentMicroversion,
   onshapeAuthHeaders,
   OnshapeError,
@@ -17,7 +18,7 @@ import {
 } from "@/lib/onshape/api";
 
 export const runtime = "nodejs";
-// STEP exports are asynchronous on Onshape's side and can take a while.
+// 3MF exports are asynchronous on Onshape's side and can take a while.
 export const maxDuration = 300;
 
 // Re-exports the model's Onshape source and replaces the files that came from
@@ -89,7 +90,7 @@ export async function POST(
       });
     }
 
-    const { exports, warnings } = await exportPinnedSteps(auth, {
+    const { exports, warnings } = await exportPinnedModels(auth, {
       documentId: pin.documentId,
       wvm,
       wvmId: pin.wvmId,
@@ -108,7 +109,7 @@ export async function POST(
       }
       staged.push({
         elementId: file.elementId,
-        file: await stageStream(file.filename, res.body, "model/step"),
+        file: await stageStream(file.filename, res.body, "model/3mf"),
       });
     }
 
@@ -133,6 +134,11 @@ export async function POST(
           contentType: file.contentType,
           position: position++,
           onshapeElementId: elementId,
+          // Newly exported 3MF files still need slice estimates; the model page
+          // runs processPendingSlices in the background on next view.
+          sliceStatus: sliceEligible("model", file.filename)
+            ? ("pending" as const)
+            : null,
         })),
       );
       await tx
