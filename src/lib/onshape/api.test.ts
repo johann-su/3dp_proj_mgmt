@@ -1,6 +1,11 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { isOnshapeId, onshapeDocumentUrl, parseOnshapeUrl } from "@/lib/onshape/api";
+import {
+  buildExportRequest,
+  isOnshapeId,
+  onshapeDocumentUrl,
+  parseOnshapeUrl,
+} from "@/lib/onshape/api";
 
 const DID = "0123456789abcdef01234567";
 const WID = "89abcdef0123456789abcdef";
@@ -37,6 +42,28 @@ test("parseOnshapeUrl handles a bare document link (no w/v/e)", () => {
 
 test("parseOnshapeUrl rejects other hosts", () => {
   assert.equal(parseOnshapeUrl(new URL(`https://example.com/documents/${DID}`)), null);
+});
+
+test("buildExportRequest sends 3MF through the generic translations route", () => {
+  // There is no …/export/3mf endpoint (only glTF/OBJ/STEP have one); the
+  // format must go in the body of …/translations instead.
+  const { path, body } = buildExportRequest(
+    "PARTSTUDIO",
+    { documentId: DID, wvm: "w", wvmId: WID },
+    EID,
+  );
+  assert.equal(path, `/partstudios/d/${DID}/w/${WID}/e/${EID}/translations`);
+  assert.equal(body.formatName, "3MF");
+  assert.equal(body.storeInDocument, false);
+});
+
+test("buildExportRequest uses the assemblies resource for assembly tabs", () => {
+  const { path } = buildExportRequest(
+    "ASSEMBLY",
+    { documentId: DID, wvm: "v", wvmId: WID },
+    EID,
+  );
+  assert.equal(path, `/assemblies/d/${DID}/v/${WID}/e/${EID}/translations`);
 });
 
 test("onshapeDocumentUrl round-trips a parsed pin", () => {

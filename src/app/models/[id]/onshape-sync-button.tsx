@@ -7,7 +7,7 @@ import { RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 // Owner-only "Sync from Onshape" button: re-exports the source document and
-// replaces the STEP files when the Onshape workspace has new changes.
+// replaces the exported 3MF files when the Onshape workspace has new changes.
 export function OnshapeSyncButton({ modelId }: { modelId: string }) {
   const router = useRouter();
   const [syncing, setSyncing] = useState(false);
