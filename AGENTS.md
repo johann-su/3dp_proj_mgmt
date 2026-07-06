@@ -143,6 +143,16 @@ touching it:
   schema is `BTTranslateFormatParams` in `cad.onshape.com/api/openapi`.
 - **We export 3MF only** so the headless slicer can slice the result; the
   legacy STEP export path was removed on purpose — don't reintroduce it.
+- **Onshape 3MF exports are in meters, centered on the origin** — the `unit`
+  request parameter does not change the written file (`unit="meter"` with
+  meter-scale coordinates). That is spec-valid 3MF, but PrusaSlicer, Bambu
+  Studio and OrcaSlicer ignore the 3MF `unit` attribute (coordinates are read
+  as mm → a 25 mm part becomes 0.025 mm) and reject geometry at negative X/Y
+  as "outside of the print volume". Every staged Onshape export therefore runs
+  through `normalizeThreeMf` (`src/lib/threemf-normalize.ts`), which rescales
+  the model to millimeters and moves the build onto the plate (XY center at
+  128 mm, lowest point at z=0) — keep that in place for any new code path that
+  stores Onshape exports.
 - **Part Studios vs Assemblies** use different URL resources (`partstudios` /
   `assemblies`) but the same request shape; pick by `elementType`.
 - **URL pins**: document URLs are

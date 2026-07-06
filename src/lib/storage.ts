@@ -13,6 +13,28 @@ export type StagedFile = {
 // Streams a file into the staging area of the bucket ("uploads/…") and
 // returns the descriptor used by createModel. Size is counted while
 // streaming so it works without a Content-Length.
+// Stages an in-memory file the same way; used when the bytes had to be
+// buffered anyway (e.g. Onshape 3MF exports that get normalized first).
+export async function stageBuffer(
+  filename: string,
+  data: Uint8Array,
+  contentType: string,
+): Promise<StagedFile> {
+  const safeName = filename.replace(/[^a-zA-Z0-9._-]/g, "_");
+  const key = `uploads/${randomUUID()}/${safeName}`;
+  const upload = new Upload({
+    client: s3,
+    params: {
+      Bucket: S3_BUCKET,
+      Key: key,
+      Body: Buffer.from(data),
+      ContentType: contentType,
+    },
+  });
+  await upload.done();
+  return { key, filename, size: data.byteLength, contentType };
+}
+
 export async function stageStream(
   filename: string,
   body: ReadableStream<Uint8Array>,
