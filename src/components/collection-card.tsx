@@ -27,10 +27,11 @@ export function CollectionCard({
 
   return (
     <Link href={`/collections/${collection.id}`} className="group block">
-      {/* Stacked card effect */}
+      {/* Stacked card effect — each layer is offset by an even 4px step
+          (inset + drop) so the peeking edges look evenly spaced. */}
       <div className="relative">
-        <div className="absolute inset-x-2 -bottom-1.5 h-full rounded-xl bg-muted/60 border border-border/40" />
-        <div className="absolute inset-x-1 -bottom-0.5 h-full rounded-xl bg-muted/80 border border-border/50" />
+        <div className="absolute inset-x-2 -bottom-2 h-full rounded-xl bg-muted/60 border border-border/40" />
+        <div className="absolute inset-x-1 -bottom-1 h-full rounded-xl bg-muted/80 border border-border/50" />
 
         {/* Main card */}
         <div className="relative rounded-xl overflow-hidden shadow-sm transition-shadow group-hover:shadow-lg border border-border/60 bg-card">

@@ -1,11 +1,11 @@
 // Onshape importer — unlike MakerWorld/Printables there is no anonymous
 // metadata API: every call needs the user's OAuth token (Settings → Onshape).
 // Metadata comes from the document info endpoint, the preview image from the
-// document thumbnail, and the model files are asynchronous STEP exports of the
+// document thumbnail, and the model files are asynchronous 3MF exports of the
 // pinned tab (…/e/{eid} in the URL) or of every Part Studio/Assembly tab.
 
 import {
-  exportPinnedSteps,
+  exportPinnedModels,
   getCurrentMicroversion,
   getDocument,
   onshapeAuthHeaders,
@@ -81,7 +81,7 @@ export async function importFromOnshape(
         ? await getCurrentMicroversion(auth, pin.documentId, wvm, wvmId)
         : null;
 
-    const { exports, warnings } = await exportPinnedSteps(auth, {
+    const { exports, warnings } = await exportPinnedModels(auth, {
       documentId: pin.documentId,
       wvm,
       wvmId,

@@ -51,6 +51,16 @@ After MVP works:
     stored on the file (`model_files.printer_info`) and shown on the model page
 - [x] Replace header with shadcn sidebar component
 - [x] Add dedicated user settings page for onshape and bambu connection
+- [ ] Download .3mf from onshape (instead of step)
+  - check with slicer backend (fallback to default pla profile is fine)
+- [ ] Confirm dialog for destructive actions (delete model, delete collection)
+- [ ] Fix Collection ui (stacked cards arent evenly spaced - see ~/Desktop/screenshot-1.png)
+- [ ] Create unit tests, add guidance to agents.md
+- [ ] Unauthenticated -> redirect to login (every page including homepage should be authenticated)
+- [ ] Make the BOM on the models page collapsible
+- [ ] Fix checkmarks in the add to collection menu in model details page
+<!-- - [ ] How are onshape branches/versions handled? Maybe add this as a setting?
+- [ ] Move architectural notes to agents.md -->
 
 Substantial effort features in the future:
 - [ ] parametric models with [OpenSCAD](https://openscad.org/) - lower priority if onshape integration works
