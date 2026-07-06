@@ -1,7 +1,8 @@
 import { randomUUID } from "node:crypto";
-import { NextRequest, NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
 import {
+  appUrl,
   buildAuthorizeUrl,
   OAUTH_STATE_COOKIE,
   onshapeOAuthEnabled,
@@ -12,15 +13,13 @@ export const runtime = "nodejs";
 // Starts the "Sign in with Onshape" flow: remembers a CSRF state in a cookie
 // and sends the user to Onshape's consent screen. Onshape redirects back to
 // /api/onshape/callback.
-export async function GET(req: NextRequest) {
+export async function GET() {
   const session = await getSession();
   if (!session) {
-    return NextResponse.redirect(new URL("/sign-in", req.url));
+    return NextResponse.redirect(appUrl("/sign-in"));
   }
   if (!onshapeOAuthEnabled) {
-    return NextResponse.redirect(
-      new URL("/settings/onshape?error=not-configured", req.url),
-    );
+    return NextResponse.redirect(appUrl("/settings/onshape?error=not-configured"));
   }
 
   const state = randomUUID();
@@ -28,7 +27,9 @@ export async function GET(req: NextRequest) {
   res.cookies.set(OAUTH_STATE_COOKIE, state, {
     httpOnly: true,
     sameSite: "lax",
-    secure: req.nextUrl.protocol === "https:",
+    // Based on the public origin, not the request: TLS is terminated at the
+    // proxy so the internal request is plain http.
+    secure: appUrl("/").protocol === "https:",
     path: "/api/onshape",
     maxAge: 600,
   });
