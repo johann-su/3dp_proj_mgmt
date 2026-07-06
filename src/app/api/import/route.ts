@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
-import { stageStream } from "@/lib/storage";
+import { stageBuffer, stageStream } from "@/lib/storage";
+import { normalizeThreeMf } from "@/lib/threemf-normalize";
 import { fileExtension, IMAGE_EXTENSIONS } from "@/lib/s3";
 import { ImportError, IMPORT_USER_AGENT, type ImportedProject } from "@/lib/import/types";
 import { importFromMakerworld, parseMakerworldUrl } from "@/lib/import/makerworld";
@@ -131,7 +132,16 @@ export async function POST(req: NextRequest) {
           CONTENT_TYPES[ext] ??
           res.headers.get("content-type")?.split(";")[0] ??
           "application/octet-stream";
-        const staged = await stageStream(asset.filename, res.body, contentType);
+        // Onshape 3MF exports come in meters centered on the origin, which
+        // desktop slicers and the estimate service can't handle — normalize
+        // to millimeters on the plate before storing.
+        const staged = asset.onshapeElementId
+          ? await stageBuffer(
+              asset.filename,
+              normalizeThreeMf(new Uint8Array(await res.arrayBuffer())),
+              contentType,
+            )
+          : await stageStream(asset.filename, res.body, contentType);
         draft.files.push({
           ...staged,
           kind: asset.kind,

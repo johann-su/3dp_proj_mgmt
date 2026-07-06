@@ -366,7 +366,16 @@ async function estimate(body) {
     if (result.code !== 0) {
       return { status: 422, body: { ok: false, error: errorLine(result.output) } };
     }
-    const stats = parseGcodeStats(await readTail(outputPath));
+    // PrusaSlicer exits 0 without writing gcode for some rejections (e.g.
+    // "All objects are outside of the print volume."); surface its message
+    // instead of an ENOENT on the missing output file.
+    let gcodeTail;
+    try {
+      gcodeTail = await readTail(outputPath);
+    } catch {
+      return { status: 422, body: { ok: false, error: errorLine(result.output) } };
+    }
+    const stats = parseGcodeStats(gcodeTail);
     if (stats.printTimeSeconds == null) {
       return {
         status: 422,

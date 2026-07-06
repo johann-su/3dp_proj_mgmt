@@ -6,7 +6,8 @@ import { db } from "@/db";
 import { modelFiles, models } from "@/db/schema";
 import { getSession } from "@/lib/auth";
 import { s3, S3_BUCKET } from "@/lib/s3";
-import { stageStream } from "@/lib/storage";
+import { stageBuffer } from "@/lib/storage";
+import { normalizeThreeMf } from "@/lib/threemf-normalize";
 import { sliceEligible } from "@/lib/slicer";
 import { getOnshapeAccessToken } from "@/lib/onshape/credentials";
 import {
@@ -100,16 +101,22 @@ export async function POST(
     // Stage every export before touching the database: replacing the files is
     // all-or-nothing so a mid-way failure can't leave the model half-synced.
     const headers = onshapeAuthHeaders(auth);
-    const staged: { elementId: string; file: Awaited<ReturnType<typeof stageStream>> }[] =
+    const staged: { elementId: string; file: Awaited<ReturnType<typeof stageBuffer>> }[] =
       [];
     for (const file of exports) {
       const res = await fetch(file.url, { headers, redirect: "follow" });
       if (!res.ok || !res.body) {
         throw new OnshapeError(`Download failed for ${file.filename} (${res.status})`);
       }
+      // Onshape exports 3MF in meters centered on the origin; normalize to
+      // millimeters on the plate so slicers (ours and the user's) accept it.
       staged.push({
         elementId: file.elementId,
-        file: await stageStream(file.filename, res.body, "model/3mf"),
+        file: await stageBuffer(
+          file.filename,
+          normalizeThreeMf(new Uint8Array(await res.arrayBuffer())),
+          "model/3mf",
+        ),
       });
     }
 
