@@ -21,7 +21,7 @@ export function BomSection({
   modelId: string;
   items: BomItem[];
 }) {
-  const [open, setOpen] = useState(true);
+  const [open, setOpen] = useState(false);
 
   return (
     <Collapsible open={open} onOpenChange={setOpen} asChild>
