@@ -2,10 +2,12 @@ import Link from "next/link";
 import { Box } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
+import { platformFromSourceUrl, platformLabels } from "@/lib/platform";
 
 export type ModelCardData = {
   id: string;
   title: string;
+  sourceUrl: string | null;
   user: { name: string };
   category: { name: string } | null;
   files: { id: string }[];
@@ -14,10 +16,11 @@ export type ModelCardData = {
 
 export function ModelCard({ model }: { model: ModelCardData }) {
   const cover = model.files[0];
+  const platform = platformFromSourceUrl(model.sourceUrl);
   return (
     <Link href={`/models/${model.id}`} className="group">
       <Card className="overflow-hidden h-full py-0 gap-0 border-0 shadow-sm transition-shadow group-hover:shadow-lg">
-        <div className="aspect-[4/3] bg-muted flex items-center justify-center overflow-hidden">
+        <div className="relative aspect-[4/3] bg-muted flex items-center justify-center overflow-hidden">
           {cover ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img
@@ -27,6 +30,19 @@ export function ModelCard({ model }: { model: ModelCardData }) {
             />
           ) : (
             <Box className="size-10 text-muted-foreground/50" />
+          )}
+          {platform && (
+            <div
+              className="absolute left-2 top-2 flex size-8 items-center justify-center rounded-lg bg-white/90 p-1.5 shadow-sm ring-1 ring-black/5 backdrop-blur"
+              title={`Imported from ${platformLabels[platform]}`}
+            >
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={`/logos/${platform}.svg`}
+                alt={`${platformLabels[platform]} logo`}
+                className="size-full object-contain"
+              />
+            </div>
           )}
         </div>
         <CardContent className="p-3">

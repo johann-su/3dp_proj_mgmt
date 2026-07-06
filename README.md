@@ -62,7 +62,7 @@ After MVP works:
 - [x] Unauthenticated -> redirect to login (every page including homepage should be authenticated)
 - [x] Make the BOM on the models page collapsible
 - [x] Fix checkmarks in the add to collection menu in model details page
-<!-- - [ ] How are onshape branches/versions handled? Maybe add this as a setting? -->
+- [ ] How are onshape branches/versions handled? Maybe add this as a setting?
 
 Substantial effort features in the future:
 - [ ] parametric models with [OpenSCAD](https://openscad.org/) - lower priority if onshape integration works
