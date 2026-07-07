@@ -12,6 +12,7 @@ import {
   Home,
   LogOut,
   Plus,
+  Search,
   Settings,
   Shapes,
 } from "lucide-react";
@@ -42,6 +43,7 @@ type SessionUser = { name: string; email: string };
 
 const browseItems = [
   { href: "/", label: "Home", icon: Home, exact: true },
+  { href: "/search", label: "Search", icon: Search },
   { href: "/models/mine", label: "My Models", icon: Box, auth: true },
   { href: "/collections", label: "My Collections", icon: FolderOpen, auth: true },
 ];

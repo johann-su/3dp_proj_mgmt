@@ -146,7 +146,26 @@ Decisions taken and why — guidance for development, not user docs.
   files uploaded before this feature are skipped. The service is optional:
   without `SLICER_URL`, unsliced files simply show no estimates and stay
   `pending`.
-- **Search** is Postgres `ILIKE` over title/description plus category filtering.
+- **Search** is a dedicated `/search` page backed entirely by Postgres (no
+  separate search engine — kept simple and self-hostable). `src/lib/search.ts`
+  runs one keyset-paginated query over a `models UNION ALL collections`
+  projection: fuzzy matching uses `pg_trgm`'s `strict_word_similarity` (best
+  word-boundary-aligned match, so a short query like "tlon" matches the word
+  "Talon" inside a longer title — whole-string `similarity()`/`%` scores even an
+  exact word below the 0.3 default and was the original bug) OR'd with an ILIKE
+  substring fallback, and relevance ranks on the same word similarity. Models
+  match on title, description, and their tags (an `EXISTS` over model_tags);
+  collections match on title + description only. The GIN trigram indexes still
+  accelerate the ILIKE fallback. Filters — type (models/collections), uploader,
+  printer, filament (jsonb `@>`), nozzle, and print-time bucket — apply to the
+  model_files metadata via `EXISTS`; any model-only filter drops collections
+  from the union. Sort is relevance (falls back to newest without a query),
+  newest, or oldest, each with its own self-describing keyset cursor
+  (score-based or time-based). All URL/param parsing and the cursor codec live
+  in the DB-free `src/lib/search-params.ts` (unit-tested); `pg_trgm` and the
+  supporting indexes are created in migration `0008_search.sql`. The homepage
+  is now a pure browse grid (category filter + recent collections/models); its
+  search box just submits the query to `/search`.
 
 # Onshape integration
 

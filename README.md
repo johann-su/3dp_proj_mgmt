@@ -5,7 +5,8 @@ This project should be a self hostable project management platform for .3mf file
 ## Features
 
 - **Model management** — upload one or more `.3mf` files per model; title, description, images, and printer tags auto-fill from embedded file metadata
-- **Catalog** — searchable homepage grid with collections; dedicated model detail page with per-file downloads
+- **Catalog** — browsable homepage grid with collections; dedicated model detail page with per-file downloads
+- **Search** — dedicated `/search` page with fuzzy (typo-tolerant) matching across models and collections, filters (type, uploader, printer, filament, nozzle diameter, print time) and sort (relevance, newest, oldest)
 - **Collections** — user-organized groups of models with an "Add to collection" action on model pages
 - **Bill of Materials** — per-model item list (name, quantity, optional link/image); CSV upload in the creation wizard and download via the model page
 - **PDF documents** — attach build instructions or manuals; viewed inline in the browser and downloadable
@@ -18,10 +19,6 @@ This project should be a self hostable project management platform for .3mf file
 - **Authentication** — email/password with optional OIDC SSO; all pages require sign-in
 
 **Planned:**
-- Rework Search
-    - fuzzy search with postgres trigram extension
-    - filters (only collections/models, user, print time, printer, filament, nozzle diameter)
-    - sort by (relevance, newest etc)
 - 3D preview of objects in the browser
 - Parametric models via [OpenSCAD](https://openscad.org/)
 - Bambu printer integration — send print jobs and monitor prints

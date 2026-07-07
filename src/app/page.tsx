@@ -15,9 +15,9 @@ export const dynamic = "force-dynamic";
 export default async function HomePage({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string; category?: string }>;
+  searchParams: Promise<{ category?: string }>;
 }) {
-  const { q, category } = await searchParams;
+  const { category } = await searchParams;
 
   const allCategories = await db.query.categories.findMany({
     orderBy: (c, { asc }) => asc(c.name),
@@ -47,13 +47,11 @@ export default async function HomePage({
   });
 
   const { items: models, nextCursor } = await listModels({
-    q,
     categoryId: activeCategory?.id,
   });
 
   function categoryHref(slug?: string) {
     const params = new URLSearchParams();
-    if (q) params.set("q", q);
     if (slug) params.set("category", slug);
     const qs = params.toString();
     return qs ? `/?${qs}` : "/";
@@ -68,15 +66,11 @@ export default async function HomePage({
         </p>
       </div>
 
-      <form action="/" className="flex gap-2 mb-4 max-w-md">
-        {activeCategory && (
-          <input type="hidden" name="category" value={activeCategory.slug} />
-        )}
+      <form action="/search" className="flex gap-2 mb-4 max-w-md">
         <Input
           type="search"
           name="q"
-          defaultValue={q ?? ""}
-          placeholder="Search models…"
+          placeholder="Search models and collections…"
         />
         <Button type="submit" variant="secondary" aria-label="Search">
           <Search className="size-4" />
@@ -122,8 +116,8 @@ export default async function HomePage({
       {models.length === 0 ? (
         <div className="text-center py-24 text-muted-foreground">
           <Box className="size-10 mx-auto mb-3 opacity-50" />
-          {q || activeCategory ? (
-            <p>No models match your search.</p>
+          {activeCategory ? (
+            <p>No models in this category yet.</p>
           ) : (
             <p>
               No models yet.{" "}
@@ -135,10 +129,9 @@ export default async function HomePage({
         </div>
       ) : (
         <ModelGrid
-          key={`${q ?? ""}::${category ?? ""}`}
+          key={category ?? ""}
           initialItems={models}
           initialCursor={nextCursor}
-          q={q}
           category={category}
         />
       )}
