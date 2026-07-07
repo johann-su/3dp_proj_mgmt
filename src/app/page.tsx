@@ -1,9 +1,10 @@
 import Link from "next/link";
-import { and, desc, eq, ilike, or } from "drizzle-orm";
+import { desc } from "drizzle-orm";
 import { Box, Search } from "lucide-react";
 import { db } from "@/db";
-import { collections, models } from "@/db/schema";
-import { ModelCard } from "@/components/model-card";
+import { collections } from "@/db/schema";
+import { listModels } from "@/lib/list-queries";
+import { ModelGrid } from "@/components/model-grid";
 import { CollectionCard } from "@/components/collection-card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -22,16 +23,6 @@ export default async function HomePage({
     orderBy: (c, { asc }) => asc(c.name),
   });
   const activeCategory = allCategories.find((c) => c.slug === category);
-
-  const conditions = [];
-  if (q) {
-    conditions.push(
-      or(ilike(models.title, `%${q}%`), ilike(models.description, `%${q}%`)),
-    );
-  }
-  if (activeCategory) {
-    conditions.push(eq(models.categoryId, activeCategory.id));
-  }
 
   const recentCollections = await db.query.collections.findMany({
     orderBy: desc(collections.createdAt),
@@ -55,20 +46,9 @@ export default async function HomePage({
     },
   });
 
-  const results = await db.query.models.findMany({
-    where: conditions.length > 0 ? and(...conditions) : undefined,
-    orderBy: desc(models.createdAt),
-    limit: 60,
-    with: {
-      user: { columns: { name: true } },
-      category: true,
-      files: {
-        where: (f, { eq }) => eq(f.kind, "image"),
-        orderBy: (f, { asc }) => asc(f.position),
-        limit: 1,
-      },
-      modelTags: { with: { tag: true } },
-    },
+  const { items: models, nextCursor } = await listModels({
+    q,
+    categoryId: activeCategory?.id,
   });
 
   function categoryHref(slug?: string) {
@@ -139,7 +119,7 @@ export default async function HomePage({
         <h2 className="text-xl font-semibold tracking-tight">Models</h2>
       </div>
 
-      {results.length === 0 ? (
+      {models.length === 0 ? (
         <div className="text-center py-24 text-muted-foreground">
           <Box className="size-10 mx-auto mb-3 opacity-50" />
           {q || activeCategory ? (
@@ -154,11 +134,13 @@ export default async function HomePage({
           )}
         </div>
       ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-          {results.map((model) => (
-            <ModelCard key={model.id} model={model} />
-          ))}
-        </div>
+        <ModelGrid
+          key={`${q ?? ""}::${category ?? ""}`}
+          initialItems={models}
+          initialCursor={nextCursor}
+          q={q}
+          category={category}
+        />
       )}
     </div>
   );

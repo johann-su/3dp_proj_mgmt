@@ -14,9 +14,14 @@ This project should be a self hostable project management platform for .3mf file
 - **Onshape integration** — import models via document URL (OAuth2 "Sign in with Onshape"); sync when the document changes or pin an immutable version snapshot; "Edit in Onshape" button on imported models
 - **Print estimates** — optional slicer service (headless PrusaSlicer) estimates print time and filament use from uploaded `.3mf` files using the settings embedded in the file; shows printer hardware info per file
 - **Open in slicer** — open files directly in OrcaSlicer or Bambu Studio as an alternative to downloading
+- **Pagination** — cursor-based endless scroll on the list screens (homepage `/` models grid, `/collections`)
 - **Authentication** — email/password with optional OIDC SSO; all pages require sign-in
 
 **Planned:**
+- Rework Search
+    - fuzzy search with postgres trigram extension
+    - filters (only collections/models, user, print time, printer, filament, nozzle diameter)
+    - sort by (relevance, newest etc)
 - 3D preview of objects in the browser
 - Parametric models via [OpenSCAD](https://openscad.org/)
 - Bambu printer integration — send print jobs and monitor prints
