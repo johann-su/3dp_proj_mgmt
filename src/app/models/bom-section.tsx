@@ -10,16 +10,18 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
-import { BomList } from "../bom-list";
+import { BomList } from "./bom-list";
 
 type BomItem = React.ComponentProps<typeof BomList>["items"][number];
 
 export function BomSection({
-  modelId,
   items,
+  downloadUrl,
+  interactive = true,
 }: {
-  modelId: string;
   items: BomItem[];
+  downloadUrl?: string;
+  interactive?: boolean;
 }) {
   const [open, setOpen] = useState(false);
 
@@ -38,16 +40,23 @@ export function BomSection({
               Bill of materials ({items.length})
             </span>
           </CollapsibleTrigger>
-          <Button asChild size="sm" variant="outline">
-            <a href={`/api/models/${modelId}/bom`}>
+          {downloadUrl ? (
+            <Button asChild size="sm" variant="outline">
+              <a href={downloadUrl}>
+                <Download className="size-4" />
+                Download CSV
+              </a>
+            </Button>
+          ) : (
+            <Button size="sm" variant="outline" disabled>
               <Download className="size-4" />
               Download CSV
-            </a>
-          </Button>
+            </Button>
+          )}
         </CardHeader>
         <CollapsibleContent>
           <CardContent>
-            <BomList items={items} />
+            <BomList items={items} interactive={interactive} />
           </CardContent>
         </CollapsibleContent>
       </Card>
