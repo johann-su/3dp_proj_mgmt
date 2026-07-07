@@ -96,20 +96,26 @@ function scoreExpr(alias: "m" | "c", f: SearchFilters): SQL {
 function modelFileConditions(f: SearchFilters): SQL[] {
   const conds: SQL[] = [];
   if (f.printer) {
+    // Case-insensitive: "Bambu Lab P1S" and "bambu lab p1s" are the same printer.
     conds.push(
-      sql`EXISTS (SELECT 1 FROM model_files mf WHERE mf.model_id = m.id AND mf.printer_info->>'model' = ${f.printer})`,
+      sql`EXISTS (SELECT 1 FROM model_files mf WHERE mf.model_id = m.id AND lower(mf.printer_info->>'model') = ${f.printer.toLowerCase()})`,
     );
   }
   if (f.filaments.length > 0) {
-    // OR within filament: match a file using ANY of the chosen filaments.
-    const any = sql.join(
-      f.filaments.map(
-        (fil) => sql`mf.printer_info->'filamentTypes' @> ${JSON.stringify([fil])}::jsonb`,
-      ),
-      sql` OR `,
+    // OR within filament, matched case-insensitively ("ASA-AERO" == "ASA-Aero").
+    // The CASE guards jsonb_array_elements_text against a non-array value (it
+    // would otherwise throw); filamentTypes is always an array or absent.
+    const lowered = sql.join(
+      f.filaments.map((fil) => sql`${fil.toLowerCase()}`),
+      sql`, `,
     );
     conds.push(
-      sql`EXISTS (SELECT 1 FROM model_files mf WHERE mf.model_id = m.id AND (${any}))`,
+      sql`EXISTS (SELECT 1 FROM model_files mf WHERE mf.model_id = m.id AND EXISTS (
+        SELECT 1 FROM jsonb_array_elements_text(
+          CASE WHEN jsonb_typeof(mf.printer_info->'filamentTypes') = 'array'
+               THEN mf.printer_info->'filamentTypes' ELSE '[]'::jsonb END
+        ) AS ft(v) WHERE lower(ft.v) IN (${lowered})
+      ))`,
     );
   }
   if (f.nozzle !== undefined) {
@@ -345,11 +351,27 @@ export async function searchFacets(): Promise<SearchFacets> {
 
   return {
     users: users.rows,
-    printers: printers.rows.map((r) => r.v),
-    filaments: filaments.rows.map((r) => r.v),
+    // Fold case variants ("ASA-AERO" / "ASA-Aero") into a single chip, keeping
+    // the first (alphabetically) as the canonical label — the filters match
+    // case-insensitively, so either label finds both.
+    printers: dedupeCaseInsensitive(printers.rows.map((r) => r.v)),
+    filaments: dedupeCaseInsensitive(filaments.rows.map((r) => r.v)),
     nozzles: nozzles.rows
       .map((r) => Number(r.v))
       .filter((n) => Number.isFinite(n))
       .sort((a, b) => a - b),
   };
+}
+
+// Removes case-insensitive duplicates, preserving input order (first wins).
+function dedupeCaseInsensitive(values: string[]): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const v of values) {
+    const key = v.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(v);
+  }
+  return out;
 }
