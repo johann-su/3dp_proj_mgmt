@@ -27,7 +27,13 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { ImageGallery } from "@/components/image-gallery";
 import { parseOnshapeUrl } from "@/lib/onshape/api";
+import { platformFromSourceUrl, platformLabels } from "@/lib/platform";
 import { Markdown } from "@/components/markdown";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { BomSection } from "./bom-section";
 import { DeleteModelButton } from "./delete-model-button";
 import { AddToCollection, type CollectionOption } from "./add-to-collection";
@@ -66,6 +72,7 @@ export default async function ModelPage({
   const printFiles = model.files.filter((f) => f.kind === "model");
   const pdfFiles = model.files.filter((f) => f.kind === "pdf");
   const isOwner = session?.user.id === model.userId;
+  const platform = platformFromSourceUrl(model.sourceUrl);
   const makerworldUrl = model.sourceUrl?.includes("makerworld")
     ? model.sourceUrl
     : undefined;
@@ -134,6 +141,25 @@ export default async function ModelPage({
           <ImageGallery
             images={images.map((img) => ({ src: `/api/files/${img.id}` }))}
             title={model.title}
+            badge={
+              platform && (
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <div className="flex size-8 items-center justify-center rounded-lg bg-white/90 p-1.5 shadow-sm ring-1 ring-black/5 backdrop-blur">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={`/logos/${platform}.svg`}
+                        alt={`${platformLabels[platform]} logo`}
+                        className="size-full object-contain"
+                      />
+                    </div>
+                  </TooltipTrigger>
+                  <TooltipContent side="right">
+                    {platformLabels[platform]}
+                  </TooltipContent>
+                </Tooltip>
+              )
+            }
           />
 
           {model.bomItems.length > 0 && (
