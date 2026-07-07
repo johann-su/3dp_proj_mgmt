@@ -7,19 +7,56 @@ This version has breaking changes — APIs, conventions, and file structure may 
 # Testing
 
 Unit tests run on Node's built-in test runner (`node:test` + `node:assert/strict`)
-via `tsx` — there is no Vitest/Jest. Run the whole suite with `npm test`.
+via `tsx` — there is no Vitest/Jest. Run the whole suite with `npm test`, which
+covers `src/**/*.test.ts` plus the slicer service's `slicer/*.test.mjs`.
 
-Conventions:
+## What the suite is for
+
+This is a young, fast-moving project where most changes land through AI agents.
+The suite exists to answer one question: **"did this change break a behaviour
+that already worked?"** — and to double as executable documentation of the
+tricky, non-obvious contracts (Onshape's meters-not-mm exports, Bambu's
+double-escaped HTML, AMS extruder selection, the ZIP-tail ranged reads). Aim
+for tests an agent can read to *learn the contract*, not tests that pin down an
+implementation.
+
+Write tests that:
+
+- **Assert on observable behaviour**, not internal structure. Check the parsed
+  result, the translated config, the round-tripped CSV — not which private
+  helper ran or how many times. A refactor that preserves behaviour should keep
+  the tests green; that's the whole point.
+- **Cover the contract's edges**, since those are where regressions hide and
+  where the documentation value is highest: the fallback branch, the hostile
+  input that must be rejected, the multi-plate sum, the look-alike host. One
+  crisp test per real behaviour beats ten that restate the same path.
+- **Name the behaviour and its "why."** The test title and a one-line comment
+  should tell an agent *why* the case exists ("percent is allowed only for
+  fill_density", "objects on extruder 2 → second filament"), so a future change
+  that trips it knows whether it broke something or changed a documented rule.
+
+Avoid: snapshotting large blobs, asserting exact error strings (assert that it
+*errored*, or match a stable substring), re-testing a third-party library's
+behaviour, and duplicating one function's cases across several files.
+
+## Conventions
 
 - Co-locate tests next to the code as `*.test.ts` (e.g. `src/lib/format.ts` →
-  `src/lib/format.test.ts`). The `npm test` glob picks up any `src/**/*.test.ts`.
+  `src/lib/format.test.ts`). Slicer-service tests are `*.test.mjs` next to
+  `slicer/server.mjs`.
 - Import from source with the `@/` alias; `tsx` resolves it from `tsconfig.json`.
-- Prefer testing **pure logic** (URL parsers, formatters, BOM/CSV helpers,
-  validation). Do not import modules with load-time side effects into a test —
-  e.g. `@/lib/s3` builds an S3 client from env, `@/db` opens a pool. Test the
-  pure helper directly, or extract it, rather than pulling those in.
-- No DB or network in unit tests. If a function needs them, pass the data in or
-  stub `fetch`; keep the estimate/import HTTP flows for manual/integration checks.
+- Prefer **pure logic** (URL parsers, formatters, BOM/CSV, crypto round-trips,
+  the ZIP/config parsers). Do not import modules with load-time side effects
+  into a test — e.g. `@/lib/s3` builds an S3 client from env, `@/db` opens a
+  pool. Extract the pure core and test that: `threemf-slice-info.ts` holds the
+  parsing (unit-tested) while `threemf-remote.ts` only wires it to S3, and the
+  slicer's `lib.mjs` holds the parsing/translation while `server.mjs` does I/O.
+  Follow that split when a new feature mixes logic with a client.
+- No DB or network in unit tests. If a function needs bytes, build them in
+  memory (fflate's `zipSync` makes a `.3mf`/ZIP fixture) or inject the reader
+  (see `RangeReader` in `threemf-slice-info.ts`); stub `fetch` for HTTP paths.
+  The full import/estimate HTTP flows and DB actions stay manual/integration —
+  use the `/verify` or `/run` skills to exercise them against a running app.
 
 Example:
 

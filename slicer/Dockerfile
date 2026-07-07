@@ -7,7 +7,7 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 
 RUN useradd --system --create-home slicer
-COPY server.mjs config.ini /opt/slicer/
+COPY server.mjs lib.mjs config.ini /opt/slicer/
 
 USER slicer
 ENV HOME=/home/slicer PORT=8000
