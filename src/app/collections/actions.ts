@@ -6,6 +6,18 @@ import { and, eq } from "drizzle-orm";
 import { db } from "@/db";
 import { collectionModels, collections, models } from "@/db/schema";
 import { getSession } from "@/lib/auth";
+import { listUserCollections } from "@/lib/list-queries";
+import type { MyCollectionData } from "@/components/my-collection-card";
+import type { Page } from "@/lib/pagination";
+
+// Fetches the next page of the signed-in user's collections for endless scroll.
+export async function loadMoreCollections(input: {
+  cursor: string;
+}): Promise<Page<MyCollectionData>> {
+  const session = await getSession();
+  if (!session) return { items: [], nextCursor: null };
+  return listUserCollections({ userId: session.user.id, cursor: input.cursor });
+}
 
 export async function createCollection(input: {
   title: string;

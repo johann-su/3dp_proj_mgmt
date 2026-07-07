@@ -5,7 +5,8 @@ This project should be a self hostable project management platform for .3mf file
 ## Features
 
 - **Model management** — upload one or more `.3mf` files per model; title, description, images, and printer tags auto-fill from embedded file metadata
-- **Catalog** — searchable homepage grid with collections; dedicated model detail page with per-file downloads
+- **Catalog** — browsable homepage grid with collections; dedicated model detail page with per-file downloads
+- **Search** — dedicated `/search` page with fuzzy (typo-tolerant) matching across models and collections, filters (type, uploader, printer, filament, nozzle diameter, print time) and sort (relevance, newest, oldest)
 - **Collections** — user-organized groups of models with an "Add to collection" action on model pages
 - **Bill of Materials** — per-model item list (name, quantity, optional link/image); CSV upload in the creation wizard and download via the model page
 - **PDF documents** — attach build instructions or manuals; viewed inline in the browser and downloadable
@@ -14,6 +15,7 @@ This project should be a self hostable project management platform for .3mf file
 - **Onshape integration** — import models via document URL (OAuth2 "Sign in with Onshape"); sync when the document changes or pin an immutable version snapshot; "Edit in Onshape" button on imported models
 - **Print estimates** — optional slicer service (headless PrusaSlicer) estimates print time and filament use from uploaded `.3mf` files using the settings embedded in the file; shows printer hardware info per file
 - **Open in slicer** — open files directly in OrcaSlicer or Bambu Studio as an alternative to downloading
+- **Pagination** — cursor-based endless scroll on the list screens (homepage `/` models grid, `/collections`)
 - **Authentication** — email/password with optional OIDC SSO; all pages require sign-in
 
 **Planned:**
