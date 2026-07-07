@@ -4,71 +4,22 @@ This project should be a self hostable project management platform for .3mf file
 
 ## Features
 
-MVP:
-- [x] Creating a model (ie one or multiple .3mf files that together make up one coherent model)
-- [x] Upload .3mf file
-- [x] Add metadata (title, description, images, category, tags)
-- [x] A homepage where the models are listed and searchable
-- [x] A details page for every model when clicking on it where the project files can be downloaded (like makerworlds print profiles tab)
+- **Model management** — upload one or more `.3mf` files per model; title, description, images, and printer tags auto-fill from embedded file metadata
+- **Catalog** — searchable homepage grid with collections; dedicated model detail page with per-file downloads
+- **Collections** — user-organized groups of models with an "Add to collection" action on model pages
+- **Bill of Materials** — per-model item list (name, quantity, optional link/image); CSV upload in the creation wizard and download via the model page
+- **PDF documents** — attach build instructions or manuals; viewed inline in the browser and downloadable
+- **Markdown descriptions** — GitHub-flavored markdown; raw HTML is never rendered
+- **Platform import** — import metadata and images from MakerWorld and Printables; MakerWorld `.3mf` file downloads require a connected Bambu Cloud account (Settings → Bambu Cloud)
+- **Onshape integration** — import models via document URL (OAuth2 "Sign in with Onshape"); sync when the document changes or pin an immutable version snapshot; "Edit in Onshape" button on imported models
+- **Print estimates** — optional slicer service (headless PrusaSlicer) estimates print time and filament use from uploaded `.3mf` files using the settings embedded in the file; shows printer hardware info per file
+- **Open in slicer** — open files directly in OrcaSlicer or Bambu Studio as an alternative to downloading
+- **Authentication** — email/password with optional OIDC SSO; all pages require sign-in
 
-After MVP works:
-- [x] Prefill title, description, images and a printer tag (e.g. "bambu p1s") from uploaded .3mf files
-- [x] Collections: folders/groups of models (per user, "Add to collection" on model pages)
-- [x] Import from other platforms (makerworld & printables only) — metadata and
-  images always import; MakerWorld `.3mf` downloads work once the user connects a
-  Bambu Cloud account under Settings → Bambu Cloud (see the architecture notes
-  in `AGENTS.md`)
-- [x] Bill of Materials (BOM) for models
-  - filament, heat set inserts etc
-  - Item (name), quantitiy, link (optional), image (optional)
-  - downloadable as csv (`GET /api/models/{id}/bom`)
-  - displayed on the model page above the description, below the images
-  - upload csv in model creation wizard (columns: name, quantity, link, image —
-    header aliases like qty/url/picture work too) or add rows manually
-- [x] Open in OrcaSlicer / BambuStudio option which opens the app on the users pc and opens the .3mf file in it (as an alternative to "download .3mf")
-- [x] Have optional PDF's associated with a model for build instructions, product manual etc
-  - added in the wizard's details step ("Documents"), shown on the model page
-    below the files card — opens inline in the browser, downloadable
-- [x] Markdown support for Description
-  - GitHub-flavored markdown (react-markdown + remark-gfm); raw HTML is never
-    rendered
-- [x] Show collections on homescreen
-- [x] Onshape integration (via "Sign in with Onshape" OAuth, see the
-  architecture notes in `AGENTS.md`)
-  - import models from onshape (paste onshape document url -> backend exports
-    the tabs as `.3mf` and downloads them)
-  - sync with onshape ("Sync from Onshape" on the model page re-exports when
-    the document changed; a `…/v/…` version link pins an immutable snapshot)
-  - edit in onshape button for models imported from onshape -> opens this model in onshape editor
-- [x] third slicing backend container (in addition to nextjs and postgres) running libslicr3d / prusa slicer headless
-  - if an unsliced .3mf file is uploaded, slice it to estimate print time & material use
-  - flag failure to slice correctly (ie let user know they (mistakenly) uploaded an unslicable file)
-  - implemented as the `slicer` service in `compose.yml` wrapping the
-    PrusaSlicer CLI (libslic3r has no maintained standalone bindings, so the
-    container uses the `prusa-slicer` binary headless — see the architecture
-    notes in `AGENTS.md`)
-  - slices with the settings embedded in the file (printer kinematics, speeds,
-    layer height, infill, the filament the objects actually use, …); a generic
-    0.4 mm/PLA profile is only the fallback for files without settings
-  - the selected hardware (printer model, nozzle, build plate, filament) is
-    stored on the file (`model_files.printer_info`) and shown on the model page
-- [x] Replace header with shadcn sidebar component
-- [x] Add dedicated user settings page for onshape and bambu connection
-- [x] Download .3mf from onshape (instead of step)
-  - check with slicer backend (fallback to default pla profile is fine)
-- [x] Confirm dialog for destructive actions (delete model, delete collection)
-- [x] Fix Collection ui (stacked cards arent evenly spaced - see ~/Desktop/screenshot-1.png)
-- [x] Create unit tests, add guidance to agents.md
-- [x] Unauthenticated -> redirect to login (every page including homepage should be authenticated)
-- [x] Make the BOM on the models page collapsible
-- [x] Fix checkmarks in the add to collection menu in model details page
-- [ ] How are onshape branches/versions handled? Maybe add this as a setting?
-
-Substantial effort features in the future:
-- [ ] parametric models with [OpenSCAD](https://openscad.org/) - lower priority if onshape integration works
-- [ ] integration with (bambu) 3d printer - slicer integration makes this sort off redundant
-  - send jobs to the printer
-  - monitor print jobs
+**Planned:**
+- 3D preview of objects in the browser
+- Parametric models via [OpenSCAD](https://openscad.org/)
+- Bambu printer integration — send print jobs and monitor prints
 
 ## Tech stack
 
