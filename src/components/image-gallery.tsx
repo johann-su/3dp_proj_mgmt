@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { Box, ChevronLeft, ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -9,9 +9,11 @@ type GalleryImage = { src: string };
 export function ImageGallery({
   images,
   title,
+  badge,
 }: {
   images: GalleryImage[];
   title: string;
+  badge?: React.ReactNode;
 }) {
   const [selected, setSelected] = useState(0);
   const thumbRefs = useRef<(HTMLButtonElement | null)[]>([]);
@@ -49,6 +51,9 @@ export function ImageGallery({
           alt={title}
           className="w-full h-full object-contain"
         />
+        {badge && (
+          <div className="absolute left-2 top-2">{badge}</div>
+        )}
         {images.length > 1 && (
           <>
             <button
