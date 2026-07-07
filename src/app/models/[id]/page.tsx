@@ -130,7 +130,7 @@ export default async function ModelPage({
   return (
     <div className="mx-auto max-w-6xl px-4 py-8">
       <div className="grid gap-8 lg:grid-cols-[1fr_400px]">
-        <div>
+        <div className="min-w-0">
           <ImageGallery
             images={images.map((img) => ({ src: `/api/files/${img.id}` }))}
             title={model.title}
@@ -150,9 +150,11 @@ export default async function ModelPage({
           </div>
         </div>
 
-        <div className="space-y-4">
+        <div className="min-w-0 space-y-4">
           <div>
-            <h1 className="text-2xl font-bold tracking-tight">{model.title}</h1>
+            <h1 className="text-2xl font-bold tracking-tight break-words">
+              {model.title}
+            </h1>
             <p className="text-sm text-muted-foreground mt-1">
               by {model.user.name} · {formatDate(model.createdAt)}
             </p>
