@@ -94,17 +94,13 @@ export function ImageGallery({
               </span>
             </>
           )}
-          <div
-            className="relative h-[80vh] w-[80vw] max-h-4xl"
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={current.src}
+            alt={title}
+            className="max-h-[80vh] max-w-[80vw]"
             onClick={(e) => e.stopPropagation()}
-          >
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src={current.src}
-              alt={title}
-              className="h-full w-full object-contain"
-            />
-          </div>
+          />
         </div>
       )}
 

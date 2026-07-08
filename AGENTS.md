@@ -72,7 +72,7 @@ test("formatDuration splits hours and minutes", () => {
 
 # Architecture notes
 
-Decisions taken and why — guidance for development, not user docs.
+Decisions taken and why — guidance for development.
 
 - **Uploads** stream through `POST /api/upload` to S3 (no browser↔S3 CORS setup needed);
   only signed-in users can upload, and file extensions are validated server-side.
