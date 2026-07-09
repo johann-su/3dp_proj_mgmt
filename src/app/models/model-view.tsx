@@ -7,6 +7,7 @@ import {
   ExternalLink,
   FileBox,
   FileText,
+  HardDrive,
   Layers,
   Pencil,
   Printer,
@@ -34,7 +35,7 @@ import { BomSection } from "./bom-section";
 import { AddToCollection, type CollectionOption } from "./[id]/add-to-collection";
 import { DeleteModelButton } from "./[id]/delete-model-button";
 import { OnshapeSyncButton } from "./[id]/onshape-sync-button";
-import { OpenInSlicer } from "./[id]/open-in-slicer";
+import { FileDownloadMenu } from "./[id]/file-download-menu";
 
 export type { CollectionOption };
 
@@ -236,43 +237,54 @@ export function ModelView({ data }: { data: ModelViewData }) {
                   <div className="text-sm font-medium truncate">
                     {file.filename}
                   </div>
-                  <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-muted-foreground">
+                  <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
                     {file.printTime != null && (
-                      <span className="inline-flex items-center gap-1">
-                        <Clock className="size-3.5" />
+                      <span className="inline-flex items-center gap-1.5 text-sm font-semibold">
+                        <Clock className="size-4 text-primary" />
                         {file.approx ? "~" : ""}
                         {formatDuration(file.printTime)}
                       </span>
                     )}
                     {file.grams != null && (
-                      <span className="inline-flex items-center gap-1">
-                        <Weight className="size-3.5" />
+                      <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
+                        <Weight className="size-3.5 text-chart-3" />
                         {file.approx ? "~" : ""}
                         {formatGrams(file.grams)}
                       </span>
                     )}
+                  </div>
+                  <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
                     {file.plateCount != null && (
-                      <span className="inline-flex items-center gap-1">
-                        <Layers className="size-3.5" />
+                      <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
+                        <Layers className="size-3.5 text-chart-2" />
                         {file.plateCount}{" "}
                         {file.plateCount === 1 ? "plate" : "plates"}
                       </span>
                     )}
-                    <span>{formatBytes(file.size)}</span>
+                    <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
+                      <HardDrive className="size-3.5" />
+                      {formatBytes(file.size)}
+                    </span>
                     {file.sliceStatus === "pending" && slicerConfigured && (
-                      <span className="animate-pulse">estimating…</span>
+                      <span className="text-xs text-muted-foreground animate-pulse">
+                        estimating…
+                      </span>
                     )}
                   </div>
-                  {(file.printer || file.sliceStatus === "failed") && (
+                  {file.printer?.model && (
                     <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                      {file.printer?.model && (
-                        <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
-                          <Printer className="size-3.5" />
-                          {file.printer.model}
-                          {file.printer.nozzleDiameterMm != null &&
-                            ` · ${file.printer.nozzleDiameterMm} mm`}
-                        </span>
-                      )}
+                      <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
+                        <Printer className="size-3.5" />
+                        {file.printer.model}
+                        {file.printer.nozzleDiameterMm != null &&
+                          ` · ${file.printer.nozzleDiameterMm} mm`}
+                      </span>
+                    </div>
+                  )}
+                  {(file.printer?.filamentTypes?.length ||
+                    file.printer?.bedType ||
+                    file.sliceStatus === "failed") && (
+                    <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
                       {file.printer?.filamentTypes?.map((type) => (
                         <Badge
                           key={type}
@@ -303,28 +315,17 @@ export function ModelView({ data }: { data: ModelViewData }) {
                     </div>
                   )}
                 </div>
-                <div className="flex shrink-0 items-center gap-1">
-                  {file.id && (
-                    <OpenInSlicer
+                <div className="flex shrink-0 items-center">
+                  {file.id ? (
+                    <FileDownloadMenu
                       fileId={file.id}
+                      filename={file.filename}
                       makerworldUrl={makerworldUrl ?? undefined}
                     />
-                  )}
-                  {file.id ? (
-                    <Button
-                      asChild
-                      size="icon"
-                      variant="ghost"
-                      aria-label={`Download ${file.filename}`}
-                    >
-                      <a href={`/api/files/${file.id}?download=1`}>
-                        <Download className="size-4" />
-                      </a>
-                    </Button>
                   ) : (
                     <Button
                       size="icon"
-                      variant="ghost"
+                      variant="outline"
                       disabled
                       aria-label={`Download ${file.filename}`}
                     >
