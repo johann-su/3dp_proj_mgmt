@@ -16,7 +16,7 @@ import {
 } from "@/db/schema";
 import { getSession } from "@/lib/auth";
 import { sanitizeBomItems, type BomItemInput } from "@/lib/bom";
-import { s3, S3_BUCKET, allowedExtensions, fileExtension } from "@/lib/s3";
+import { s3, S3_BUCKET, allowedExtensions, fileExtension, sanitizeRename } from "@/lib/s3";
 import { processPendingSlices, sliceEligible } from "@/lib/slicer";
 
 export type UploadedFile = {
@@ -75,6 +75,9 @@ export type UpdateModelInput = {
   tags: string[];
   newFiles: UploadedFile[];
   removedFileIds: string[];
+  // Filenames edited for files that already exist on the model (kept, not
+  // removed). Ids outside the kept set are ignored.
+  renamedFiles?: { id: string; filename: string }[];
   imageOrder?: ImageOrderRef[];
   bom?: BomItemInput[];
 };
@@ -238,6 +241,8 @@ export async function updateModel(
   const removedIds = new Set(input.removedFileIds);
   const removed = model.files.filter((f) => removedIds.has(f.id));
   const kept = model.files.filter((f) => !removedIds.has(f.id));
+  const keptById = new Map(kept.map((f) => [f.id, f]));
+  const renameById = new Map((input.renamedFiles ?? []).map((f) => [f.id, f.filename]));
   const hasModelFile =
     kept.some((f) => f.kind === "model") ||
     input.newFiles.some((f) => f.kind === "model");
@@ -326,9 +331,14 @@ export async function updateModel(
       ...orderedImageIds,
     ];
     for (const [position, id] of orderedIds.entries()) {
+      // Only kept (pre-existing) files can be renamed; newly inserted ones
+      // already carry their desired filename from the upload step.
+      const keptFile = keptById.get(id);
+      const proposedName = keptFile && renameById.get(id);
+      const filename = proposedName && sanitizeRename(keptFile.filename, proposedName);
       await tx
         .update(modelFiles)
-        .set({ position })
+        .set(filename ? { position, filename } : { position })
         .where(and(eq(modelFiles.id, id), eq(modelFiles.modelId, model.id)));
     }
 

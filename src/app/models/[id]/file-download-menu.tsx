@@ -3,12 +3,13 @@
 // Slicer deep links (orcaslicer:// / bambustudio://) need an absolute URL to
 // the .3mf file, which is only known in the browser — hence a client component.
 
-import { ChevronDown, ExternalLink } from "lucide-react";
+import { Download, ExternalLink } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
@@ -18,11 +19,13 @@ const SLICERS = [
   { name: "Bambu Studio", scheme: "bambustudio" },
 ] as const;
 
-export function OpenInSlicer({
+export function FileDownloadMenu({
   fileId,
+  filename,
   makerworldUrl,
 }: {
   fileId: string;
+  filename: string;
   makerworldUrl?: string;
 }) {
   function openInSlicer(scheme: string) {
@@ -33,12 +36,24 @@ export function OpenInSlicer({
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button size="sm" variant="outline" className="shrink-0">
-          Open in
-          <ChevronDown className="size-4" />
+        <Button
+          size="icon"
+          variant="outline"
+          className="shrink-0"
+          aria-label={`Download or open ${filename}`}
+        >
+          <Download className="size-4" />
         </Button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end">
+      <DropdownMenuContent align="end" className="min-w-40">
+        <DropdownMenuItem asChild>
+          <a href={`/api/files/${fileId}?download=1`}>
+            <Download className="size-4" />
+            Download
+          </a>
+        </DropdownMenuItem>
+        <DropdownMenuSeparator />
+        <DropdownMenuLabel>Open in</DropdownMenuLabel>
         {SLICERS.map((slicer) => (
           <DropdownMenuItem
             key={slicer.scheme}

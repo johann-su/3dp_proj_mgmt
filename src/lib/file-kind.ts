@@ -1,0 +1,41 @@
+// Pure filename/extension logic, split out from s3.ts so it can be unit
+// tested without pulling in the S3 client (which reads env vars at import
+// time — see AGENTS.md's testing conventions).
+
+// 3mf is the primary format: a container with embedded metadata/images, which
+// keeps the upload UI and ingestion simple (stl support was deliberately
+// removed). step exists for the Onshape integration, whose exports are STEP
+// files; the upload UI still only offers .3mf.
+export const MODEL_EXTENSIONS = [".3mf", ".step", ".stp"];
+export const IMAGE_EXTENSIONS = [".png", ".jpg", ".jpeg", ".webp", ".gif"];
+// Optional documents attached to a model (build instructions, manual, …)
+export const PDF_EXTENSIONS = [".pdf"];
+
+export function allowedExtensions(kind: "model" | "image" | "pdf") {
+  return kind === "model"
+    ? MODEL_EXTENSIONS
+    : kind === "pdf"
+      ? PDF_EXTENSIONS
+      : IMAGE_EXTENSIONS;
+}
+
+export function fileExtension(filename: string) {
+  const dot = filename.lastIndexOf(".");
+  return dot === -1 ? "" : filename.slice(dot).toLowerCase();
+}
+
+// Applied when a user renames an already-uploaded file. Always keeps the
+// original extension, so a crafted rename can't change what kind a file is
+// treated as (allowedExtensions/sliceEligible both key off the extension)
+// even though the request only carries a filename string.
+export function sanitizeRename(originalFilename: string, proposed: string): string {
+  const ext = fileExtension(originalFilename);
+  const trimmed = proposed.trim().slice(0, 255);
+  if (!trimmed) return originalFilename;
+  const base =
+    ext && trimmed.toLowerCase().endsWith(ext)
+      ? trimmed.slice(0, trimmed.length - ext.length)
+      : trimmed;
+  const cleanBase = base.trim();
+  return cleanBase ? `${cleanBase}${ext}` : originalFilename;
+}

@@ -115,11 +115,28 @@ const MODEL_ACCEPT = ".3mf";
 const IMAGE_ACCEPT = ".png,.jpg,.jpeg,.webp,.gif";
 const PDF_ACCEPT = ".pdf";
 
+// A model/pdf file picked in the browser but not yet uploaded. Carries a
+// stable key (for React lists, and so a rename can target one entry) and an
+// editable display name independent of the underlying File's read-only name.
+type PendingFile = { key: string; file: File; name: string };
+
+function pendingFile(file: File): PendingFile {
+  return { key: crypto.randomUUID(), file, name: file.name };
+}
+
+// A name has no extension to preserve if there's no dot, or the dot is the
+// first character (a dotfile like ".gitignore").
+function splitExtension(name: string): [base: string, ext: string] {
+  const dot = name.lastIndexOf(".");
+  return dot <= 0 ? [name, ""] : [name.slice(0, dot), name.slice(dot)];
+}
+
 async function uploadFile(
   file: File,
   kind: "model" | "image" | "pdf",
+  filename: string = file.name,
 ): Promise<UploadedFile> {
-  const params = new URLSearchParams({ filename: file.name, kind });
+  const params = new URLSearchParams({ filename, kind });
   const res = await fetch(`/api/upload?${params}`, {
     method: "POST",
     body: file,
@@ -127,7 +144,7 @@ async function uploadFile(
   });
   if (!res.ok) {
     const body = await res.json().catch(() => null);
-    throw new Error(body?.error ?? `Upload failed for ${file.name}`);
+    throw new Error(body?.error ?? `Upload failed for ${filename}`);
   }
   return res.json();
 }
@@ -137,20 +154,71 @@ function FileRow({
   size,
   imported,
   onRemove,
+  onRename,
 }: {
   name: string;
   size: number;
   // Marks files pulled in by URL import (already staged in S3).
   imported?: boolean;
   onRemove: () => void;
+  // Omitted where renaming doesn't apply (e.g. images, PDFs).
+  onRename?: (newName: string) => void;
 }) {
+  const [editing, setEditing] = useState(false);
+  const [draftBase, setDraftBase] = useState("");
+  const [base, ext] = splitExtension(name);
+
+  function commit() {
+    setEditing(false);
+    const trimmed = draftBase.trim();
+    if (trimmed && trimmed !== base) onRename?.(`${trimmed}${ext}`);
+  }
+
   return (
     <li className="flex min-w-0 items-center gap-2 text-sm border rounded-md px-3 py-2">
       {imported && <CloudDownload className="size-3.5 text-primary shrink-0" />}
-      <span className="truncate">{name}</span>
+      {editing ? (
+        <span className="flex min-w-0 flex-1 items-center gap-1.5">
+          <Input
+            autoFocus
+            aria-label={`New name for ${name}`}
+            value={draftBase}
+            onChange={(e) => setDraftBase(e.target.value)}
+            onBlur={commit}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                commit();
+              } else if (e.key === "Escape") {
+                e.preventDefault();
+                setEditing(false);
+              }
+            }}
+            className="h-6 min-w-0 flex-1 px-1"
+          />
+          <span className="shrink-0 text-muted-foreground">{ext}</span>
+        </span>
+      ) : (
+        <span className="truncate">{name}</span>
+      )}
       <span className="text-muted-foreground ml-auto shrink-0">
         {formatBytes(size)}
       </span>
+      {onRename && !editing && (
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          className="size-6 shrink-0"
+          aria-label={`Rename ${name}`}
+          onClick={() => {
+            setDraftBase(base);
+            setEditing(true);
+          }}
+        >
+          <Pencil className="size-3.5" />
+        </Button>
+      )}
       <Button
         type="button"
         variant="ghost"
@@ -173,22 +241,28 @@ function FilePicker({
   setFiles,
   existing,
   removeExisting,
+  renameExisting,
   staged,
   removeStaged,
+  renameStaged,
   onFilesAdded,
+  onRenameNew,
   icon,
 }: {
   label?: string;
   hint: string;
   accept: string;
-  files: File[];
-  setFiles: (files: File[]) => void;
+  files: PendingFile[];
+  setFiles: (files: PendingFile[]) => void;
   existing?: ExistingFile[];
   removeExisting?: (id: string) => void;
+  renameExisting?: (id: string, name: string) => void;
   // Files pulled in by URL import — already staged in S3.
   staged?: UploadedFile[];
   removeStaged?: (key: string) => void;
+  renameStaged?: (key: string, name: string) => void;
   onFilesAdded?: (added: File[]) => void;
+  onRenameNew?: (key: string, name: string) => void;
   icon: React.ReactNode;
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
@@ -207,7 +281,7 @@ function FilePicker({
         onChange={(e) => {
           const picked = Array.from(e.target.files ?? []);
           if (picked.length > 0) {
-            setFiles([...files, ...picked]);
+            setFiles([...files, ...picked.map(pendingFile)]);
             onFilesAdded?.(picked);
           }
           e.target.value = "";
@@ -229,6 +303,9 @@ function FilePicker({
               name={file.filename}
               size={file.size}
               onRemove={() => removeExisting?.(file.id)}
+              onRename={
+                renameExisting ? (name) => renameExisting(file.id, name) : undefined
+              }
             />
           ))}
           {staged?.map((file) => (
@@ -238,14 +315,20 @@ function FilePicker({
               size={file.size}
               imported
               onRemove={() => removeStaged?.(file.key)}
+              onRename={
+                renameStaged ? (name) => renameStaged(file.key, name) : undefined
+              }
             />
           ))}
-          {files.map((file, i) => (
+          {files.map((entry) => (
             <FileRow
-              key={`${file.name}-${i}`}
-              name={file.name}
-              size={file.size}
-              onRemove={() => setFiles(files.filter((_, j) => j !== i))}
+              key={entry.key}
+              name={entry.name}
+              size={entry.file.size}
+              onRemove={() => setFiles(files.filter((f) => f.key !== entry.key))}
+              onRename={
+                onRenameNew ? (name) => onRenameNew(entry.key, name) : undefined
+              }
             />
           ))}
         </ul>
@@ -463,11 +546,11 @@ export function ModelForm({
   const [existingModelFiles, setExistingModelFiles] = useState<ExistingFile[]>(
     () => model?.files.filter((f) => f.kind === "model") ?? [],
   );
-  const [modelFiles, setModelFiles] = useState<File[]>([]);
+  const [modelFiles, setModelFiles] = useState<PendingFile[]>([]);
   const [existingPdfFiles, setExistingPdfFiles] = useState<ExistingFile[]>(
     () => model?.files.filter((f) => f.kind === "pdf") ?? [],
   );
-  const [pdfFiles, setPdfFiles] = useState<File[]>([]);
+  const [pdfFiles, setPdfFiles] = useState<PendingFile[]>([]);
   const [images, setImages] = useState<ImageEntry[]>(() =>
     (model?.files ?? [])
       .filter((f) => f.kind === "image")
@@ -643,15 +726,23 @@ export function ModelForm({
       // Images upload in display order so their positions (and the cover)
       // match what the user arranged.
       const newImages = images.filter((image) => image.type === "new");
-      const toUpload: { file: File; kind: "model" | "image" | "pdf" }[] = [
-        ...modelFiles.map((file) => ({ file, kind: "model" as const })),
-        ...pdfFiles.map((file) => ({ file, kind: "pdf" as const })),
-        ...newImages.map((image) => ({ file: image.file, kind: "image" as const })),
+      const toUpload: {
+        file: File;
+        kind: "model" | "image" | "pdf";
+        filename: string;
+      }[] = [
+        ...modelFiles.map((f) => ({ file: f.file, kind: "model" as const, filename: f.name })),
+        ...pdfFiles.map((f) => ({ file: f.file, kind: "pdf" as const, filename: f.name })),
+        ...newImages.map((image) => ({
+          file: image.file,
+          kind: "image" as const,
+          filename: image.file.name,
+        })),
       ];
       const uploaded: UploadedFile[] = [];
-      for (const [i, { file, kind }] of toUpload.entries()) {
-        setStatus(`Uploading ${i + 1}/${toUpload.length}: ${file.name}`);
-        uploaded.push(await uploadFile(file, kind));
+      for (const [i, { file, kind, filename }] of toUpload.entries()) {
+        setStatus(`Uploading ${i + 1}/${toUpload.length}: ${filename}`);
+        uploaded.push(await uploadFile(file, kind, filename));
       }
 
       // On success the action redirects (handled by Next); it only returns
@@ -682,6 +773,10 @@ export function ModelForm({
           removedFileIds: model.files
             .filter((f) => !keptIds.has(f.id))
             .map((f) => f.id),
+          renamedFiles: existingModelFiles.map((f) => ({
+            id: f.id,
+            filename: f.filename,
+          })),
           imageOrder,
           bom,
         });
@@ -760,11 +855,26 @@ export function ModelForm({
               removeExisting={(id) =>
                 setExistingModelFiles((files) => files.filter((f) => f.id !== id))
               }
+              renameExisting={(id, name) =>
+                setExistingModelFiles((files) =>
+                  files.map((f) => (f.id === id ? { ...f, filename: name } : f)),
+                )
+              }
               staged={stagedModelFiles}
               removeStaged={(key) =>
                 setStagedModelFiles((prev) => prev.filter((f) => f.key !== key))
               }
+              renameStaged={(key, name) =>
+                setStagedModelFiles((prev) =>
+                  prev.map((f) => (f.key === key ? { ...f, filename: name } : f)),
+                )
+              }
               onFilesAdded={importFrom3mf}
+              onRenameNew={(key, name) =>
+                setModelFiles((files) =>
+                  files.map((f) => (f.key === key ? { ...f, name } : f)),
+                )
+              }
               icon={<FileBox className="size-6" />}
             />
           )}
@@ -887,14 +997,14 @@ export function ModelForm({
                   filename: f.filename,
                   size: f.size,
                 })),
-                ...modelFiles.map((f) => ({ filename: f.name, size: f.size })),
+                ...modelFiles.map((f) => ({ filename: f.name, size: f.file.size })),
               ],
               pdfFiles: [
                 ...existingPdfFiles.map((f) => ({
                   filename: f.filename,
                   size: f.size,
                 })),
-                ...pdfFiles.map((f) => ({ filename: f.name, size: f.size })),
+                ...pdfFiles.map((f) => ({ filename: f.name, size: f.file.size })),
               ],
               userName,
               createdAt: model?.createdAt ?? new Date(),
