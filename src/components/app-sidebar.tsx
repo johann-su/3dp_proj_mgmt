@@ -130,9 +130,6 @@ export function AppSidebar({ user }: { user: SessionUser | null }) {
 
       <SidebarFooter>
         <SidebarMenu>
-          <SidebarMenuItem>
-            <ThemeToggle />
-          </SidebarMenuItem>
           {user ? (
             <SidebarMenuItem>
               <DropdownMenu>
@@ -159,11 +156,14 @@ export function AppSidebar({ user }: { user: SessionUser | null }) {
                   align="end"
                   className="w-56"
                 >
-                  <DropdownMenuLabel>
-                    <div className="font-medium">{user.name}</div>
-                    <div className="text-xs text-muted-foreground font-normal">
-                      {user.email}
+                  <DropdownMenuLabel className="flex items-center justify-between gap-2">
+                    <div>
+                      <div className="font-medium">{user.name}</div>
+                      <div className="text-xs text-muted-foreground font-normal">
+                        {user.email}
+                      </div>
                     </div>
+                    <ThemeToggle />
                   </DropdownMenuLabel>
                   <DropdownMenuSeparator />
                   <DropdownMenuItem asChild>
@@ -200,6 +200,9 @@ export function AppSidebar({ user }: { user: SessionUser | null }) {
             </SidebarMenuItem>
           ) : (
             <>
+              <SidebarMenuItem>
+                <ThemeToggle />
+              </SidebarMenuItem>
               <SidebarMenuItem>
                 <SidebarMenuButton asChild tooltip="Sign in">
                   <Link href="/sign-in">
