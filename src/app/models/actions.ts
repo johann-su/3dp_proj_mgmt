@@ -63,9 +63,10 @@ function validateSourceUrl(raw: string | null | undefined): string | null | unde
   return undefined; // invalid
 }
 
-// Reference to one image in the order chosen in the wizard: either a file
-// that already exists on the model, or an index into `newFiles`.
-export type ImageOrderRef = { existingId: string } | { newIndex: number };
+// Reference to one file in the order chosen in the wizard: either a file
+// that already exists on the model, or an index into `newFiles`. Used
+// per-kind (model files and images each keep their own relative order).
+export type FileOrderRef = { existingId: string } | { newIndex: number };
 
 export type UpdateModelInput = {
   modelId: string;
@@ -78,9 +79,45 @@ export type UpdateModelInput = {
   // Filenames edited for files that already exist on the model (kept, not
   // removed). Ids outside the kept set are ignored.
   renamedFiles?: { id: string; filename: string }[];
-  imageOrder?: ImageOrderRef[];
+  modelFileOrder?: FileOrderRef[];
+  imageOrder?: FileOrderRef[];
   bom?: BomItemInput[];
 };
+
+// Merges a client-supplied order (kept-file ids interleaved with indices into
+// newFiles) with any files of that kind the client didn't reference, which
+// are appended at the end. Kept generic over `kind` so model files and
+// images can each keep their own relative order within the shared,
+// otherwise-flat `position` column.
+function resolveFileOrder(
+  kind: FileKind,
+  kept: { id: string; kind: FileKind }[],
+  newFiles: UploadedFile[],
+  insertedIds: string[],
+  orderRefs: FileOrderRef[] | undefined,
+): string[] {
+  const keptIds = new Set(kept.filter((f) => f.kind === kind).map((f) => f.id));
+  const ordered: string[] = [];
+  const seen = new Set<string>();
+  const push = (id: string | undefined) => {
+    if (id && !seen.has(id)) {
+      seen.add(id);
+      ordered.push(id);
+    }
+  };
+  for (const ref of orderRefs ?? []) {
+    if ("existingId" in ref) {
+      if (keptIds.has(ref.existingId)) push(ref.existingId);
+    } else if (newFiles[ref.newIndex]?.kind === kind) {
+      push(insertedIds[ref.newIndex]);
+    }
+  }
+  for (const id of keptIds) push(id);
+  newFiles.forEach((file, i) => {
+    if (file.kind === kind) push(insertedIds[i]);
+  });
+  return ordered;
+}
 
 type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
 
@@ -293,37 +330,26 @@ export async function updateModel(
       for (const row of inserted) insertedIds[row.position] = row.id;
     }
 
-    // Recompute positions: print files keep their order (kept, then new);
-    // images follow the order chosen in the wizard, with any image the
-    // client didn't reference appended at the end.
-    const keptImageIds = new Set(
-      kept.filter((f) => f.kind === "image").map((f) => f.id),
+    // Recompute positions: model files and images each follow the order
+    // chosen in the wizard (resolveFileOrder appends anything the client
+    // didn't reference); PDFs just keep kept-then-new, since there's no
+    // reorder UI for them.
+    const orderedModelIds = resolveFileOrder(
+      "model",
+      kept,
+      input.newFiles,
+      insertedIds,
+      input.modelFileOrder,
     );
-    const orderedImageIds: string[] = [];
-    const seen = new Set<string>();
-    const pushImage = (id: string | undefined) => {
-      if (id && !seen.has(id)) {
-        seen.add(id);
-        orderedImageIds.push(id);
-      }
-    };
-    for (const ref of input.imageOrder ?? []) {
-      if ("existingId" in ref) {
-        if (keptImageIds.has(ref.existingId)) pushImage(ref.existingId);
-      } else if (input.newFiles[ref.newIndex]?.kind === "image") {
-        pushImage(insertedIds[ref.newIndex]);
-      }
-    }
-    for (const id of keptImageIds) pushImage(id);
-    input.newFiles.forEach((file, i) => {
-      if (file.kind === "image") pushImage(insertedIds[i]);
-    });
-
+    const orderedImageIds = resolveFileOrder(
+      "image",
+      kept,
+      input.newFiles,
+      insertedIds,
+      input.imageOrder,
+    );
     const orderedIds = [
-      ...kept.filter((f) => f.kind === "model").map((f) => f.id),
-      ...input.newFiles
-        .map((file, i) => (file.kind === "model" ? insertedIds[i] : null))
-        .filter((id): id is string => id !== null),
+      ...orderedModelIds,
       ...kept.filter((f) => f.kind === "pdf").map((f) => f.id),
       ...input.newFiles
         .map((file, i) => (file.kind === "pdf" ? insertedIds[i] : null))
