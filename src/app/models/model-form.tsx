@@ -6,12 +6,15 @@ import { toast } from "sonner";
 import {
   ArrowLeft,
   ArrowRight,
+  ChevronDown,
   ChevronLeft,
   ChevronRight,
+  ChevronUp,
   CloudDownload,
   Eye,
   FileBox,
   FileText,
+  GripVertical,
   ImageIcon,
   Pencil,
   X,
@@ -19,7 +22,7 @@ import {
 import {
   createModel,
   updateModel,
-  type ImageOrderRef,
+  type FileOrderRef,
   type UploadedFile,
 } from "@/app/models/actions";
 import { extract3mfMetadata } from "@/lib/threemf";
@@ -106,6 +109,40 @@ function stagedImageEntry(file: UploadedFile): ImageEntry {
     type: "staged",
     staged: file,
     src: `/api/uploads/preview?key=${encodeURIComponent(file.key)}`,
+    filename: file.filename,
+    size: file.size,
+  };
+}
+
+// One model (.3mf/.step) file in the wizard, in display order: already
+// stored on the model (edit mode), staged in S3 by a URL import (create
+// mode), or freshly picked. Mirrors ImageEntry so the same reorder mechanics
+// (drag + move buttons) apply.
+type ModelFileEntry = {
+  key: string;
+  filename: string;
+  size: number;
+} & (
+  | { type: "existing"; id: string }
+  | { type: "staged"; staged: UploadedFile }
+  | { type: "new"; file: File }
+);
+
+function newModelFileEntry(file: File): ModelFileEntry {
+  return {
+    key: crypto.randomUUID(),
+    type: "new",
+    file,
+    filename: file.name,
+    size: file.size,
+  };
+}
+
+function stagedModelFileEntry(file: UploadedFile): ModelFileEntry {
+  return {
+    key: file.key,
+    type: "staged",
+    staged: file,
     filename: file.filename,
     size: file.size,
   };
@@ -337,6 +374,216 @@ function FilePicker({
   );
 }
 
+function ModelFileRow({
+  entry,
+  isFirst,
+  isLast,
+  dragging,
+  onDragStart,
+  onDragEnd,
+  onDragEnter,
+  onMove,
+  onRemove,
+  onRename,
+}: {
+  entry: ModelFileEntry;
+  isFirst: boolean;
+  isLast: boolean;
+  dragging: boolean;
+  onDragStart: () => void;
+  onDragEnd: () => void;
+  onDragEnter: () => void;
+  onMove: (direction: -1 | 1) => void;
+  onRemove: () => void;
+  onRename: (newName: string) => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [draftBase, setDraftBase] = useState("");
+  const [base, ext] = splitExtension(entry.filename);
+
+  function commit() {
+    setEditing(false);
+    const trimmed = draftBase.trim();
+    if (trimmed && trimmed !== base) onRename(`${trimmed}${ext}`);
+  }
+
+  return (
+    <li
+      className={cn(
+        "flex min-w-0 items-center gap-2 text-sm border rounded-md px-3 py-2",
+        dragging && "opacity-50",
+      )}
+      onDragOver={(e) => {
+        e.preventDefault();
+        e.dataTransfer.dropEffect = "move";
+      }}
+      onDragEnter={onDragEnter}
+      onDrop={(e) => e.preventDefault()}
+    >
+      {/* Only the grip starts the drag, so dragging doesn't fight with
+          selecting text in the rename input. The up/down buttons below cover
+          reordering for keyboard/touch use, where dragging is impractical. */}
+      <span
+        draggable
+        onDragStart={(e) => {
+          e.dataTransfer.effectAllowed = "move";
+          onDragStart();
+        }}
+        onDragEnd={onDragEnd}
+        aria-hidden="true"
+        className="shrink-0 cursor-grab text-muted-foreground"
+      >
+        <GripVertical className="size-4" />
+      </span>
+      {entry.type === "staged" && (
+        <CloudDownload className="size-3.5 text-primary shrink-0" />
+      )}
+      {editing ? (
+        <span className="flex min-w-0 flex-1 items-center gap-1.5">
+          <Input
+            autoFocus
+            aria-label={`New name for ${entry.filename}`}
+            value={draftBase}
+            onChange={(e) => setDraftBase(e.target.value)}
+            onBlur={commit}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                commit();
+              } else if (e.key === "Escape") {
+                e.preventDefault();
+                setEditing(false);
+              }
+            }}
+            className="h-6 min-w-0 flex-1 px-1"
+          />
+          <span className="shrink-0 text-muted-foreground">{ext}</span>
+        </span>
+      ) : (
+        <span className="truncate">{entry.filename}</span>
+      )}
+      <span className="text-muted-foreground ml-auto shrink-0">
+        {formatBytes(entry.size)}
+      </span>
+      <Button
+        type="button"
+        variant="ghost"
+        size="icon"
+        className="size-6 shrink-0"
+        aria-label={`Move ${entry.filename} up`}
+        disabled={isFirst}
+        onClick={() => onMove(-1)}
+      >
+        <ChevronUp className="size-3.5" />
+      </Button>
+      <Button
+        type="button"
+        variant="ghost"
+        size="icon"
+        className="size-6 shrink-0"
+        aria-label={`Move ${entry.filename} down`}
+        disabled={isLast}
+        onClick={() => onMove(1)}
+      >
+        <ChevronDown className="size-3.5" />
+      </Button>
+      {!editing && (
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          className="size-6 shrink-0"
+          aria-label={`Rename ${entry.filename}`}
+          onClick={() => {
+            setDraftBase(base);
+            setEditing(true);
+          }}
+        >
+          <Pencil className="size-3.5" />
+        </Button>
+      )}
+      <Button
+        type="button"
+        variant="ghost"
+        size="icon"
+        className="size-6 shrink-0"
+        aria-label={`Remove ${entry.filename}`}
+        onClick={onRemove}
+      >
+        <X className="size-3.5" />
+      </Button>
+    </li>
+  );
+}
+
+function ModelFilePicker({
+  entries,
+  onAdd,
+  onRemove,
+  onRename,
+  onMove,
+  onReorder,
+}: {
+  entries: ModelFileEntry[];
+  onAdd: (files: File[]) => void;
+  onRemove: (key: string) => void;
+  onRename: (key: string, name: string) => void;
+  onMove: (key: string, direction: -1 | 1) => void;
+  onReorder: (key: string, targetKey: string) => void;
+}) {
+  const inputRef = useRef<HTMLInputElement>(null);
+  const [draggedKey, setDraggedKey] = useState<string | null>(null);
+
+  return (
+    <div className="grid gap-2">
+      <input
+        ref={inputRef}
+        type="file"
+        accept={MODEL_ACCEPT}
+        multiple
+        className="hidden"
+        onChange={(e) => {
+          const picked = Array.from(e.target.files ?? []);
+          if (picked.length > 0) onAdd(picked);
+          e.target.value = "";
+        }}
+      />
+      <button
+        type="button"
+        onClick={() => inputRef.current?.click()}
+        className="border border-dashed rounded-lg p-6 text-sm text-muted-foreground hover:bg-accent/50 transition-colors flex flex-col items-center gap-2"
+      >
+        <FileBox className="size-6" />
+        Click to add .3mf files — title, description, images and printer are
+        imported automatically. Drag rows to reorder.
+      </button>
+      {entries.length > 0 && (
+        <ul className="grid gap-1">
+          {entries.map((entry, i) => (
+            <ModelFileRow
+              key={entry.key}
+              entry={entry}
+              isFirst={i === 0}
+              isLast={i === entries.length - 1}
+              dragging={draggedKey === entry.key}
+              onDragStart={() => setDraggedKey(entry.key)}
+              onDragEnd={() => setDraggedKey(null)}
+              onDragEnter={() => {
+                if (draggedKey && draggedKey !== entry.key) {
+                  onReorder(draggedKey, entry.key);
+                }
+              }}
+              onMove={(direction) => onMove(entry.key, direction)}
+              onRemove={() => onRemove(entry.key)}
+              onRename={(name) => onRename(entry.key, name)}
+            />
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
 function ImagePicker({
   images,
   onAdd,
@@ -543,10 +790,18 @@ export function ModelForm({
   const [title, setTitle] = useState(model?.title ?? "");
   const [description, setDescription] = useState(model?.description ?? "");
   const [tags, setTags] = useState(model?.tags.join(", ") ?? "");
-  const [existingModelFiles, setExistingModelFiles] = useState<ExistingFile[]>(
-    () => model?.files.filter((f) => f.kind === "model") ?? [],
+  const [modelFileEntries, setModelFileEntries] = useState<ModelFileEntry[]>(
+    () =>
+      (model?.files ?? [])
+        .filter((f) => f.kind === "model")
+        .map((f) => ({
+          key: f.id,
+          type: "existing",
+          id: f.id,
+          filename: f.filename,
+          size: f.size,
+        })),
   );
-  const [modelFiles, setModelFiles] = useState<PendingFile[]>([]);
   const [existingPdfFiles, setExistingPdfFiles] = useState<ExistingFile[]>(
     () => model?.files.filter((f) => f.kind === "pdf") ?? [],
   );
@@ -568,16 +823,10 @@ export function ModelForm({
   const [status, setStatus] = useState<string | null>(null);
   const [extracting, setExtracting] = useState(0);
 
-  // Model files pulled in by URL import (already staged in S3) and the source
-  // link, only used when creating a new model. Staged images live in `images`.
-  const [stagedModelFiles, setStagedModelFiles] = useState<UploadedFile[]>([]);
   const [sourceUrl, setSourceUrl] = useState<string | null>(null);
   const [onshapeMicroversion, setOnshapeMicroversion] = useState<string | null>(null);
 
-  const hasModelFile =
-    existingModelFiles.length > 0 ||
-    modelFiles.length > 0 ||
-    stagedModelFiles.length > 0;
+  const hasModelFile = modelFileEntries.length > 0;
 
   // Hydrate from an import draft handed over by /models/import. Create mode
   // only; runs once after hydration (sessionStorage is client-only).
@@ -594,7 +843,11 @@ export function ModelForm({
       setTags((draft.tags ?? []).join(", "));
       setSourceUrl(draft.sourceUrl ?? null);
       setOnshapeMicroversion(draft.onshapeMicroversion ?? null);
-      setStagedModelFiles((draft.files ?? []).filter((f) => f.kind === "model"));
+      setModelFileEntries(
+        (draft.files ?? [])
+          .filter((f) => f.kind === "model")
+          .map(stagedModelFileEntry),
+      );
       setImages(
         (draft.files ?? [])
           .filter((f) => f.kind === "image")
@@ -660,6 +913,40 @@ export function ModelForm({
     });
   }
 
+  function removeModelFile(key: string) {
+    setModelFileEntries((prev) => prev.filter((entry) => entry.key !== key));
+  }
+
+  function renameModelFile(key: string, name: string) {
+    setModelFileEntries((prev) =>
+      prev.map((entry) => (entry.key === key ? { ...entry, filename: name } : entry)),
+    );
+  }
+
+  function moveModelFile(key: string, direction: -1 | 1) {
+    setModelFileEntries((prev) => {
+      const i = prev.findIndex((entry) => entry.key === key);
+      const j = i + direction;
+      if (i === -1 || j < 0 || j >= prev.length) return prev;
+      const next = [...prev];
+      [next[i], next[j]] = [next[j], next[i]];
+      return next;
+    });
+  }
+
+  // Moves the dragged file to the position of the row it is dragged over.
+  function reorderModelFile(key: string, targetKey: string) {
+    setModelFileEntries((prev) => {
+      const from = prev.findIndex((entry) => entry.key === key);
+      const to = prev.findIndex((entry) => entry.key === targetKey);
+      if (from === -1 || to === -1 || from === to) return prev;
+      const next = [...prev];
+      const [moved] = next.splice(from, 1);
+      next.splice(to, 0, moved);
+      return next;
+    });
+  }
+
   async function importFrom3mf(added: File[]) {
     for (const file of added) {
       if (!file.name.toLowerCase().endsWith(".3mf")) continue;
@@ -698,6 +985,11 @@ export function ModelForm({
     }
   }
 
+  function addModelFiles(files: File[]) {
+    setModelFileEntries((prev) => [...prev, ...files.map(newModelFileEntry)]);
+    importFrom3mf(files);
+  }
+
   function goToStep(target: 1 | 2) {
     if (target === step) return;
     if (target === 2 && (!hasModelFile || extracting > 0)) return;
@@ -723,15 +1015,20 @@ export function ModelForm({
     }
 
     try {
-      // Images upload in display order so their positions (and the cover)
-      // match what the user arranged.
+      // Model files and images upload in display order so their positions
+      // (and the image cover) match what the user arranged.
+      const newModelFiles = modelFileEntries.filter((entry) => entry.type === "new");
       const newImages = images.filter((image) => image.type === "new");
       const toUpload: {
         file: File;
         kind: "model" | "image" | "pdf";
         filename: string;
       }[] = [
-        ...modelFiles.map((f) => ({ file: f.file, kind: "model" as const, filename: f.name })),
+        ...newModelFiles.map((entry) => ({
+          file: entry.file,
+          kind: "model" as const,
+          filename: entry.filename,
+        })),
         ...pdfFiles.map((f) => ({ file: f.file, kind: "pdf" as const, filename: f.name })),
         ...newImages.map((image) => ({
           file: image.file,
@@ -751,14 +1048,25 @@ export function ModelForm({
       if (model) {
         setStatus("Saving changes…");
         const keptIds = new Set([
-          ...existingModelFiles.map((f) => f.id),
+          ...modelFileEntries
+            .filter((entry) => entry.type === "existing")
+            .map((entry) => entry.id),
           ...existingPdfFiles.map((f) => f.id),
           ...images
             .filter((image) => image.type === "existing")
             .map((image) => image.id),
         ]);
-        let uploadIndex = modelFiles.length + pdfFiles.length;
-        const imageOrder: ImageOrderRef[] = images.map((image) =>
+        // newIndex values are indices into `uploaded`/`newFiles`, which lists
+        // new model files first, then new PDFs, then new images (toUpload's
+        // order) — so the running counter carries over between the two.
+        let uploadIndex = 0;
+        const modelFileOrder: FileOrderRef[] = modelFileEntries.map((entry) =>
+          entry.type === "existing"
+            ? { existingId: entry.id }
+            : { newIndex: uploadIndex++ },
+        );
+        uploadIndex += pdfFiles.length;
+        const imageOrder: FileOrderRef[] = images.map((image) =>
           image.type === "existing"
             ? { existingId: image.id }
             : { newIndex: uploadIndex++ },
@@ -773,23 +1081,31 @@ export function ModelForm({
           removedFileIds: model.files
             .filter((f) => !keptIds.has(f.id))
             .map((f) => f.id),
-          renamedFiles: existingModelFiles.map((f) => ({
-            id: f.id,
-            filename: f.filename,
-          })),
+          renamedFiles: modelFileEntries
+            .filter((entry) => entry.type === "existing")
+            .map((entry) => ({ id: entry.id, filename: entry.filename })),
+          modelFileOrder,
           imageOrder,
           bom,
         });
       } else {
         setStatus("Creating model…");
-        // Order determines position (and the cover = first image): staged
-        // model files, freshly uploaded models, PDFs, then images as arranged
-        // in the wizard (staged and new interleaved).
+        // Order determines position (and the image cover = first image):
+        // model files and images each follow the order arranged in the
+        // wizard (staged and new interleaved), then PDFs.
         const uploadedImages = uploaded.filter((f) => f.kind === "image");
         const uploadedModels = uploaded.filter((f) => f.kind === "model");
         const uploadedPdfs = uploaded.filter((f) => f.kind === "pdf");
-        // uploadedImages holds the new images in `images` order, so walking
-        // `images` and consuming them one by one restores the arrangement.
+        // uploadedModels/uploadedImages hold the new files in entry order, so
+        // walking the entries and consuming them one by one restores the
+        // arrangement.
+        let uploadedModelIndex = 0;
+        const orderedModelFiles: UploadedFile[] = [];
+        for (const entry of modelFileEntries) {
+          if (entry.type === "staged") orderedModelFiles.push(entry.staged);
+          else if (entry.type === "new")
+            orderedModelFiles.push(uploadedModels[uploadedModelIndex++]);
+        }
         let uploadedIndex = 0;
         const orderedImages: UploadedFile[] = [];
         for (const image of images) {
@@ -802,12 +1118,7 @@ export function ModelForm({
           description,
           categoryId: categoryId || null,
           tags: tags.split(","),
-          files: [
-            ...stagedModelFiles,
-            ...uploadedModels,
-            ...uploadedPdfs,
-            ...orderedImages,
-          ],
+          files: [...orderedModelFiles, ...uploadedPdfs, ...orderedImages],
           bom,
           sourceUrl,
           onshapeMicroversion,
@@ -846,36 +1157,13 @@ export function ModelForm({
           />
 
           {step === 1 && (
-            <FilePicker
-              hint="Click to add .3mf files — title, description, images and printer are imported automatically"
-              accept={MODEL_ACCEPT}
-              files={modelFiles}
-              setFiles={setModelFiles}
-              existing={existingModelFiles}
-              removeExisting={(id) =>
-                setExistingModelFiles((files) => files.filter((f) => f.id !== id))
-              }
-              renameExisting={(id, name) =>
-                setExistingModelFiles((files) =>
-                  files.map((f) => (f.id === id ? { ...f, filename: name } : f)),
-                )
-              }
-              staged={stagedModelFiles}
-              removeStaged={(key) =>
-                setStagedModelFiles((prev) => prev.filter((f) => f.key !== key))
-              }
-              renameStaged={(key, name) =>
-                setStagedModelFiles((prev) =>
-                  prev.map((f) => (f.key === key ? { ...f, filename: name } : f)),
-                )
-              }
-              onFilesAdded={importFrom3mf}
-              onRenameNew={(key, name) =>
-                setModelFiles((files) =>
-                  files.map((f) => (f.key === key ? { ...f, name } : f)),
-                )
-              }
-              icon={<FileBox className="size-6" />}
+            <ModelFilePicker
+              entries={modelFileEntries}
+              onAdd={addModelFiles}
+              onRemove={removeModelFile}
+              onRename={renameModelFile}
+              onMove={moveModelFile}
+              onReorder={reorderModelFile}
             />
           )}
 
@@ -988,17 +1276,10 @@ export function ModelForm({
               ],
               bom,
               images: images.map((image) => ({ src: image.src })),
-              printFiles: [
-                ...existingModelFiles.map((f) => ({
-                  filename: f.filename,
-                  size: f.size,
-                })),
-                ...stagedModelFiles.map((f) => ({
-                  filename: f.filename,
-                  size: f.size,
-                })),
-                ...modelFiles.map((f) => ({ filename: f.name, size: f.file.size })),
-              ],
+              printFiles: modelFileEntries.map((entry) => ({
+                filename: entry.filename,
+                size: entry.size,
+              })),
               pdfFiles: [
                 ...existingPdfFiles.map((f) => ({
                   filename: f.filename,
