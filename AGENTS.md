@@ -166,6 +166,50 @@ Decisions taken and why — guidance for development.
   supporting indexes are created in migration `0008_search.sql`. The homepage
   is now a pure browse grid (category filter + recent collections/models); its
   search box just submits the query to `/search`.
+- **"Open in slicer" deep links** (`src/app/models/[id]/file-download-menu.tsx`)
+  hand a `.3mf` to Bambu Studio / OrcaSlicer via their custom URL schemes. The
+  two apps register different schemes **and parse the link differently**, so the
+  component builds a *different* URL per app (`SLICERS[].buildUrl`). Do not try
+  to unify them — every "obvious" shared format breaks one of them:
+  - **Schemes differ from the app names.** OrcaSlicer registers `orcaslicer:`;
+    Bambu Studio registers **`bambustudioopen:`** (NOT `bambustudio:`). An
+    unregistered scheme fails *silently* — macOS finds no handler and shows
+    nothing, not even the "open this app?" prompt. Verify against the installed
+    app: `PlistBuddy -c "Print :CFBundleURLTypes"
+    /Applications/BambuStudio.app/Contents/Info.plist`.
+  - **Orca** wants `orcaslicer://open?file=<encoded-url>` (Orca's regex
+    `open[\/]?\?file=` also accepts a `open/?` slash — the legacy PrusaSlicer
+    "mysterious slash" — but Printables/MakerWorld omit it, so we do too) and
+    (for a non-MakerWorld host) treats the *entire* remainder after `file=` as
+    the URL to fetch — so **must NOT** get a `&name=` appended (it gets fetched
+    as part of the URL and our route 404s: `{"error":"Not found"}`). Orca names
+    the saved file from that URL's **last path segment** (`filename_from_url` in
+    `Download`), so a bare `.../api/files/<id>` saves as the UUID with no
+    extension. We therefore point Orca at the filename-suffixed route
+    `.../api/files/<id>/<name>.3mf` (see `src/app/api/files/[id]/[filename]/`,
+    which ignores the name and reuses the `[id]` handler) to get a real `.3mf`
+    name — the same shape as Printables' `…/build_tray_v3.step` link. See
+    `Downloader::start_download` in OrcaSlicer.
+  - **Bambu** (macOS `GUI_App::MacOpenURL`) takes whatever follows
+    `bambustudioopen://`, `url_decode`s it once, and treats it as the raw
+    download URL — **rejected unless it starts with `http`/`https`** (an
+    `open/?file=` prefix silently no-ops *after* the trusted-site prompt). It
+    then splits a trailing `&name=` (a literal `.Find("&name=")`, so it must be
+    `&name=`, not `?name=`) to name the file and **aborts ("Download failed,
+    unknown file format") unless that name ends in `.3mf`** (the bare-UUID URL
+    tail has no extension). Match MakerWorld's own links: percent-encode the
+    whole `<url>&name=<filename>.3mf` as one blob after the scheme
+    (`bambustudioopen://<encodeURIComponent(url + "&name=" + name)>`) so the
+    browser can't mangle the literal `&`/`:` before the OS hands it off.
+  - Cold launch (app not already running): **Bambu works** — `MacOpenURL`
+    stashes the URL in `m_download_file_url` and replays it after `post_init`.
+    **Orca does not** — its Apple Event arrives before the handler is ready and
+    is dropped, so it only launches to the home screen (upstream macOS bug, not
+    fixable here). Bambu's `import_model_id` also early-returns if its network
+    plugin/agent isn't loaded (`if (!m_agent) return;`), and its trusted-site
+    allowlist only auto-trusts makerworld / bblmw CDN / `amazonaws.com` /
+    `aliyuncs.com` hosts (any other host — including a self-hosted instance —
+    prompts "not from a trusted site"; clicking through is expected).
 
 # Onshape integration
 
@@ -222,3 +266,8 @@ touching it:
 
 - [Onshape API](https://onshape-public.github.io/docs/api-intro/)
 - [Onshape import/export (translations)](https://onshape-public.github.io/docs/api-adv/translation/)
+- Slicer deep links — [Bambu Studio `GUI_App.cpp` URL handler](https://github.com/bambulab/BambuStudio/blob/master/src/slic3r/GUI/GUI_App.cpp)
+  and `Plater::import_model_id` in [`Plater.cpp`](https://github.com/bambulab/BambuStudio/blob/master/src/slic3r/GUI/Plater.cpp);
+  OrcaSlicer's identical [`Plater::import_model_id`](https://github.com/SoftFever/OrcaSlicer/blob/main/src/slic3r/GUI/Plater.cpp);
+  [Bambu Studio URL schemes — what doesn't work and why](https://productionshaped.com/notes/2026-05-14-bambu-studio-url-schemes-what-doesnt-work-and-why/);
+  [BambuStudio #6120 (URL handler domain restriction)](https://github.com/bambulab/BambuStudio/issues/6120)
