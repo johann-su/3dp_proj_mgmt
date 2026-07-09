@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import {
   ArrowLeft,
@@ -39,6 +40,19 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
+import { Card, CardContent } from "@/components/ui/card";
+import { Separator } from "@/components/ui/separator";
 
 type Category = { id: string; name: string; slug: string };
 
@@ -368,7 +382,15 @@ function ImagePicker({
   );
 }
 
-function StepIndicator({ step }: { step: 1 | 2 }) {
+function StepIndicator({
+  step,
+  canGoToDetails,
+  onSelect,
+}: {
+  step: 1 | 2;
+  canGoToDetails: boolean;
+  onSelect: (step: 1 | 2) => void;
+}) {
   return (
     <ol className="flex items-center gap-3 text-sm mb-6">
       {(
@@ -376,29 +398,37 @@ function StepIndicator({ step }: { step: 1 | 2 }) {
           [1, "Files"],
           [2, "Details"],
         ] as const
-      ).map(([n, name], i) => (
-        <li key={n} className="flex items-center gap-3">
-          {i > 0 && <span className="w-8 h-px bg-border" />}
-          <span
-            className={cn(
-              "flex items-center gap-2",
-              step === n ? "font-medium" : "text-muted-foreground",
-            )}
-          >
-            <span
+      ).map(([n, name], i) => {
+        const disabled = n === 2 && !canGoToDetails;
+        return (
+          <li key={n} className="flex items-center gap-3">
+            {i > 0 && <span className="w-8 h-px bg-border" />}
+            <button
+              type="button"
+              disabled={disabled}
+              onClick={() => onSelect(n)}
               className={cn(
-                "size-5 rounded-full flex items-center justify-center text-xs",
+                "flex items-center gap-2 rounded disabled:cursor-not-allowed disabled:opacity-50",
                 step === n
-                  ? "bg-primary text-primary-foreground"
-                  : "border text-muted-foreground",
+                  ? "font-medium"
+                  : "text-muted-foreground hover:text-foreground",
               )}
             >
-              {n}
-            </span>
-            {name}
-          </span>
-        </li>
-      ))}
+              <span
+                className={cn(
+                  "size-5 rounded-full flex items-center justify-center text-xs",
+                  step === n
+                    ? "bg-primary text-primary-foreground"
+                    : "border text-muted-foreground",
+                )}
+              >
+                {n}
+              </span>
+              {name}
+            </button>
+          </li>
+        );
+      })}
     </ol>
   );
 }
@@ -423,6 +453,8 @@ export function ModelForm({
   userName: string;
   model?: ModelFormInitial;
 }) {
+  const router = useRouter();
+  const cancelHref = model ? `/models/${model.id}` : "/models/mine";
   const [step, setStep] = useState<1 | 2>(1);
   const [preview, setPreview] = useState(false);
   const [title, setTitle] = useState(model?.title ?? "");
@@ -583,6 +615,13 @@ export function ModelForm({
     }
   }
 
+  function goToStep(target: 1 | 2) {
+    if (target === step) return;
+    if (target === 2 && (!hasModelFile || extracting > 0)) return;
+    setPreview(false);
+    setStep(target);
+  }
+
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
 
@@ -690,13 +729,28 @@ export function ModelForm({
     }
   }
 
-  return (
-    <form onSubmit={handleSubmit} className="grid gap-6">
-      <div className="mx-auto w-full max-w-2xl grid gap-6">
-        <StepIndicator step={step} />
+  // Content is capped at max-w-2xl (42rem) for readability, so the sidebar
+  // column sits snugly against it — except in preview mode, where
+  // ModelPreview wants the full column width to mimic the real model page.
+  const wide = step === 2 && preview;
 
-        {step === 1 && (
-          <>
+  return (
+    <form
+      onSubmit={handleSubmit}
+      className={cn(
+        "grid gap-6 lg:items-start lg:gap-10",
+        wide ? "lg:grid-cols-[1fr_280px]" : "lg:grid-cols-[42rem_280px]",
+      )}
+    >
+      <div className="min-w-0 grid gap-6">
+        <div className="grid gap-6 max-w-2xl">
+          <StepIndicator
+            step={step}
+            canGoToDetails={hasModelFile && extracting === 0}
+            onSelect={goToStep}
+          />
+
+          {step === 1 && (
             <FilePicker
               hint="Click to add .3mf files — title, description, images and printer are imported automatically"
               accept={MODEL_ACCEPT}
@@ -713,157 +767,169 @@ export function ModelForm({
               onFilesAdded={importFrom3mf}
               icon={<FileBox className="size-6" />}
             />
-            <Button
-              type="button"
-              className="justify-self-end"
-              disabled={!hasModelFile || extracting > 0}
-              onClick={() => setStep(2)}
-            >
-              {extracting > 0 ? "Reading metadata…" : "Continue"}
-              <ArrowRight className="size-4" />
-            </Button>
-          </>
-        )}
+          )}
 
-        {step === 2 && !preview && (
-          <>
-            <div className="grid gap-2">
-              <Label htmlFor="title">Title</Label>
-              <Input
-                id="title"
-                name="title"
-                required
-                placeholder="e.g. Parametric cable clip"
-                value={title}
-                onChange={(e) => setTitle(e.target.value)}
-              />
-            </div>
-
-            <div className="grid gap-2">
-              <div className="flex items-baseline justify-between">
-                <Label htmlFor="description">Description</Label>
-                <span className="text-xs text-muted-foreground">
-                  Markdown supported
-                </span>
-              </div>
-              <Textarea
-                id="description"
-                name="description"
-                rows={6}
-                placeholder="What is it, how to print it, material recommendations… Markdown works: **bold**, - lists, [links](https://…)"
-                value={description}
-                onChange={(e) => setDescription(e.target.value)}
-              />
-            </div>
-
-            <div className="grid gap-2 sm:grid-cols-2 sm:gap-4">
+          {step === 2 && !preview && (
+            <>
               <div className="grid gap-2">
-                <Label>Category</Label>
-                <Select value={categoryId} onValueChange={setCategoryId}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select a category" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {categories.map((category) => (
-                      <SelectItem key={category.id} value={category.id}>
-                        {category.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="grid gap-2">
-                <Label htmlFor="tags">Tags</Label>
+                <Label htmlFor="title">Title</Label>
                 <Input
-                  id="tags"
-                  name="tags"
-                  placeholder="comma, separated, tags"
-                  value={tags}
-                  onChange={(e) => setTags(e.target.value)}
+                  id="title"
+                  name="title"
+                  required
+                  placeholder="e.g. Parametric cable clip"
+                  value={title}
+                  onChange={(e) => setTitle(e.target.value)}
                 />
               </div>
-            </div>
 
-            <BomEditor items={bom} setItems={setBom} />
+              <div className="grid gap-2">
+                <div className="flex items-baseline justify-between">
+                  <Label htmlFor="description">Description</Label>
+                  <span className="text-xs text-muted-foreground">
+                    Markdown supported
+                  </span>
+                </div>
+                <Textarea
+                  id="description"
+                  name="description"
+                  rows={6}
+                  placeholder="What is it, how to print it, material recommendations… Markdown works: **bold**, - lists, [links](https://…)"
+                  value={description}
+                  onChange={(e) => setDescription(e.target.value)}
+                />
+              </div>
 
-            <FilePicker
-              label="Documents (optional)"
-              hint="Click to add PDFs — build instructions, product manual, …"
-              accept={PDF_ACCEPT}
-              files={pdfFiles}
-              setFiles={setPdfFiles}
-              existing={existingPdfFiles}
-              removeExisting={(id) =>
-                setExistingPdfFiles((files) => files.filter((f) => f.id !== id))
-              }
-              icon={<FileText className="size-6" />}
-            />
+              <div className="grid gap-2 sm:grid-cols-2 sm:gap-4">
+                <div className="grid gap-2">
+                  <Label>Category</Label>
+                  <Select value={categoryId} onValueChange={setCategoryId}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select a category" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {categories.map((category) => (
+                        <SelectItem key={category.id} value={category.id}>
+                          {category.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="grid gap-2">
+                  <Label htmlFor="tags">Tags</Label>
+                  <Input
+                    id="tags"
+                    name="tags"
+                    placeholder="comma, separated, tags"
+                    value={tags}
+                    onChange={(e) => setTags(e.target.value)}
+                  />
+                </div>
+              </div>
 
-            <ImagePicker
-              images={images}
-              onAdd={addImages}
-              onRemove={removeImage}
-              onMove={moveImage}
-              onReorder={reorderImage}
-            />
+              <BomEditor items={bom} setItems={setBom} />
 
-            {sourceUrl && (
-              <p className="text-sm text-muted-foreground">
-                Will be linked to its source:{" "}
-                <span className="break-all">{sourceUrl}</span>
-              </p>
-            )}
-          </>
+              <FilePicker
+                label="Documents (optional)"
+                hint="Click to add PDFs — build instructions, product manual, …"
+                accept={PDF_ACCEPT}
+                files={pdfFiles}
+                setFiles={setPdfFiles}
+                existing={existingPdfFiles}
+                removeExisting={(id) =>
+                  setExistingPdfFiles((files) => files.filter((f) => f.id !== id))
+                }
+                icon={<FileText className="size-6" />}
+              />
+
+              <ImagePicker
+                images={images}
+                onAdd={addImages}
+                onRemove={removeImage}
+                onMove={moveImage}
+                onReorder={reorderImage}
+              />
+
+              {sourceUrl && (
+                <p className="text-sm text-muted-foreground">
+                  Will be linked to its source:{" "}
+                  <span className="break-all">{sourceUrl}</span>
+                </p>
+              )}
+            </>
+          )}
+        </div>
+
+        {step === 2 && preview && (
+          <ModelPreview
+            data={{
+              title,
+              description,
+              categoryName:
+                categories.find((c) => c.id === categoryId)?.name ?? null,
+              tags: [
+                ...new Set(
+                  tags
+                    .split(",")
+                    .map((t) => t.trim().toLowerCase())
+                    .filter(Boolean),
+                ),
+              ],
+              bom,
+              images: images.map((image) => ({ src: image.src })),
+              printFiles: [
+                ...existingModelFiles.map((f) => ({
+                  filename: f.filename,
+                  size: f.size,
+                })),
+                ...stagedModelFiles.map((f) => ({
+                  filename: f.filename,
+                  size: f.size,
+                })),
+                ...modelFiles.map((f) => ({ filename: f.name, size: f.size })),
+              ],
+              pdfFiles: [
+                ...existingPdfFiles.map((f) => ({
+                  filename: f.filename,
+                  size: f.size,
+                })),
+                ...pdfFiles.map((f) => ({ filename: f.name, size: f.size })),
+              ],
+              userName,
+              createdAt: model?.createdAt ?? new Date(),
+            }}
+          />
         )}
       </div>
 
-      {step === 2 && preview && (
-        <ModelPreview
-          data={{
-            title,
-            description,
-            categoryName:
-              categories.find((c) => c.id === categoryId)?.name ?? null,
-            tags: [
-              ...new Set(
-                tags
-                  .split(",")
-                  .map((t) => t.trim().toLowerCase())
-                  .filter(Boolean),
-              ),
-            ],
-            bom,
-            images: images.map((image) => ({ src: image.src })),
-            printFiles: [
-              ...existingModelFiles.map((f) => ({
-                filename: f.filename,
-                size: f.size,
-              })),
-              ...stagedModelFiles.map((f) => ({
-                filename: f.filename,
-                size: f.size,
-              })),
-              ...modelFiles.map((f) => ({ filename: f.name, size: f.size })),
-            ],
-            pdfFiles: [
-              ...existingPdfFiles.map((f) => ({
-                filename: f.filename,
-                size: f.size,
-              })),
-              ...pdfFiles.map((f) => ({ filename: f.name, size: f.size })),
-            ],
-            userName,
-            createdAt: model?.createdAt ?? new Date(),
-          }}
-        />
-      )}
-
-      {step === 2 && (
-        <div className="mx-auto w-full max-w-2xl flex justify-between">
+      <Card size="sm" className="lg:sticky lg:top-20">
+        <CardContent className="grid grid-cols-2 gap-2">
           <Button
             type="button"
             variant="outline"
-            disabled={status !== null}
+            className="col-span-2 w-full"
+            disabled={status !== null || step === 1}
+            onClick={() => setPreview((p) => !p)}
+          >
+            {preview ? (
+              <>
+                <Pencil className="size-4" />
+                Back to editing
+              </>
+            ) : (
+              <>
+                <Eye className="size-4" />
+                Preview
+              </>
+            )}
+          </Button>
+
+          <Button
+            type="button"
+            variant="outline"
+            className="w-full"
+            disabled={status !== null || step === 1}
             onClick={() => {
               setPreview(false);
               setStep(1);
@@ -872,31 +938,59 @@ export function ModelForm({
             <ArrowLeft className="size-4" />
             Back
           </Button>
-          <div className="flex gap-2">
-            <Button
-              type="button"
-              variant="outline"
-              disabled={status !== null}
-              onClick={() => setPreview((p) => !p)}
-            >
-              {preview ? (
-                <>
-                  <Pencil className="size-4" />
-                  Back to editing
-                </>
-              ) : (
-                <>
-                  <Eye className="size-4" />
-                  Preview
-                </>
-              )}
-            </Button>
-            <Button type="submit" disabled={status !== null}>
-              {status ?? (model ? "Save changes" : "Create model")}
-            </Button>
-          </div>
-        </div>
-      )}
+
+          <Button
+            type="button"
+            variant="outline"
+            className="w-full"
+            disabled={
+              status !== null || step === 2 || !hasModelFile || extracting > 0
+            }
+            onClick={() => {
+              setPreview(false);
+              setStep(2);
+            }}
+          >
+            {extracting > 0 ? "Reading…" : "Next"}
+            <ArrowRight className="size-4" />
+          </Button>
+
+          <Separator className="col-span-2 my-1" />
+
+          <AlertDialog>
+            <AlertDialogTrigger asChild>
+              <Button
+                type="button"
+                variant="ghost"
+                className="w-full"
+                disabled={status !== null}
+              >
+                Cancel
+              </Button>
+            </AlertDialogTrigger>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Discard changes?</AlertDialogTitle>
+                <AlertDialogDescription>
+                  {model
+                    ? "Your changes to this model will be lost."
+                    : "This model won't be created."}
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>Keep editing</AlertDialogCancel>
+                <AlertDialogAction onClick={() => router.push(cancelHref)}>
+                  Discard
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
+
+          <Button type="submit" className="w-full" disabled={status !== null}>
+            {status ?? (model ? "Save changes" : "Create model")}
+          </Button>
+        </CardContent>
+      </Card>
     </form>
   );
 }

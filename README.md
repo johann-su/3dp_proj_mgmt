@@ -35,13 +35,31 @@ This project should be a self hostable project management platform for .3mf file
 
 Requirements: Node 22+, Docker, and an S3-compatible storage (AWS S3, MinIO, Garage, …) with a bucket whose credentials have read/write access.
 
+### First-time setup
+
 ```sh
 cp .env.example .env       # then fill in BETTER_AUTH_SECRET and your S3 settings
 docker compose up -d       # starts Postgres on :5432 and the slicer service on :8000
 npm install
 npm run db:migrate         # apply SQL migrations from ./drizzle + seed categories
+```
+
+### Day to day
+
+`compose.yml`'s `postgres` and `slicer` services are the only two things Docker
+runs in dev — `npm run dev` runs Next.js directly on the host (not in a container)
+and just connects to them over `localhost`. They aren't started for you, so bring
+them up first each time you come back to the project:
+
+```sh
+docker compose up -d       # no-op if postgres/slicer are already running
 npm run dev
 ```
+
+If `npm run dev` immediately throws `ECONNREFUSED` from a Drizzle query (e.g.
+`select … from "categories"`) or Better Auth's session lookup, Postgres isn't up —
+run `docker compose up -d` (or `docker compose ps` to check what's running) and
+restart the dev server. `docker compose down` stops both containers again.
 
 Note for [Garage](https://garagehq.deuxfleurs.fr/) users: `S3_REGION` must match the
 `s3_api.s3_region` value of your Garage config (default `garage`), and the access key
