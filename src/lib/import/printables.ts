@@ -1,7 +1,7 @@
 // Printables importer — uses the same public GraphQL API the printables.com
 // SPA talks to. Metadata and download links are available anonymously.
 
-import { htmlishToText } from "@/lib/html";
+import { htmlishToMarkdown } from "@/lib/html";
 import { MODEL_EXTENSIONS, fileExtension } from "@/lib/s3";
 import { ImportError, IMPORT_USER_AGENT, type ImportedProject } from "./types";
 
@@ -107,7 +107,7 @@ export async function importFromPrintables(
     source: "printables",
     sourceUrl: url.toString(),
     title: print.name?.trim() ?? "",
-    description: htmlishToText(print.description || print.summary || ""),
+    description: htmlishToMarkdown(print.description || print.summary || ""),
     tags: (print.tags ?? []).map((t) => t.name.trim().toLowerCase()).filter(Boolean),
     assets: [],
     warnings: [],

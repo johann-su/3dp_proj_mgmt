@@ -7,7 +7,7 @@
 // for a short-lived presigned URL and imported as a .3mf; otherwise only
 // metadata + images are imported and the user adds the .3mf manually.
 
-import { htmlishToText } from "@/lib/html";
+import { htmlishToMarkdown } from "@/lib/html";
 import {
   apiBase,
   fetchProfileDownload,
@@ -188,7 +188,7 @@ export async function importFromMakerworld(
     source: "makerworld",
     sourceUrl: url.toString(),
     title: design.title.trim(),
-    description: htmlishToText(design.summary ?? design.summaryTranslated ?? ""),
+    description: htmlishToMarkdown(design.summary ?? design.summaryTranslated ?? ""),
     tags,
     assets,
     warnings,

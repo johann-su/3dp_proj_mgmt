@@ -9,7 +9,7 @@
 // - Auxiliaries/**              Makerworld project pictures
 
 import { unzip, type Unzipped, type UnzipFileInfo } from "fflate";
-import { htmlishToText } from "@/lib/html";
+import { htmlishToText, htmlishToMarkdown } from "@/lib/html";
 
 export type ThreeMfMetadata = {
   title?: string;
@@ -85,13 +85,19 @@ function unzipWanted(data: Uint8Array): Promise<Unzipped> {
   });
 }
 
-// Bambu Studio double-escapes the Description metadata and stores HTML in it
-// (e.g. "&amp;lt;h3&amp;gt;...") — htmlishToText handles both.
-function coreMetadata(xmlHead: string, name: string): string | undefined {
+// Bambu Studio double-escapes the metadata and stores HTML in it
+// (e.g. "&amp;lt;h3&amp;gt;...") — both converters handle the unescaping. The
+// title is flattened to plain text; the description keeps its formatting as
+// Markdown (see the Description call site).
+function coreMetadata(
+  xmlHead: string,
+  name: string,
+  convert: (raw: string) => string = htmlishToText,
+): string | undefined {
   const match = xmlHead.match(
     new RegExp(`<metadata\\s+name="${name}"[^>]*>([\\s\\S]*?)</metadata>`, "i"),
   );
-  const value = match ? htmlishToText(match[1]) : "";
+  const value = match ? convert(match[1]) : "";
   return value || undefined;
 }
 
@@ -129,7 +135,7 @@ export async function extract3mfMetadata(file: File): Promise<ThreeMfMetadata> {
     // (potentially enormous) geometry — only decode the head.
     const head = decoder.decode(modelXml.data.subarray(0, METADATA_SCAN_BYTES));
     title = coreMetadata(head, "Title");
-    description = coreMetadata(head, "Description");
+    description = coreMetadata(head, "Description", htmlishToMarkdown);
   }
   // Bambu Studio doesn't write a Title metadata — fall back to the filename.
   title ??= titleFromFilename(file.name) || undefined;
