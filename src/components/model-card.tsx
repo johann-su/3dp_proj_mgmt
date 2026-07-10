@@ -1,6 +1,6 @@
 import Link from "next/link";
-import Image from "next/image";
 import { Box } from "lucide-react";
+import { CoverImage } from "@/components/cover-image";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import {
@@ -19,7 +19,7 @@ export type ModelCardData = {
   // `src` is the token-signed image URL (see fileSrc in @/lib/file-token),
   // signed server-side because this card also renders inside client
   // components (ModelGrid's infinite scroll).
-  files: { id: string; src: string }[];
+  files: { id: string; src: string; animated?: boolean }[];
   modelTags: { tag: { id: string; name: string } }[];
 };
 
@@ -31,10 +31,10 @@ export function ModelCard({ model }: { model: ModelCardData }) {
       <Card className="overflow-hidden h-full py-0 gap-0 border-0 shadow-sm transition-shadow group-hover:shadow-lg">
         <div className="relative aspect-[4/3] bg-muted flex items-center justify-center overflow-hidden">
           {cover ? (
-            <Image
+            <CoverImage
               src={cover.src}
               alt={model.title}
-              fill
+              animated={cover.animated}
               sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 25vw"
               className="object-cover transition-transform group-hover:scale-105"
             />

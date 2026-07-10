@@ -60,7 +60,11 @@ export default async function HomePage({
     collectionModels: c.collectionModels.map((cm) => ({
       model: {
         id: cm.model.id,
-        files: cm.model.files.map((f) => ({ id: f.id, src: fileSrc(f.id) })),
+        files: cm.model.files.map((f) => ({
+          id: f.id,
+          src: fileSrc(f.id),
+          animated: f.animated,
+        })),
       },
     })),
   }));

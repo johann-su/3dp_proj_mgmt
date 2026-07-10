@@ -33,6 +33,7 @@ import {
   type MakerworldCollectionDesign,
 } from "./makerworld-collection";
 import { stageImportedAssets, type StagedImportFile } from "./stage";
+import { animatedImageKeys } from "@/lib/storage";
 import { ImportError, type ImportedProject } from "./types";
 
 const MAX_WARNINGS = 50;
@@ -164,6 +165,8 @@ async function createImportedModel(
   files: StagedImportFile[],
 ): Promise<string> {
   const tagNames = normalizeTagNames(project.tags);
+  // Sniff image headers up front so animated covers freeze to a poster frame.
+  const animatedKeys = await animatedImageKeys(files);
   return db.transaction(async (tx) => {
     const [model] = await tx
       .insert(models)
@@ -184,6 +187,7 @@ async function createImportedModel(
         s3Key: file.key,
         size: file.size,
         contentType: file.contentType,
+        animated: animatedKeys.has(file.key),
         position: position++,
         sliceStatus: sliceEligible(file.kind, file.filename)
           ? ("pending" as const)

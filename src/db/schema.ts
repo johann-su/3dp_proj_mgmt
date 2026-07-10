@@ -160,6 +160,9 @@ export const modelFiles = pgTable("model_files", {
   s3Key: text("s3_key").notNull(),
   size: bigint("size", { mode: "number" }).notNull(),
   contentType: text("content_type").notNull(),
+  // Animated GIF/WebP/PNG cover? Detected from the header at insert time
+  // (content type can't tell), so browse cards freeze it to a poster frame.
+  animated: boolean("animated").notNull().default(false),
   position: integer("position").notNull().default(0),
   // Onshape element this file was exported from; sync replaces these files.
   onshapeElementId: text("onshape_element_id"),

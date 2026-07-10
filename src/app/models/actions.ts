@@ -25,6 +25,7 @@ import {
   sanitizeRename,
 } from "@/lib/s3";
 import { processPendingSlices, sliceEligible } from "@/lib/slicer";
+import { animatedImageKeys } from "@/lib/storage";
 
 export type UploadedFile = {
   key: string;
@@ -173,6 +174,10 @@ export async function createModel(
 
   const tagNames = normalizeTagNames(input.tags);
 
+  // Sniff image headers up front (outside the transaction) so animated covers
+  // can be frozen to a poster frame in browse cards.
+  const animatedKeys = await animatedImageKeys(uploads);
+
   const modelId = await db.transaction(async (tx) => {
     const [model] = await tx
       .insert(models)
@@ -197,6 +202,7 @@ export async function createModel(
         // Never store the client-claimed type; derive from the validated
         // extension (an inline-served text/html "image" would be stored XSS).
         contentType: contentTypeForFilename(file.filename),
+        animated: animatedKeys.has(file.key),
         position: position++,
         onshapeElementId:
           file.kind === "model" ? onshapeId(file.onshapeElementId) : null,
@@ -267,6 +273,10 @@ export async function updateModel(
     input.newFiles.some((f) => f.kind === "model");
   if (!hasModelFile) return { error: "At least one model file (.3mf or .step) is required" };
 
+  // Sniff new image headers up front (outside the transaction) so animated
+  // covers are frozen to a poster frame in browse cards.
+  const animatedKeys = await animatedImageKeys(input.newFiles);
+
   await db.transaction(async (tx) => {
     await tx
       .update(models)
@@ -302,6 +312,7 @@ export async function updateModel(
             s3Key: file.key,
             size: file.size,
             contentType: contentTypeForFilename(file.filename),
+            animated: animatedKeys.has(file.key),
             position: i,
             sliceStatus: sliceEligible(file.kind, file.filename)
               ? ("pending" as const)
