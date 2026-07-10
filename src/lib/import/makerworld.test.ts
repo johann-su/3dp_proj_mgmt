@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { parseMakerworldUrl } from "@/lib/import/makerworld";
+import { parseMakerworldUrl, preferEnglish } from "@/lib/import/makerworld";
 
 test("parseMakerworldUrl returns the model id for makerworld hosts", () => {
   assert.equal(
@@ -12,6 +12,21 @@ test("parseMakerworldUrl returns the model id for makerworld hosts", () => {
     parseMakerworldUrl(new URL("https://www.makerworld.com/models/678")),
     "678",
   );
+});
+
+// MakerWorld returns each text field as an original + a single English
+// machine-translation; the translation is empty for already-English models. We
+// import English when it exists, else the original — matching the site default.
+test("preferEnglish uses the translation when present, else the original", () => {
+  // non-English original → take the English translation
+  assert.equal(preferEnglish("Model Airplane Rudder Angle", "航模舵角"), "Model Airplane Rudder Angle");
+  // already-English model → translation is empty, fall back to the original
+  assert.equal(preferEnglish("", "Isobutane stove stand"), "Isobutane stove stand");
+  assert.equal(preferEnglish(undefined, "Isobutane stove stand"), "Isobutane stove stand");
+  // whitespace-only translation is treated as absent
+  assert.equal(preferEnglish("   ", "航模舵角"), "航模舵角");
+  // nothing at all → empty string, never undefined
+  assert.equal(preferEnglish(undefined, undefined), "");
 });
 
 test("parseMakerworldUrl rejects non-makerworld or non-model URLs", () => {

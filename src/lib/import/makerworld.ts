@@ -37,6 +37,7 @@ type MakerworldDesign = {
   id?: number;
   modelId?: string;
   title?: string;
+  titleTranslated?: string;
   summary?: string;
   summaryTranslated?: string;
   tags?: string[];
@@ -51,6 +52,20 @@ export type MakerworldOptions = {
   token?: string;
   region?: BambuRegion;
 };
+
+// MakerWorld's API returns each text field twice: the author's original plus a
+// single pre-computed English machine-translation (`*Translated`). That English
+// variant is the same regardless of Accept-Language — it is not a language
+// picker — and it is empty for models the author already wrote in English. We
+// mirror the site's default ("Content has been automatically translated") by
+// preferring the English translation whenever it is present and falling back to
+// the original otherwise.
+export function preferEnglish(
+  translated: string | undefined,
+  original: string | undefined,
+): string {
+  return (translated?.trim() || original?.trim()) ?? "";
+}
 
 function ensure3mf(name: string, fallback: string): string {
   const clean = name.trim();
@@ -163,7 +178,8 @@ export async function importFromMakerworld(
     images.push(design.coverUrl);
   }
 
-  const tags = (design.tags ?? design.tagsTranslated ?? [])
+  // Prefer the English tag set; it is empty only for already-English models.
+  const tags = (design.tagsTranslated?.length ? design.tagsTranslated : design.tags ?? [])
     .map((t) => t.trim().toLowerCase())
     .filter(Boolean);
 
@@ -187,8 +203,8 @@ export async function importFromMakerworld(
   return {
     source: "makerworld",
     sourceUrl: url.toString(),
-    title: design.title.trim(),
-    description: htmlishToMarkdown(design.summary ?? design.summaryTranslated ?? ""),
+    title: preferEnglish(design.titleTranslated, design.title),
+    description: htmlishToMarkdown(preferEnglish(design.summaryTranslated, design.summary)),
     tags,
     assets,
     warnings,
