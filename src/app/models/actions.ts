@@ -11,10 +11,10 @@ import {
   modelFiles,
   models,
   modelTags,
-  tags,
   type FileKind,
 } from "@/db/schema";
 import { getSession } from "@/lib/auth";
+import { linkTags, normalizeTagNames } from "@/lib/tags";
 import { sanitizeBomItems, type BomItemInput } from "@/lib/bom";
 import { s3, S3_BUCKET, allowedExtensions, fileExtension, sanitizeRename } from "@/lib/s3";
 import { processPendingSlices, sliceEligible } from "@/lib/slicer";
@@ -117,33 +117,6 @@ function resolveFileOrder(
     if (file.kind === kind) push(insertedIds[i]);
   });
   return ordered;
-}
-
-type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
-
-function normalizeTagNames(input: string[]): string[] {
-  return [
-    ...new Set(input.map((t) => t.trim().toLowerCase()).filter((t) => t.length > 0)),
-  ].slice(0, 20);
-}
-
-async function linkTags(tx: Tx, modelId: string, tagNames: string[]) {
-  if (tagNames.length === 0) return;
-  const insertedTags = await tx
-    .insert(tags)
-    .values(tagNames.map((name) => ({ name })))
-    .onConflictDoNothing()
-    .returning();
-  const existing = await tx
-    .select()
-    .from(tags)
-    .where(inArray(tags.name, tagNames));
-  const allTags = [...insertedTags, ...existing];
-  const uniqueTagIds = [...new Set(allTags.map((t) => t.id))];
-  await tx
-    .insert(modelTags)
-    .values(uniqueTagIds.map((tagId) => ({ modelId, tagId })))
-    .onConflictDoNothing();
 }
 
 function validateUploads(files: UploadedFile[]): string | null {
