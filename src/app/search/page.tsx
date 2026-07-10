@@ -1,9 +1,11 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { Search, SearchX } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { SearchFilters } from "@/components/search-filters";
 import { SearchResults } from "@/components/search-results";
+import { getSession } from "@/lib/auth";
 import { search, searchFacets } from "@/lib/search";
 import { parseSearchParams, searchFiltersToParams } from "@/lib/search-params";
 
@@ -14,6 +16,10 @@ export default async function SearchPage({
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
+  // The whole catalog is private — self-hosted instances store paid models.
+  const session = await getSession();
+  if (!session) redirect("/sign-in");
+
   const params = await searchParams;
   const filters = parseSearchParams(params);
 

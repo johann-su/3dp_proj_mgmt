@@ -6,8 +6,11 @@ services:
       POSTGRES_USER: stl
       POSTGRES_PASSWORD: stl
       POSTGRES_DB: stl
+    # Loopback only: Docker's published ports bypass host firewalls (ufw etc.),
+    # and this database holds password hashes, sessions and encrypted tokens.
+    # The app container reaches it over the compose network either way.
     ports:
-      - "5432:5432"
+      - "127.0.0.1:5432:5432"
     volumes:
       - postgres-data:/var/lib/postgresql/data
     healthcheck:
@@ -18,12 +21,13 @@ services:
 
   # Headless PrusaSlicer wrapped in a small HTTP service (./slicer). Slices
   # unsliced .3mf uploads to estimate print time & filament use. The port is
-  # published so `npm run dev` on the host can reach it too.
+  # published loopback-only so `npm run dev` on the host can reach it without
+  # exposing the unauthenticated service to the network.
   slicer:
     build: ./slicer
     restart: unless-stopped
     ports:
-      - "8000:8000"
+      - "127.0.0.1:8000:8000"
 
   # Full self-hosted deployment: docker compose --profile app up -d --build
   app:
@@ -34,8 +38,12 @@ services:
       - "3000:3000"
     environment:
       DATABASE_URL: postgres://stl:stl@postgres:5432/stl
-      BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:-change-me-in-production}
+      # Required, no default: this secret guards sessions, signed file URLs
+      # and the encrypted Bambu/Onshape tokens. openssl rand -base64 32
+      BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:?set BETTER_AUTH_SECRET to a long random string}
       BETTER_AUTH_URL: ${BETTER_AUTH_URL:-http://localhost:3000}
+      # Set to true to turn off self-registration (see .env.example)
+      DISABLE_SIGNUP: ${DISABLE_SIGNUP:-}
       # Optional OIDC SSO (see .env.example)
       OIDC_ISSUER: ${OIDC_ISSUER:-}
       OIDC_CLIENT_ID: ${OIDC_CLIENT_ID:-}

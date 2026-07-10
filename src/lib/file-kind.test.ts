@@ -1,6 +1,19 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { sanitizeRename } from "@/lib/file-kind";
+import { contentTypeForFilename, sanitizeRename } from "@/lib/file-kind";
+
+test("contentTypeForFilename maps allowlisted extensions, ignoring case", () => {
+  // Serve-time content types come from the extension, never from what the
+  // uploader claimed — a text/html "image" served inline would be stored XSS.
+  assert.equal(contentTypeForFilename("part.3MF"), "model/3mf");
+  assert.equal(contentTypeForFilename("photo.jpeg"), "image/jpeg");
+  assert.equal(contentTypeForFilename("manual.pdf"), "application/pdf");
+});
+
+test("contentTypeForFilename falls back to octet-stream for unknown extensions", () => {
+  assert.equal(contentTypeForFilename("weird.exe"), "application/octet-stream");
+  assert.equal(contentTypeForFilename("no-extension"), "application/octet-stream");
+});
 
 test("sanitizeRename keeps the original extension when the user omits it", () => {
   // The rename UI only ever lets someone edit the base name, but the

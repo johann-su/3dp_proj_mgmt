@@ -2,6 +2,7 @@ import { sql, type SQL } from "drizzle-orm";
 import { db } from "@/db";
 import type { ModelCardData } from "@/components/model-card";
 import type { CollectionCardData } from "@/components/collection-card";
+import { fileSrc } from "@/lib/file-token";
 import { PAGE_SIZE } from "@/lib/pagination";
 import {
   decodeSearchCursor,
@@ -281,7 +282,7 @@ async function hydrate(
         sourceUrl: m.sourceUrl,
         user: m.user,
         category: m.category,
-        files: m.files,
+        files: m.files.map((f) => ({ id: f.id, src: fileSrc(f.id) })),
         modelTags: m.modelTags,
       },
     ]),
@@ -294,7 +295,10 @@ async function hydrate(
         title: c.title,
         user: c.user,
         collectionModels: c.collectionModels.map((cm) => ({
-          model: { id: cm.model.id, files: cm.model.files },
+          model: {
+            id: cm.model.id,
+            files: cm.model.files.map((f) => ({ id: f.id, src: fileSrc(f.id) })),
+          },
         })),
       },
     ]),

@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useCallback, useEffect, useRef, useState } from "react";
+import Image from "next/image";
 import { Box, ChevronLeft, ChevronRight, X, ZoomIn } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -94,6 +95,8 @@ export function ImageGallery({
               </span>
             </>
           )}
+          {/* Lightbox is the "view full size" path: serve the untouched
+              original at full resolution/quality, not an optimized derivative. */}
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
             src={current.src}
@@ -112,11 +115,13 @@ export function ImageGallery({
           aria-label="View full size"
           onClick={() => setLightboxOpen(true)}
         >
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
+          <Image
             src={current.src}
             alt={title}
-            className="w-full h-full object-contain"
+            fill
+            sizes="(max-width: 1024px) 100vw, 60vw"
+            quality={90}
+            className="object-contain"
           />
           <span className="absolute right-2 top-2 flex size-8 items-center justify-center rounded-full bg-background/80 opacity-0 group-hover:opacity-100 transition-opacity">
             <ZoomIn className="size-4" />
@@ -160,16 +165,17 @@ export function ImageGallery({
               type="button"
               onClick={() => setSelected(i)}
               className={cn(
-                "size-16 rounded-md overflow-hidden bg-muted border-2 shrink-0",
+                "relative size-16 rounded-md overflow-hidden bg-muted border-2 shrink-0",
                 i === selected ? "border-primary" : "border-transparent",
               )}
               aria-label={`Show image ${i + 1}`}
             >
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
+              <Image
                 src={image.src}
                 alt=""
-                className="w-full h-full object-cover"
+                fill
+                sizes="64px"
+                className="object-cover"
               />
             </button>
           ))}

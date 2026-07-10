@@ -1,9 +1,10 @@
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { after } from "next/server";
 import { and, asc, eq, inArray } from "drizzle-orm";
 import { db } from "@/db";
 import { collectionModels, collections, models } from "@/db/schema";
 import { getSession } from "@/lib/auth";
+import { fileSrc, fileToken } from "@/lib/file-token";
 import { get3mfSliceInfo } from "@/lib/threemf-remote";
 import { processPendingSlices } from "@/lib/slicer";
 import { parseOnshapeUrl } from "@/lib/onshape/api";
@@ -36,6 +37,8 @@ export default async function ModelPage({
     }),
     getSession(),
   ]);
+  // The whole catalog is private — self-hosted instances store paid models.
+  if (!session) redirect("/sign-in");
   if (!model) notFound();
 
   const images = model.files.filter((f) => f.kind === "image");
@@ -119,7 +122,7 @@ export default async function ModelPage({
     sourceName,
     onshapeWvm,
     makerworldUrl,
-    images: images.map((img) => ({ src: `/api/files/${img.id}` })),
+    images: images.map((img) => ({ src: fileSrc(img.id) })),
     bom: model.bomItems,
     printFiles: printFiles.map((file, index) => {
       const info = sliceInfos[index];
@@ -128,6 +131,9 @@ export default async function ModelPage({
       return {
         id: file.id,
         filename: file.filename,
+        // Signed access token for the slicer deep links, which download the
+        // file without the session cookie (see file-download-menu.tsx).
+        downloadToken: fileToken(file.id),
         size: file.size,
         printTime:
           info?.printTimeSeconds ??

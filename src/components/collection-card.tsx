@@ -1,4 +1,5 @@
 import Link from "next/link";
+import Image from "next/image";
 import { FolderOpen, Layers, User } from "lucide-react";
 
 export type CollectionCardData = {
@@ -8,7 +9,8 @@ export type CollectionCardData = {
   collectionModels: {
     model: {
       id: string;
-      files: { id: string }[];
+      // Token-signed image URL, signed server-side (see ModelCardData.files).
+      files: { id: string; src: string }[];
     };
   }[];
 };
@@ -56,11 +58,12 @@ export function CollectionCard({
                       }}
                     >
                       {file ? (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img
-                          src={`/api/files/${file.id}`}
+                        <Image
+                          src={file.src}
                           alt=""
-                          className="w-full h-full object-cover transition-transform group-hover:scale-105"
+                          fill
+                          sizes="(max-width: 640px) 50vw, (max-width: 1024px) 25vw, 12vw"
+                          className="object-cover transition-transform group-hover:scale-105"
                         />
                       ) : (
                         <div className="w-full h-full bg-muted" />

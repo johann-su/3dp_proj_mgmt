@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { allowedExtensions, fileExtension } from "@/lib/s3";
+import { allowedExtensions, contentTypeForFilename, fileExtension } from "@/lib/s3";
 import { stageStream } from "@/lib/storage";
 import { getSession } from "@/lib/auth";
 
@@ -33,12 +33,14 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Empty request body" }, { status: 400 });
   }
 
-  // Pin the PDF content type so browsers open it inline instead of downloading.
-  const contentType =
-    kind === "pdf"
-      ? "application/pdf"
-      : req.headers.get("content-type") || "application/octet-stream";
-  const staged = await stageStream(filename, req.body, contentType);
+  // Derive the content type from the (validated) extension instead of the
+  // request header: /api/files serves images/PDFs inline, so echoing back an
+  // uploader-chosen type like text/html would be stored XSS on our origin.
+  const staged = await stageStream(
+    filename,
+    req.body,
+    contentTypeForFilename(filename),
+  );
 
   return NextResponse.json({ ...staged, kind });
 }

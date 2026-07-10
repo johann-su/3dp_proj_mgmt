@@ -1,7 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { GetObjectCommand } from "@aws-sdk/client-s3";
 import { getSession } from "@/lib/auth";
-import { s3, S3_BUCKET, fileExtension, IMAGE_EXTENSIONS } from "@/lib/s3";
+import {
+  s3,
+  S3_BUCKET,
+  contentTypeForFilename,
+  fileExtension,
+  IMAGE_EXTENSIONS,
+} from "@/lib/s3";
 
 export const runtime = "nodejs";
 
@@ -33,7 +39,10 @@ export async function GET(req: NextRequest) {
   }
 
   const headers = new Headers();
-  headers.set("Content-Type", object.ContentType ?? "application/octet-stream");
+  // The key's extension is allowlisted above, so derive the type from it
+  // rather than trusting whatever ContentType the object was staged with.
+  headers.set("Content-Type", contentTypeForFilename(key));
+  headers.set("X-Content-Type-Options", "nosniff");
   if (object.ContentLength !== undefined) {
     headers.set("Content-Length", String(object.ContentLength));
   }

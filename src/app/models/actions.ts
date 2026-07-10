@@ -16,7 +16,14 @@ import {
 import { getSession } from "@/lib/auth";
 import { linkTags, normalizeTagNames } from "@/lib/tags";
 import { sanitizeBomItems, type BomItemInput } from "@/lib/bom";
-import { s3, S3_BUCKET, allowedExtensions, fileExtension, sanitizeRename } from "@/lib/s3";
+import {
+  s3,
+  S3_BUCKET,
+  allowedExtensions,
+  contentTypeForFilename,
+  fileExtension,
+  sanitizeRename,
+} from "@/lib/s3";
 import { processPendingSlices, sliceEligible } from "@/lib/slicer";
 
 export type UploadedFile = {
@@ -187,7 +194,9 @@ export async function createModel(
         filename: file.filename,
         s3Key: file.key,
         size: file.size,
-        contentType: file.contentType,
+        // Never store the client-claimed type; derive from the validated
+        // extension (an inline-served text/html "image" would be stored XSS).
+        contentType: contentTypeForFilename(file.filename),
         position: position++,
         onshapeElementId:
           file.kind === "model" ? onshapeId(file.onshapeElementId) : null,
@@ -292,7 +301,7 @@ export async function updateModel(
             filename: file.filename,
             s3Key: file.key,
             size: file.size,
-            contentType: file.contentType,
+            contentType: contentTypeForFilename(file.filename),
             position: i,
             sliceStatus: sliceEligible(file.kind, file.filename)
               ? ("pending" as const)

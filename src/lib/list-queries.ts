@@ -3,6 +3,7 @@ import { db } from "@/db";
 import { collections, models } from "@/db/schema";
 import type { ModelCardData } from "@/components/model-card";
 import type { MyCollectionData } from "@/components/my-collection-card";
+import { fileSrc } from "@/lib/file-token";
 import {
   PAGE_SIZE,
   decodeCursor,
@@ -55,7 +56,7 @@ export async function listModels(opts: {
     sourceUrl: m.sourceUrl,
     user: m.user,
     category: m.category,
-    files: m.files,
+    files: m.files.map((f) => ({ id: f.id, src: fileSrc(f.id) })),
     modelTags: m.modelTags,
   }));
   return { items, nextCursor: page.nextCursor };
@@ -99,7 +100,9 @@ export async function listUserCollections(opts: {
     id: c.id,
     title: c.title,
     collectionModels: c.collectionModels.map((cm) => ({
-      model: { files: cm.model.files },
+      model: {
+        files: cm.model.files.map((f) => ({ id: f.id, src: fileSrc(f.id) })),
+      },
     })),
   }));
   return { items, nextCursor: page.nextCursor };
