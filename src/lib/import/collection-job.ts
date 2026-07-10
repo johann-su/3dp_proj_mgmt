@@ -12,14 +12,22 @@
 // imported (same sourceUrl) are only linked into the collection, which also
 // makes a re-run after a failure resume where it left off.
 
+import { after } from "next/server";
 import { and, eq } from "drizzle-orm";
 import { db } from "@/db";
-import { collectionModels, importJobs, modelFiles, models } from "@/db/schema";
+import {
+  collectionModels,
+  collections,
+  importJobs,
+  modelFiles,
+  models,
+} from "@/db/schema";
 import { getBambuCredential } from "@/lib/bambu/credentials";
 import { linkTags, normalizeTagNames } from "@/lib/tags";
 import { sliceEligible, processPendingSlices } from "@/lib/slicer";
 import { BAMBU_EXPIRED_WARNING, importFromMakerworld } from "./makerworld";
 import {
+  fetchMakerworldCollection,
   listMakerworldCollectionDesigns,
   parseMakerworldCollectionUrl,
   type MakerworldCollectionDesign,
@@ -33,6 +41,100 @@ const MAX_WARNINGS = 50;
 const DELAY_BETWEEN_DESIGNS_MS = 500;
 
 type JobRow = typeof importJobs.$inferSelect;
+
+export type StartCollectionImport =
+  | { ok: true; jobId: string; collectionId: string; title: string; total: number }
+  | { ok: false; status: number; error: string };
+
+// Validates and starts a collection import job, scheduling the runner via
+// after(). With `existingCollectionId` (the "Sync" flow) new remote designs
+// land in that collection instead of a freshly created one — the runner's
+// dedup-by-sourceUrl turns the re-run into "import what's new, link the
+// rest". Must be called from a request scope (route handler / server action)
+// for after() to work.
+export async function startCollectionImport(
+  userId: string,
+  url: URL,
+  existingCollectionId?: string,
+): Promise<StartCollectionImport> {
+  const remoteId = parseMakerworldCollectionUrl(url);
+  if (!remoteId) {
+    return {
+      ok: false,
+      status: 400,
+      error:
+        "Not a MakerWorld collection URL (expected makerworld.com/…/collections/<id>)",
+    };
+  }
+
+  // Bulk-importing metadata-only models (no .3mf) would leave dozens of
+  // shells to fix by hand, so a connected Bambu account is required up front.
+  const cred = await getBambuCredential(userId);
+  if (!cred) {
+    return {
+      ok: false,
+      status: 400,
+      error:
+        "Collection import downloads .3mf files, which needs a connected Bambu account — connect it in Settings → Bambu Cloud first",
+    };
+  }
+
+  // One import at a time per user; a second job would fight the first for
+  // Bambu API rate limits and make the progress indicator ambiguous.
+  const running = await db.query.importJobs.findFirst({
+    where: and(eq(importJobs.userId, userId), eq(importJobs.status, "running")),
+    columns: { id: true },
+  });
+  if (running) {
+    return {
+      ok: false,
+      status: 409,
+      error: "Another import is already running — wait for it to finish",
+    };
+  }
+
+  const remote = await fetchMakerworldCollection(remoteId, cred.region);
+  if (remote.designCnt === 0) {
+    return { ok: false, status: 400, error: "This collection is empty" };
+  }
+
+  const { job, collectionId } = await db.transaction(async (tx) => {
+    let collectionId = existingCollectionId;
+    if (!collectionId) {
+      const [collection] = await tx
+        .insert(collections)
+        .values({
+          title: remote.title,
+          description: remote.description,
+          userId,
+          sourceUrl: url.toString(),
+        })
+        .returning({ id: collections.id });
+      collectionId = collection.id;
+    }
+    const [job] = await tx
+      .insert(importJobs)
+      .values({
+        userId,
+        sourceUrl: url.toString(),
+        collectionId,
+        // Corrected to the listed (non-hidden) count once the runner starts.
+        total: remote.designCnt,
+      })
+      .returning({ id: importJobs.id });
+    return { job, collectionId };
+  });
+
+  after(() => runCollectionImportJob(job.id));
+
+  return {
+    ok: true,
+    jobId: job.id,
+    collectionId,
+    title: remote.title,
+    total: remote.designCnt,
+  };
+}
 
 // Jobs currently running in this process (double-start guard, mirrors the
 // inFlight set in src/lib/slicer.ts).
