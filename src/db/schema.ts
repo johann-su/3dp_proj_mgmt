@@ -232,6 +232,43 @@ export const collectionModels = pgTable(
   (t) => [primaryKey({ columns: [t.collectionId, t.modelId] })],
 );
 
+// Lifecycle of a bulk import (MakerWorld collection import): the job runs in
+// the background after POST /api/import/collection responds (next/server
+// `after`), models land in `collectionId` as they finish, and the header
+// progress indicator polls GET /api/import-jobs. "canceled" is set by the
+// user; the runner checks for it between designs and stops.
+export type ImportJobStatus = "running" | "done" | "failed" | "canceled";
+
+export const importJobs = pgTable("import_jobs", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  userId: text("user_id")
+    .notNull()
+    .references(() => user.id, { onDelete: "cascade" }),
+  // The MakerWorld collection URL the job was started from.
+  sourceUrl: text("source_url").notNull(),
+  // Local collection the imported models are added to.
+  collectionId: uuid("collection_id").references(() => collections.id, {
+    onDelete: "set null",
+  }),
+  status: text("status").$type<ImportJobStatus>().notNull().default("running"),
+  // Number of designs the job will attempt (listed, non-hidden designs).
+  total: integer("total").notNull().default(0),
+  // Designs finished so far: imported + skipped (already imported) + failed.
+  completed: integer("completed").notNull().default(0),
+  failed: integer("failed").notNull().default(0),
+  skipped: integer("skipped").notNull().default(0),
+  // Title of the design currently being imported, for the progress UI.
+  currentItem: text("current_item"),
+  // Fatal error that stopped the whole job (per-design problems go to
+  // `warnings` instead).
+  error: text("error"),
+  warnings: jsonb("warnings").$type<string[]>().notNull().default([]),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  // Doubles as the heartbeat: a "running" job whose updatedAt is stale was
+  // killed by a server restart and gets marked failed on the next poll.
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
 // --- Relations ---
 
 export const modelsRelations = relations(models, ({ one, many }) => ({

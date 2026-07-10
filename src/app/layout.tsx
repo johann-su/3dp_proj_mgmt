@@ -5,6 +5,7 @@ import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { SidebarInset, SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/app-sidebar";
+import { ImportProgressIndicator } from "@/components/import-progress";
 import { getSession } from "@/lib/auth";
 import "./globals.css";
 
@@ -44,6 +45,11 @@ export default async function RootLayout({
               <SidebarInset>
                 <header className="sticky top-0 z-40 flex h-14 items-center gap-2 border-b bg-background/95 px-4 backdrop-blur">
                   <SidebarTrigger />
+                  {session && (
+                    <div className="ml-auto">
+                      <ImportProgressIndicator />
+                    </div>
+                  )}
                 </header>
                 <main className="flex-1">{children}</main>
               </SidebarInset>
