@@ -67,6 +67,18 @@ export function preferEnglish(
   return (translated?.trim() || original?.trim()) ?? "";
 }
 
+// Picks the ordered, deduped list of image URLs for a design. The cover (often
+// an animated GIF) lives in `coverUrl`, separate from the `design_pictures`
+// gallery — it is the model's first piece of media on the site, so it leads the
+// list rather than only being a fallback when the gallery is empty.
+export function selectImageUrls(design: MakerworldDesign, max = MAX_IMAGES): string[] {
+  const pictures = design.designExtension?.design_pictures ?? [];
+  const urls = [design.coverUrl, ...pictures.map((p) => p.url)].filter(
+    (u): u is string => typeof u === "string" && u.startsWith("http"),
+  );
+  return [...new Set(urls)].slice(0, max);
+}
+
 function ensure3mf(name: string, fallback: string): string {
   const clean = name.trim();
   if (clean.toLowerCase().endsWith(".3mf")) return clean;
@@ -169,14 +181,7 @@ export async function importFromMakerworld(
     throw new ImportError("MakerWorld model not found");
   }
 
-  const pictures = design.designExtension?.design_pictures ?? [];
-  const images = pictures
-    .map((p) => p.url)
-    .filter((u): u is string => typeof u === "string" && u.startsWith("http"))
-    .slice(0, MAX_IMAGES);
-  if (images.length === 0 && design.coverUrl?.startsWith("http")) {
-    images.push(design.coverUrl);
-  }
+  const images = selectImageUrls(design);
 
   // Prefer the English tag set; it is empty only for already-English models.
   const tags = (design.tagsTranslated?.length ? design.tagsTranslated : design.tags ?? [])

@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { parseMakerworldUrl, preferEnglish } from "@/lib/import/makerworld";
+import { parseMakerworldUrl, preferEnglish, selectImageUrls } from "@/lib/import/makerworld";
 
 test("parseMakerworldUrl returns the model id for makerworld hosts", () => {
   assert.equal(
@@ -27,6 +27,34 @@ test("preferEnglish uses the translation when present, else the original", () =>
   assert.equal(preferEnglish("   ", "航模舵角"), "航模舵角");
   // nothing at all → empty string, never undefined
   assert.equal(preferEnglish(undefined, undefined), "");
+});
+
+// The cover (often the GIF) lives in coverUrl, separate from the gallery — it
+// is the first media on the site and must lead the imported images, not be
+// dropped when the gallery is non-empty (the original bug).
+test("selectImageUrls leads with the cover, then the gallery, deduped", () => {
+  const urls = selectImageUrls({
+    coverUrl: "https://cdn/cover.gif",
+    designExtension: {
+      design_pictures: [{ url: "https://cdn/a.jpg" }, { url: "https://cdn/b.jpg" }],
+    },
+  });
+  assert.deepEqual(urls, ["https://cdn/cover.gif", "https://cdn/a.jpg", "https://cdn/b.jpg"]);
+
+  // cover already present in the gallery is not duplicated
+  assert.deepEqual(
+    selectImageUrls({
+      coverUrl: "https://cdn/a.jpg",
+      designExtension: { design_pictures: [{ url: "https://cdn/a.jpg" }] },
+    }),
+    ["https://cdn/a.jpg"],
+  );
+
+  // gallery-only (no cover) and non-http entries dropped
+  assert.deepEqual(
+    selectImageUrls({ designExtension: { design_pictures: [{ url: "data:x" }, { url: "https://cdn/a.jpg" }] } }),
+    ["https://cdn/a.jpg"],
+  );
 });
 
 test("parseMakerworldUrl rejects non-makerworld or non-model URLs", () => {
