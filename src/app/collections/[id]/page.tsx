@@ -1,11 +1,13 @@
+import Link from "next/link";
 import { notFound } from "next/navigation";
 import { eq } from "drizzle-orm";
-import { ExternalLink, FolderOpen } from "lucide-react";
+import { ExternalLink, FolderOpen, SquarePen } from "lucide-react";
 import { db } from "@/db";
 import { collections } from "@/db/schema";
 import { getSession } from "@/lib/auth";
 import { formatDate } from "@/lib/format";
 import { platformFromSourceUrl, platformLabels } from "@/lib/platform";
+import { Button } from "@/components/ui/button";
 import { ModelCard } from "@/components/model-card";
 import { CollectionSyncButton } from "./collection-sync-button";
 import { DeleteCollectionButton } from "./delete-collection-button";
@@ -85,6 +87,12 @@ export default async function CollectionPage({
         </div>
         {isOwner && (
           <div className="flex items-center gap-2">
+            <Button asChild variant="outline" size="sm">
+              <Link href={`/collections/${collection.id}/edit`}>
+                <SquarePen className="size-4" />
+                Edit
+              </Link>
+            </Button>
             {collection.sourceUrl && (
               <CollectionSyncButton collectionId={collection.id} />
             )}

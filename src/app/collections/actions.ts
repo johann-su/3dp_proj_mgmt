@@ -42,6 +42,38 @@ export async function createCollection(input: {
   redirect(`/collections/${collection.id}`);
 }
 
+export async function updateCollection(input: {
+  collectionId: string;
+  title: string;
+  description: string;
+}): Promise<{ error: string } | never> {
+  const session = await getSession();
+  if (!session) return { error: "You must be signed in" };
+
+  const title = input.title.trim();
+  if (!title) return { error: "Title is required" };
+
+  const collection = await db.query.collections.findFirst({
+    where: eq(collections.id, input.collectionId),
+    columns: { id: true, userId: true },
+  });
+  if (!collection) return { error: "Collection not found" };
+  if (collection.userId !== session.user.id) return { error: "Not your collection" };
+
+  await db
+    .update(collections)
+    .set({
+      title,
+      description: input.description.trim(),
+      updatedAt: new Date(),
+    })
+    .where(eq(collections.id, collection.id));
+
+  revalidatePath("/collections");
+  revalidatePath(`/collections/${collection.id}`);
+  redirect(`/collections/${collection.id}`);
+}
+
 export async function deleteCollection(
   collectionId: string,
 ): Promise<{ error: string } | never> {
