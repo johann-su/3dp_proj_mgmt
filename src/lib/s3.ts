@@ -5,6 +5,7 @@ export {
   IMAGE_EXTENSIONS,
   PDF_EXTENSIONS,
   allowedExtensions,
+  contentTypeForFilename,
   fileExtension,
   sanitizeRename,
 } from "@/lib/file-kind";

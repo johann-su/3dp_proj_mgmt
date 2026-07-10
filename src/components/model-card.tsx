@@ -16,7 +16,10 @@ export type ModelCardData = {
   sourceUrl: string | null;
   user: { name: string };
   category: { name: string } | null;
-  files: { id: string }[];
+  // `src` is the token-signed image URL (see fileSrc in @/lib/file-token),
+  // signed server-side because this card also renders inside client
+  // components (ModelGrid's infinite scroll).
+  files: { id: string; src: string }[];
   modelTags: { tag: { id: string; name: string } }[];
 };
 
@@ -29,7 +32,7 @@ export function ModelCard({ model }: { model: ModelCardData }) {
         <div className="relative aspect-[4/3] bg-muted flex items-center justify-center overflow-hidden">
           {cover ? (
             <Image
-              src={`/api/files/${cover.id}`}
+              src={cover.src}
               alt={model.title}
               fill
               sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 25vw"

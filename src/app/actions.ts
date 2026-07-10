@@ -3,6 +3,7 @@
 import { eq } from "drizzle-orm";
 import { db } from "@/db";
 import { categories } from "@/db/schema";
+import { getSession } from "@/lib/auth";
 import { listModels } from "@/lib/list-queries";
 import type { ModelCardData } from "@/components/model-card";
 import type { Page } from "@/lib/pagination";
@@ -15,6 +16,10 @@ export async function loadMoreModels(input: {
   category?: string;
   cursor: string;
 }): Promise<Page<ModelCardData>> {
+  // The catalog is private; an expired session just ends the endless scroll.
+  const session = await getSession();
+  if (!session) return { items: [], nextCursor: null };
+
   let categoryId: string | undefined;
   if (input.category) {
     const category = await db.query.categories.findFirst({

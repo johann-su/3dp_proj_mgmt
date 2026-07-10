@@ -1,10 +1,11 @@
 import Link from "next/link";
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { eq } from "drizzle-orm";
 import { ExternalLink, FolderOpen, SquarePen } from "lucide-react";
 import { db } from "@/db";
 import { collections } from "@/db/schema";
 import { getSession } from "@/lib/auth";
+import { fileSrc } from "@/lib/file-token";
 import { formatDate } from "@/lib/format";
 import { platformFromSourceUrl, platformLabels } from "@/lib/platform";
 import { Button } from "@/components/ui/button";
@@ -51,9 +52,11 @@ export default async function CollectionPage({
     }),
     getSession(),
   ]);
+  // The whole catalog is private — self-hosted instances store paid models.
+  if (!session) redirect("/sign-in");
   if (!collection) notFound();
 
-  const isOwner = session?.user.id === collection.userId;
+  const isOwner = session.user.id === collection.userId;
   const sourcePlatform = platformFromSourceUrl(collection.sourceUrl);
 
   return (
@@ -113,7 +116,13 @@ export default async function CollectionPage({
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
           {collection.collectionModels.map(({ model }) => (
-            <ModelCard key={model.id} model={model} />
+            <ModelCard
+              key={model.id}
+              model={{
+                ...model,
+                files: model.files.map((f) => ({ id: f.id, src: fileSrc(f.id) })),
+              }}
+            />
           ))}
         </div>
       )}

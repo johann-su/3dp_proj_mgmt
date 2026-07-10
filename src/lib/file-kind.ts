@@ -24,6 +24,25 @@ export function fileExtension(filename: string) {
   return dot === -1 ? "" : filename.slice(dot).toLowerCase();
 }
 
+// Content types are always derived from the (allowlisted) extension — never
+// from a client-supplied header or value. /api/files serves images inline on
+// our origin, so a stored type of e.g. text/html would be stored XSS.
+const EXTENSION_CONTENT_TYPES: Record<string, string> = {
+  ".3mf": "model/3mf",
+  ".step": "model/step",
+  ".stp": "model/step",
+  ".png": "image/png",
+  ".jpg": "image/jpeg",
+  ".jpeg": "image/jpeg",
+  ".webp": "image/webp",
+  ".gif": "image/gif",
+  ".pdf": "application/pdf",
+};
+
+export function contentTypeForFilename(filename: string): string {
+  return EXTENSION_CONTENT_TYPES[fileExtension(filename)] ?? "application/octet-stream";
+}
+
 // Applied when a user renames an already-uploaded file. Always keeps the
 // original extension, so a crafted rename can't change what kind a file is
 // treated as (allowedExtensions/sliceEligible both key off the extension)

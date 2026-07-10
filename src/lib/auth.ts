@@ -20,6 +20,14 @@ const oidcClientSecret = process.env.OIDC_CLIENT_SECRET?.trim();
 export const oidcEnabled = Boolean(oidcIssuer && oidcClientId && oidcClientSecret);
 export const oidcProviderName = process.env.OIDC_PROVIDER_NAME?.trim() || "SSO";
 
+// Self-registration is on by default (self-hosters may want an open instance)
+// and can be switched off with DISABLE_SIGNUP=true once the accounts exist.
+// This gates email/password sign-up only — OIDC keeps provisioning users on
+// first login, since who may authenticate is the IdP's decision.
+export const signupDisabled = ["true", "1"].includes(
+  process.env.DISABLE_SIGNUP?.trim().toLowerCase() ?? "",
+);
+
 const discoveryUrl = oidcIssuer?.includes("/.well-known/")
   ? oidcIssuer
   : `${oidcIssuer?.replace(/\/+$/, "")}/.well-known/openid-configuration`;
@@ -60,6 +68,9 @@ export const auth = betterAuth({
   }),
   emailAndPassword: {
     enabled: true,
+    // Enforced server-side by BetterAuth (a direct POST to
+    // /api/auth/sign-up/email is rejected); the /sign-up page also hides.
+    disableSignUp: signupDisabled,
   },
   account: {
     accountLinking: {

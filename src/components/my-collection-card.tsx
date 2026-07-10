@@ -7,7 +7,8 @@ export type MyCollectionData = {
   id: string;
   title: string;
   collectionModels: {
-    model: { files: { id: string }[] };
+    // Token-signed image URL, signed server-side (see ModelCardData.files).
+    model: { files: { id: string; src: string }[] };
   }[];
 };
 
@@ -25,7 +26,7 @@ export function MyCollectionCard({ collection }: { collection: MyCollectionData 
         <div className="relative aspect-[4/3] bg-muted flex items-center justify-center overflow-hidden">
           {cover ? (
             <Image
-              src={`/api/files/${cover.id}`}
+              src={cover.src}
               alt={collection.title}
               fill
               sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 25vw"

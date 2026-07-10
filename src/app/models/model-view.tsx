@@ -56,6 +56,9 @@ export type ModelViewData = {
   printFiles: Array<{
     id: string | null;
     filename: string;
+    // Signed /api/files access token for slicer deep links (null in the
+    // create-wizard preview, where the file has no id yet either).
+    downloadToken: string | null;
     size: number;
     printTime: number | null;
     grams: number | null;
@@ -316,9 +319,10 @@ export function ModelView({ data }: { data: ModelViewData }) {
                   )}
                 </div>
                 <div className="flex shrink-0 items-center">
-                  {file.id ? (
+                  {file.id && file.downloadToken ? (
                     <FileDownloadMenu
                       fileId={file.id}
+                      token={file.downloadToken}
                       filename={file.filename}
                       makerworldUrl={makerworldUrl ?? undefined}
                     />

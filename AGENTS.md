@@ -74,11 +74,41 @@ test("formatDuration splits hours and minutes", () => {
 
 Decisions taken and why — guidance for development.
 
+- **The whole catalog is private** — instances hold paid models. Two layers:
+  `src/proxy.ts` (Next 16's renamed middleware) redirects pages without a
+  session *cookie* to `/sign-in`, but that's an optimistic presence check a
+  hand-set cookie defeats and its matcher skips `/api` — so every page also
+  verifies the session server-side (`getSession()` + redirect), and every API
+  route and server action checks it too (list-type actions return an empty
+  page instead). Keep both checks when adding a page. There is no
+  finer-grained RBAC on purpose: signed in = full read access, mutations are
+  owner-only.
 - **Uploads** stream through `POST /api/upload` to S3 (no browser↔S3 CORS setup needed);
   only signed-in users can upload, and file extensions are validated server-side.
+  Stored content types are always derived from the allowlisted extension
+  (`contentTypeForFilename`), never from a client header/value — `/api/files`
+  serves images inline on our origin, so an uploader-chosen `text/html` would
+  be stored XSS. File routes also send `X-Content-Type-Options: nosniff`.
 - **Downloads & images** stream from S3 through `GET /api/files/[id]`, so the S3
-  endpoint never needs to be reachable from the browser.
+  endpoint never needs to be reachable from the browser. The route accepts a
+  session cookie (browser links/downloads) **or a signed file token**
+  (`src/lib/file-token.ts`: HMAC over file id + expiry, keyed off
+  `BETTER_AUTH_SECRET`, expiry bucketed to week boundaries so URLs stay
+  cache-stable). Tokens exist because two consumers cannot send cookies: the
+  next/image optimizer (its internal fetch carries no request headers) and
+  slicer deep links. Images therefore render from `fileSrc(id)`
+  (`…?token=…`) — signed server-side and passed down in the card/gallery
+  data, since cards also render inside client components — and deep links use
+  the token **path** variant `/api/files/[id]/[token]/[filename]` (Orca keeps
+  the query string when naming downloads, so `?token=` would corrupt the
+  filename). `next.config.ts` must keep `images.localPatterns` allowing
+  `/api/files/**` with unrestricted `search`, or Next 16 rejects the tokened
+  srcs.
 - **Auth** is BetterAuth email/password with sessions stored in Postgres.
+  `DISABLE_SIGNUP=true` turns off self-registration (BetterAuth's
+  `emailAndPassword.disableSignUp` plus hiding the `/sign-up` page); OIDC
+  keeps provisioning users on first login regardless — who may authenticate
+  through SSO is the IdP's decision.
 - **.3mf import** (`src/lib/threemf.ts`) runs client-side on file selection: the zip is
   unpacked in the browser (fflate) and title/description (`3D/3dmodel.model`), printer
   name (`Metadata/project_settings.config` / `slice_info.config`) and preview images
@@ -200,8 +230,13 @@ Decisions taken and why — guidance for development.
 - **"Open in slicer" deep links** (`src/app/models/[id]/file-download-menu.tsx`)
   hand a `.3mf` to Bambu Studio / OrcaSlicer via their custom URL schemes. The
   two apps register different schemes **and parse the link differently**, so the
-  component builds a *different* URL per app (`SLICERS[].buildUrl`). Do not try
-  to unify them — every "obvious" shared format breaks one of them:
+  component builds a *different* URL per app (`SLICERS[].buildUrl`). Both apps
+  fetch the URL themselves **without cookies**, so deep links use the
+  token-authenticated path route `/api/files/<id>/<token>/<name>.3mf`
+  (`src/app/api/files/[id]/[token]/[filename]/`, reusing the `[id]` handler;
+  the token must be a path segment, not `?token=`, because Orca keeps the
+  query string when deriving the filename). Do not try
+  to unify the two link formats — every "obvious" shared format breaks one of them:
   - **Schemes differ from the app names.** OrcaSlicer registers `orcaslicer:`;
     Bambu Studio registers **`bambustudioopen:`** (NOT `bambustudio:`). An
     unregistered scheme fails *silently* — macOS finds no handler and shows
@@ -215,10 +250,11 @@ Decisions taken and why — guidance for development.
     the URL to fetch — so **must NOT** get a `&name=` appended (it gets fetched
     as part of the URL and our route 404s: `{"error":"Not found"}`). Orca names
     the saved file from that URL's **last path segment** (`filename_from_url` in
-    `Download`), so a bare `.../api/files/<id>` saves as the UUID with no
-    extension. We therefore point Orca at the filename-suffixed route
-    `.../api/files/<id>/<name>.3mf` (see `src/app/api/files/[id]/[filename]/`,
-    which ignores the name and reuses the `[id]` handler) to get a real `.3mf`
+    `Downloader.cpp` — which does **not** strip query strings), so a bare
+    `.../api/files/<id>` saves as the UUID with no extension and a `?token=`
+    would end up inside the filename. We therefore point Orca at the
+    token+filename-suffixed route `.../api/files/<id>/<token>/<name>.3mf`
+    (which ignores the name and reuses the `[id]` handler) to get a real `.3mf`
     name — the same shape as Printables' `…/build_tray_v3.step` link. See
     `Downloader::start_download` in OrcaSlicer.
   - **Bambu** (macOS `GUI_App::MacOpenURL`) takes whatever follows

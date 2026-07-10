@@ -9,7 +9,8 @@ export type CollectionCardData = {
   collectionModels: {
     model: {
       id: string;
-      files: { id: string }[];
+      // Token-signed image URL, signed server-side (see ModelCardData.files).
+      files: { id: string; src: string }[];
     };
   }[];
 };
@@ -58,7 +59,7 @@ export function CollectionCard({
                     >
                       {file ? (
                         <Image
-                          src={`/api/files/${file.id}`}
+                          src={file.src}
                           alt=""
                           fill
                           sizes="(max-width: 640px) 50vw, (max-width: 1024px) 25vw, 12vw"

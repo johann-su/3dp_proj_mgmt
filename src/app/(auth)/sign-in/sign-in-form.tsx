@@ -17,7 +17,13 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 
-export function SignInForm({ oidcProvider }: { oidcProvider: string | null }) {
+export function SignInForm({
+  oidcProvider,
+  signupEnabled,
+}: {
+  oidcProvider: string | null;
+  signupEnabled: boolean;
+}) {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [ssoLoading, setSsoLoading] = useState(false);
@@ -78,12 +84,14 @@ export function SignInForm({ oidcProvider }: { oidcProvider: string | null }) {
             <Button type="submit" disabled={loading}>
               {loading ? "Signing in…" : "Sign in"}
             </Button>
-            <p className="text-sm text-muted-foreground text-center">
-              No account?{" "}
-              <Link href="/sign-up" className="underline">
-                Sign up
-              </Link>
-            </p>
+            {signupEnabled && (
+              <p className="text-sm text-muted-foreground text-center">
+                No account?{" "}
+                <Link href="/sign-up" className="underline">
+                  Sign up
+                </Link>
+              </p>
+            )}
           </form>
 
           {oidcProvider && (

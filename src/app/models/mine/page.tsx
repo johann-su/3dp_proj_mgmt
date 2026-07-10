@@ -5,6 +5,7 @@ import { Box } from "lucide-react";
 import { db } from "@/db";
 import { models } from "@/db/schema";
 import { getSession } from "@/lib/auth";
+import { fileSrc } from "@/lib/file-token";
 import { ModelCard } from "@/components/model-card";
 
 export const dynamic = "force-dynamic";
@@ -50,7 +51,13 @@ export default async function MyModelsPage() {
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
           {results.map((model) => (
-            <ModelCard key={model.id} model={model} />
+            <ModelCard
+              key={model.id}
+              model={{
+                ...model,
+                files: model.files.map((f) => ({ id: f.id, src: fileSrc(f.id) })),
+              }}
+            />
           ))}
         </div>
       )}

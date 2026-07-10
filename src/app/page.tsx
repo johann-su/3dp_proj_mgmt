@@ -1,8 +1,11 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { desc } from "drizzle-orm";
 import { Box, Search } from "lucide-react";
 import { db } from "@/db";
 import { collections } from "@/db/schema";
+import { getSession } from "@/lib/auth";
+import { fileSrc } from "@/lib/file-token";
 import { listModels } from "@/lib/list-queries";
 import { ModelGrid } from "@/components/model-grid";
 import { CollectionCard } from "@/components/collection-card";
@@ -17,6 +20,10 @@ export default async function HomePage({
 }: {
   searchParams: Promise<{ category?: string }>;
 }) {
+  // The whole catalog is private — self-hosted instances store paid models.
+  const session = await getSession();
+  if (!session) redirect("/sign-in");
+
   const { category } = await searchParams;
 
   const allCategories = await db.query.categories.findMany({
@@ -45,6 +52,18 @@ export default async function HomePage({
       },
     },
   });
+
+  const recentCollectionCards = recentCollections.map((c) => ({
+    id: c.id,
+    title: c.title,
+    user: c.user,
+    collectionModels: c.collectionModels.map((cm) => ({
+      model: {
+        id: cm.model.id,
+        files: cm.model.files.map((f) => ({ id: f.id, src: fileSrc(f.id) })),
+      },
+    })),
+  }));
 
   const { items: models, nextCursor } = await listModels({
     categoryId: activeCategory?.id,
@@ -90,7 +109,7 @@ export default async function HomePage({
         ))}
       </div>
 
-      {recentCollections.length > 0 && (
+      {recentCollectionCards.length > 0 && (
         <div className="mb-10">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-xl font-semibold tracking-tight">Collections</h2>
@@ -102,7 +121,7 @@ export default async function HomePage({
             </Link>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
-            {recentCollections.map((collection) => (
+            {recentCollectionCards.map((collection) => (
               <CollectionCard key={collection.id} collection={collection} />
             ))}
           </div>

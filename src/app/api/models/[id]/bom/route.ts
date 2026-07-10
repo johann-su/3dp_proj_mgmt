@@ -3,6 +3,7 @@ import { eq } from "drizzle-orm";
 import { db } from "@/db";
 import { models } from "@/db/schema";
 import { bomToCsv } from "@/lib/bom";
+import { getSession } from "@/lib/auth";
 
 export const runtime = "nodejs";
 
@@ -13,6 +14,12 @@ export async function GET(
   _req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
+  // Only reached from an <a download> link on the model page, so the session
+  // cookie is always present — no need for the file-token mechanism here.
+  if (!(await getSession())) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
   const { id } = await params;
   if (!UUID_RE.test(id)) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
