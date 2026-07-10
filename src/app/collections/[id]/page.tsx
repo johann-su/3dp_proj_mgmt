@@ -1,11 +1,13 @@
 import { notFound } from "next/navigation";
 import { eq } from "drizzle-orm";
-import { FolderOpen } from "lucide-react";
+import { ExternalLink, FolderOpen } from "lucide-react";
 import { db } from "@/db";
 import { collections } from "@/db/schema";
 import { getSession } from "@/lib/auth";
 import { formatDate } from "@/lib/format";
+import { platformFromSourceUrl, platformLabels } from "@/lib/platform";
 import { ModelCard } from "@/components/model-card";
+import { CollectionSyncButton } from "./collection-sync-button";
 import { DeleteCollectionButton } from "./delete-collection-button";
 
 export const dynamic = "force-dynamic";
@@ -50,6 +52,7 @@ export default async function CollectionPage({
   if (!collection) notFound();
 
   const isOwner = session?.user.id === collection.userId;
+  const sourcePlatform = platformFromSourceUrl(collection.sourceUrl);
 
   return (
     <div className="mx-auto max-w-6xl px-4 py-8">
@@ -63,13 +66,31 @@ export default async function CollectionPage({
             {collection.collectionModels.length} model
             {collection.collectionModels.length === 1 ? "" : "s"}
           </p>
+          {collection.sourceUrl && sourcePlatform && (
+            <a
+              href={collection.sourceUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1 text-sm text-primary hover:underline mt-1"
+            >
+              <ExternalLink className="size-3.5" />
+              Imported from {platformLabels[sourcePlatform]}
+            </a>
+          )}
           {collection.description && (
             <p className="mt-3 whitespace-pre-wrap text-sm max-w-2xl">
               {collection.description}
             </p>
           )}
         </div>
-        {isOwner && <DeleteCollectionButton collectionId={collection.id} />}
+        {isOwner && (
+          <div className="flex items-center gap-2">
+            {collection.sourceUrl && (
+              <CollectionSyncButton collectionId={collection.id} />
+            )}
+            <DeleteCollectionButton collectionId={collection.id} />
+          </div>
+        )}
       </div>
 
       {collection.collectionModels.length === 0 ? (

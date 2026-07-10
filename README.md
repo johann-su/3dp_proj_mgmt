@@ -12,7 +12,7 @@ This project should be a self hostable project management platform for .3mf file
 - **PDF documents** — attach build instructions or manuals; viewed inline in the browser and downloadable
 - **Markdown descriptions** — GitHub-flavored markdown; raw HTML is never rendered
 - **Platform import** — import metadata and images from MakerWorld and Printables; MakerWorld `.3mf` file downloads require a connected Bambu Cloud account (Settings → Bambu Cloud)
-- **Collection import** — paste a MakerWorld collection URL to import every model in it in the background into a new collection; progress ring in the header with cancel (requires a connected Bambu account)
+- **Collection import** — paste a MakerWorld collection URL to import every model in it in the background into a new collection; progress ring in the header with cancel (requires a connected Bambu account); imported collections link back to their source and can sync new remote models later
 - **Onshape integration** — import models via document URL (OAuth2 "Sign in with Onshape"); sync when the document changes or pin an immutable version snapshot; "Edit in Onshape" button on imported models
 - **Print estimates** — optional slicer service (headless PrusaSlicer) estimates print time and filament use from uploaded `.3mf` files using the settings embedded in the file; shows printer hardware info per file
 - **Open in slicer** — open files directly in OrcaSlicer or Bambu Studio as an alternative to downloading

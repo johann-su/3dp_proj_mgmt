@@ -133,6 +133,14 @@ Decisions taken and why — guidance for development.
   importer per design, inserts finished models directly, and links them into
   a local collection created up front — already-imported designs (matching
   `sourceUrl`) are only linked, which makes re-running a failed job a resume.
+  The source URL is stored on the collection (`collections.source_url`,
+  rendered as an "Imported from MakerWorld" link), and "Sync from MakerWorld"
+  (owner-only, `POST /api/collections/{id}/sync`) re-runs the same job
+  against the existing collection: designs added remotely import as new
+  models, everything already in the library is (re-)linked. Sync never
+  deletes — models removed remotely stay, and a model the user pulled out of
+  the local collection gets re-linked on the next sync. Local
+  title/description edits are never overwritten.
   Slice estimates run as a post-phase so a slow slicer doesn't stall visible
   progress. A connected Bambu account is required up front (otherwise every
   model would be a file-less shell), jobs are capped at 200 designs, and one
