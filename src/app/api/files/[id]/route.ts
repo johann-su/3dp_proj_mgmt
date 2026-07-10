@@ -45,7 +45,16 @@ export async function GET(
     "Content-Disposition",
     `${asAttachment ? "attachment" : "inline"}; filename="${encodeURIComponent(file.filename)}"`,
   );
-  headers.set("Cache-Control", "private, max-age=3600");
+  // Files are content-addressed by an immutable UUID, so an image never changes
+  // under a given URL — let the browser and the next/image optimizer cache it
+  // aggressively (the optimizer's TTL is max(minimumCacheTTL, upstream max-age)).
+  // Non-image files stay short-lived + private since they're download payloads.
+  headers.set(
+    "Cache-Control",
+    file.kind === "image"
+      ? "public, max-age=31536000, immutable"
+      : "private, max-age=3600",
+  );
 
   return new Response(object.Body.transformToWebStream(), { headers });
 }
