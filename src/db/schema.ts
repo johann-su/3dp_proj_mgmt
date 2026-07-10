@@ -214,6 +214,9 @@ export const collections = pgTable("collections", {
   userId: text("user_id")
     .notNull()
     .references(() => user.id, { onDelete: "cascade" }),
+  // MakerWorld collection URL this collection was bulk-imported from; null
+  // for hand-made collections. "Sync" re-runs the import job against it.
+  sourceUrl: text("source_url"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
