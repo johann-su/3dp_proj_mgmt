@@ -19,17 +19,19 @@ function threeMf(entries: Record<string, Uint8Array>, filename = "test.3mf") {
   return new File([zipSync(entries) as unknown as BlobPart], filename);
 }
 
-test("extract3mfMetadata reads Title and a double-escaped HTML Description", async () => {
+// The Description keeps its formatting as Markdown (Bambu double-escapes the
+// HTML: "&amp;lt;h3&amp;gt;…"); the Title is flattened to plain text.
+test("extract3mfMetadata reads Title and a double-escaped HTML Description as markdown", async () => {
   const meta = await extract3mfMetadata(
     threeMf({
       "3D/3dmodel.model": modelXml(
         `<metadata name="Title">Cable Clip</metadata>
-<metadata name="Description">&amp;lt;p&amp;gt;Snap fit, no supports&amp;lt;/p&amp;gt;</metadata>`,
+<metadata name="Description">&amp;lt;h3&amp;gt;Notes&amp;lt;/h3&amp;gt;&amp;lt;p&amp;gt;Snap fit, &amp;lt;strong&amp;gt;no supports&amp;lt;/strong&amp;gt;&amp;lt;/p&amp;gt;</metadata>`,
       ),
     }),
   );
   assert.equal(meta.title, "Cable Clip");
-  assert.equal(meta.description, "Snap fit, no supports");
+  assert.equal(meta.description, "### Notes\n\nSnap fit, **no supports**");
 });
 
 test("extract3mfMetadata falls back to a cleaned-up filename as title", async () => {
