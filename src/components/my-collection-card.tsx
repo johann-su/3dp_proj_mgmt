@@ -1,14 +1,14 @@
 import Link from "next/link";
-import Image from "next/image";
 import { FolderOpen } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
+import { CoverImage } from "@/components/cover-image";
 
 export type MyCollectionData = {
   id: string;
   title: string;
   collectionModels: {
     // Token-signed image URL, signed server-side (see ModelCardData.files).
-    model: { files: { id: string; src: string }[] };
+    model: { files: { id: string; src: string; animated?: boolean }[] };
   }[];
 };
 
@@ -25,10 +25,10 @@ export function MyCollectionCard({ collection }: { collection: MyCollectionData 
       <Card className="overflow-hidden h-full py-0 gap-0 border-0 shadow-sm transition-shadow group-hover:shadow-lg">
         <div className="relative aspect-[4/3] bg-muted flex items-center justify-center overflow-hidden">
           {cover ? (
-            <Image
+            <CoverImage
               src={cover.src}
               alt={collection.title}
-              fill
+              animated={cover.animated}
               sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 25vw"
               className="object-cover transition-transform group-hover:scale-105"
             />

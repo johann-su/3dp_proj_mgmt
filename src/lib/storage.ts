@@ -1,7 +1,9 @@
 import { Readable } from "node:stream";
 import { randomUUID } from "node:crypto";
 import { Upload } from "@aws-sdk/lib-storage";
+import { GetObjectCommand } from "@aws-sdk/client-s3";
 import { s3, S3_BUCKET } from "@/lib/s3";
+import { isAnimatedImage } from "@/lib/image-animated";
 
 export type StagedFile = {
   key: string;
@@ -65,4 +67,37 @@ export async function stageStream(
   await upload.done();
 
   return { key, filename, size, contentType };
+}
+
+// Reads a staged image's header from S3 and reports whether it's animated, so
+// browse cards can freeze animated covers to a poster frame (see CoverImage).
+// Detected server-side from the actual bytes — like contentTypeForFilename, we
+// never trust a client-claimed value. Best-effort: a read failure means "not
+// animated" (worst case a card animates, matching the old behaviour).
+export async function detectAnimated(s3Key: string): Promise<boolean> {
+  try {
+    const object = await s3.send(
+      new GetObjectCommand({
+        Bucket: S3_BUCKET,
+        Key: s3Key,
+        Range: "bytes=0-255",
+      }),
+    );
+    if (!object.Body) return false;
+    return isAnimatedImage(await object.Body.transformToByteArray());
+  } catch {
+    return false;
+  }
+}
+
+// Returns the set of keys (from the given files) that are animated images.
+// Non-image files are skipped; the header reads run concurrently.
+export async function animatedImageKeys(
+  files: { key: string; kind: string }[],
+): Promise<Set<string>> {
+  const images = files.filter((f) => f.kind === "image");
+  const flags = await Promise.all(
+    images.map(async (f) => [f.key, await detectAnimated(f.key)] as const),
+  );
+  return new Set(flags.filter(([, animated]) => animated).map(([key]) => key));
 }

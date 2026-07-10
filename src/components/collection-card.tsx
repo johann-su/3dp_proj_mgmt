@@ -1,6 +1,6 @@
 import Link from "next/link";
-import Image from "next/image";
 import { FolderOpen, Layers, User } from "lucide-react";
+import { CoverImage } from "@/components/cover-image";
 
 export type CollectionCardData = {
   id: string;
@@ -10,7 +10,7 @@ export type CollectionCardData = {
     model: {
       id: string;
       // Token-signed image URL, signed server-side (see ModelCardData.files).
-      files: { id: string; src: string }[];
+      files: { id: string; src: string; animated?: boolean }[];
     };
   }[];
 };
@@ -58,10 +58,10 @@ export function CollectionCard({
                       }}
                     >
                       {file ? (
-                        <Image
+                        <CoverImage
                           src={file.src}
                           alt=""
-                          fill
+                          animated={file.animated}
                           sizes="(max-width: 640px) 50vw, (max-width: 1024px) 25vw, 12vw"
                           className="object-cover transition-transform group-hover:scale-105"
                         />

@@ -56,7 +56,11 @@ export async function listModels(opts: {
     sourceUrl: m.sourceUrl,
     user: m.user,
     category: m.category,
-    files: m.files.map((f) => ({ id: f.id, src: fileSrc(f.id) })),
+    files: m.files.map((f) => ({
+      id: f.id,
+      src: fileSrc(f.id),
+      animated: f.animated,
+    })),
     modelTags: m.modelTags,
   }));
   return { items, nextCursor: page.nextCursor };
@@ -101,7 +105,11 @@ export async function listUserCollections(opts: {
     title: c.title,
     collectionModels: c.collectionModels.map((cm) => ({
       model: {
-        files: cm.model.files.map((f) => ({ id: f.id, src: fileSrc(f.id) })),
+        files: cm.model.files.map((f) => ({
+          id: f.id,
+          src: fileSrc(f.id),
+          animated: f.animated,
+        })),
       },
     })),
   }));

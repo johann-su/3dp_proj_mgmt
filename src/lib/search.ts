@@ -282,7 +282,11 @@ async function hydrate(
         sourceUrl: m.sourceUrl,
         user: m.user,
         category: m.category,
-        files: m.files.map((f) => ({ id: f.id, src: fileSrc(f.id) })),
+        files: m.files.map((f) => ({
+          id: f.id,
+          src: fileSrc(f.id),
+          animated: f.animated,
+        })),
         modelTags: m.modelTags,
       },
     ]),
@@ -297,7 +301,11 @@ async function hydrate(
         collectionModels: c.collectionModels.map((cm) => ({
           model: {
             id: cm.model.id,
-            files: cm.model.files.map((f) => ({ id: f.id, src: fileSrc(f.id) })),
+            files: cm.model.files.map((f) => ({
+              id: f.id,
+              src: fileSrc(f.id),
+              animated: f.animated,
+            })),
           },
         })),
       },

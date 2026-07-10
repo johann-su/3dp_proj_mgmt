@@ -120,7 +120,11 @@ export default async function CollectionPage({
               key={model.id}
               model={{
                 ...model,
-                files: model.files.map((f) => ({ id: f.id, src: fileSrc(f.id) })),
+                files: model.files.map((f) => ({
+                  id: f.id,
+                  src: fileSrc(f.id),
+                  animated: f.animated,
+                })),
               }}
             />
           ))}
