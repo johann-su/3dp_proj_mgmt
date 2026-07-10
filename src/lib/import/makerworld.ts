@@ -18,6 +18,12 @@ import { ImportError, IMPORT_USER_AGENT, type ImportedProject, type RemoteAsset 
 const MAX_IMAGES = 8;
 const MAX_FILES = 8;
 
+// Exact warning pushed when the stored Bambu token stops working. The
+// collection import job matches on it to abort early (every following
+// download would fail the same way) — keep the two in sync via this constant.
+export const BAMBU_EXPIRED_WARNING =
+  "Your Bambu Cloud login has expired — reconnect it in Settings → Bambu Cloud, then import again.";
+
 export function parseMakerworldUrl(url: URL): string | null {
   if (!/(^|\.)makerworld\.com$/.test(url.hostname)) return null;
   const match = url.pathname.match(/\/models\/(\d+)/);
@@ -88,9 +94,7 @@ async function resolveDownloads(
       region,
     );
     if (result === "unauthorized") {
-      warnings.push(
-        "Your Bambu Cloud login has expired — reconnect it in Settings → Bambu Cloud, then import again.",
-      );
+      warnings.push(BAMBU_EXPIRED_WARNING);
       break;
     }
     if (!result) {

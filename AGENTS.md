@@ -118,6 +118,29 @@ Decisions taken and why — guidance for development.
   `POST /api/models/{id}/onshape-sync`) compares the current microversion and
   re-exports, replacing the previously imported files (tracked via
   `model_files.onshape_element_id`).
+- **MakerWorld collection import** (`POST /api/import/collection`,
+  `src/lib/import/makerworld-collection.ts` + `collection-job.ts`) bulk-imports
+  every model of a `makerworld.com/…/collections/{id}` list. Collections are
+  "favorites lists" in Bambu's API: `GET
+  api.bambulab.com/v1/design-service/favorites/{id}` (metadata) and
+  `…/favorites/{id}/designs?limit=&offset=` (contents, hidden designs
+  excluded) answer anonymously — undocumented; discovered from MakerWorld's
+  own frontend (`getFavorites` in the `/collections/[collectionId]` page
+  chunk), so Bambu can change them at will. Because editing dozens of models
+  by hand is infeasible, imported designs skip the create-form draft flow:
+  the job runs in the background (`after()`, like slicing) via an
+  `import_jobs` row (status/progress/heartbeat), reuses the single-model
+  importer per design, inserts finished models directly, and links them into
+  a local collection created up front — already-imported designs (matching
+  `sourceUrl`) are only linked, which makes re-running a failed job a resume.
+  Slice estimates run as a post-phase so a slow slicer doesn't stall visible
+  progress. A connected Bambu account is required up front (otherwise every
+  model would be a file-less shell), jobs are capped at 200 designs, and one
+  runs per user at a time. Progress surfaces as a ring in the top-right
+  header (`src/components/import-progress.tsx`) polling `GET
+  /api/import-jobs`, with cancel (checked between designs) and per-design
+  failures as warnings; a poll marks heartbeat-stale "running" jobs failed so
+  a server restart doesn't leave a spinner forever.
 - **Print estimates** come from two sources. Files sliced in Bambu Studio /
   OrcaSlicer embed per-plate predictions in `Metadata/slice_info.config`, which
   are read directly from S3 via ranged GETs (`src/lib/threemf-remote.ts`).
