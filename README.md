@@ -15,15 +15,10 @@ This project should be a self hostable project management platform for .3mf file
 - **Collection import** — paste a MakerWorld collection URL to import every model in it in the background into a new collection; progress ring in the header with cancel (requires a connected Bambu account); imported collections link back to their source and can sync new remote models later
 - **Onshape integration** — import models via document URL (OAuth2 "Sign in with Onshape"); sync when the document changes or pin an immutable version snapshot; "Edit in Onshape" button on imported models
 - **Print estimates** — optional slicer service (headless PrusaSlicer) estimates print time and filament use from uploaded `.3mf` files using the settings embedded in the file; shows printer hardware info per file
+- **Parametric OpenSCAD models** — upload or import a `.scad` source (Printables and MakerWorld parametric models) and generate customized `.3mf` files from its customizer parameters via the optional headless OpenSCAD service; generated variants get print estimates and slicer deep links like any upload
 - **Open in slicer** — open files directly in OrcaSlicer or Bambu Studio as an alternative to downloading
 - **Pagination** — cursor-based endless scroll on the list screens (homepage `/` models grid, `/collections`)
 - **Authentication** — email/password with optional OIDC SSO; all pages require sign-in
-
-**Planned:**
-- import collections from printables
-- 3D preview of objects in the browser
-- Parametric models via [OpenSCAD](https://openscad.org/)
-- Bambu printer integration — send print jobs and monitor prints
 
 ## Tech stack
 
@@ -41,20 +36,20 @@ Requirements: Node 22+, Docker, and an S3-compatible storage (AWS S3, MinIO, Gar
 
 ```sh
 cp .env.example .env       # then fill in BETTER_AUTH_SECRET and your S3 settings
-docker compose up -d       # starts Postgres on :5432 and the slicer service on :8000
+docker compose up -d       # starts Postgres on :5432, the slicer service on :8000 and the openscad service on :8001
 npm install
 npm run db:migrate         # apply SQL migrations from ./drizzle + seed categories
 ```
 
 ### Day to day
 
-`compose.yml`'s `postgres` and `slicer` services are the only two things Docker
-runs in dev — `npm run dev` runs Next.js directly on the host (not in a container)
-and just connects to them over `localhost`. They aren't started for you, so bring
-them up first each time you come back to the project:
+`compose.yml`'s `postgres`, `slicer` and `openscad` services are the only things
+Docker runs in dev — `npm run dev` runs Next.js directly on the host (not in a
+container) and just connects to them over `localhost`. They aren't started for
+you, so bring them up first each time you come back to the project:
 
 ```sh
-docker compose up -d       # no-op if postgres/slicer are already running
+docker compose up -d       # no-op if postgres/slicer/openscad are already running
 npm run dev
 ```
 

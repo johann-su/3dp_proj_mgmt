@@ -181,3 +181,32 @@ export async function fetchProfileDownload(
   if (!data?.url) return null;
   return { url: data.url, name: data.name ?? "" };
 }
+
+// Exchanges a design id for a presigned download of its *raw* model files
+// (the "raw model files" panel on MakerWorld — .scad sources, unsliced
+// .3mf/.stl geometry — as opposed to the sliced print profiles above). Only
+// `modelType=all` works (verified against a live account: "scad"/"3mf"
+// answer 404), returning one zip of every raw file with an empty `name`.
+// Undocumented like the favorites API: discovered from community clients of
+// MakerWorld's own frontend, so Bambu can change it at will. Requires a
+// login — it answers 403 "Please log in to download models." anonymously,
+// hence 403 also maps to "unauthorized".
+export async function fetchRawModelDownload(
+  designId: number,
+  modelType: string,
+  token: string,
+  region: BambuRegion,
+): Promise<ProfileDownload | null | "unauthorized"> {
+  const res = await fetch(
+    `${apiBase(region)}/v1/design-service/design/${designId}/model?modelType=${encodeURIComponent(modelType)}&type=download`,
+    { headers: { ...jsonHeaders(), Authorization: `Bearer ${token}` } },
+  );
+  if (res.status === 401 || res.status === 403) return "unauthorized";
+  if (!res.ok) return null;
+  const data = (await res.json().catch(() => null)) as {
+    url?: string;
+    name?: string;
+  } | null;
+  if (!data?.url) return null;
+  return { url: data.url, name: data.name ?? "" };
+}

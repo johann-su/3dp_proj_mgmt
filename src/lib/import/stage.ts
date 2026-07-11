@@ -2,6 +2,7 @@
 // ("uploads/…" keys, same shape as browser uploads). Shared by the one-shot
 // import route (POST /api/import) and the background collection import job.
 
+import { unzipSync } from "fflate";
 import { stageBuffer, stageStream } from "@/lib/storage";
 import { normalizeThreeMf } from "@/lib/threemf-normalize";
 import { fileExtension, IMAGE_EXTENSIONS, PDF_EXTENSIONS } from "@/lib/s3";
@@ -20,8 +21,49 @@ const CONTENT_TYPES: Record<string, string> = {
   ".3mf": "model/3mf",
   ".step": "model/step",
   ".stp": "model/step",
+  ".scad": "application/x-openscad",
   ".pdf": "application/pdf",
 };
+
+// MakerWorld's raw-model download serves a single file or, for several
+// matching files, one zip — telling them apart needs the bytes (the response
+// filename decides). Stages every .scad found either way. Zips stay small
+// (sources are text), so buffering is fine.
+const MAX_SCAD_ARCHIVE_BYTES = 64 * 1024 * 1024;
+
+async function stageScadDownload(
+  asset: RemoteAsset,
+  res: Response,
+): Promise<StagedImportFile[]> {
+  const data = new Uint8Array(await res.arrayBuffer());
+  if (data.byteLength > MAX_SCAD_ARCHIVE_BYTES) return [];
+
+  const isZip = data[0] === 0x50 && data[1] === 0x4b; // "PK"
+  if (!isZip) {
+    if (fileExtension(asset.filename) !== ".scad") return [];
+    return [
+      {
+        ...(await stageBuffer(asset.filename, data, CONTENT_TYPES[".scad"])),
+        kind: "model" as const,
+      },
+    ];
+  }
+
+  const staged: StagedImportFile[] = [];
+  const entries = unzipSync(data, {
+    filter: (entry) =>
+      fileExtension(entry.name) === ".scad" && !entry.name.startsWith("__MACOSX"),
+  });
+  for (const [path, bytes] of Object.entries(entries)) {
+    const filename = path.split("/").pop();
+    if (!filename || bytes.length === 0) continue;
+    staged.push({
+      ...(await stageBuffer(filename, bytes, CONTENT_TYPES[".scad"])),
+      kind: "model" as const,
+    });
+  }
+  return staged;
+}
 
 const MAX_BYTES: Record<RemoteAsset["kind"], number> = {
   model: MAX_MODEL_BYTES,
@@ -60,6 +102,14 @@ export async function stageImportedAssets(
       const contentLength = Number(res.headers.get("content-length") ?? 0);
       if (contentLength > maxBytes) {
         warnings.push(`${asset.filename} is too large, skipped`);
+        continue;
+      }
+      if (asset.extractScad) {
+        const staged = await stageScadDownload(asset, res);
+        if (staged.length === 0) {
+          warnings.push(`No .scad files found in ${asset.filename}`);
+        }
+        files.push(...staged);
         continue;
       }
       const ext = fileExtension(asset.filename);

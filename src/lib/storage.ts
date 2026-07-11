@@ -69,6 +69,26 @@ export async function stageStream(
   return { key, filename, size, contentType };
 }
 
+// Reads a small text file (e.g. a parametric .scad source) from S3. Returns
+// null when the object is missing or larger than maxBytes — callers treat
+// that as "no parseable content", never as an error.
+export async function readTextFile(
+  s3Key: string,
+  size: number,
+  maxBytes: number,
+): Promise<string | null> {
+  if (size > maxBytes) return null;
+  try {
+    const object = await s3.send(
+      new GetObjectCommand({ Bucket: S3_BUCKET, Key: s3Key }),
+    );
+    if (!object.Body) return null;
+    return Buffer.from(await object.Body.transformToByteArray()).toString("utf8");
+  } catch {
+    return null;
+  }
+}
+
 // Reads a staged image's header from S3 and reports whether it's animated, so
 // browse cards can freeze animated covers to a poster frame (see CoverImage).
 // Detected server-side from the actual bytes — like contentTypeForFilename, we

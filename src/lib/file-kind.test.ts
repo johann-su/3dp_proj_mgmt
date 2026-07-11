@@ -1,6 +1,10 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { contentTypeForFilename, sanitizeRename } from "@/lib/file-kind";
+import {
+  allowedExtensions,
+  contentTypeForFilename,
+  sanitizeRename,
+} from "@/lib/file-kind";
 
 test("contentTypeForFilename maps allowlisted extensions, ignoring case", () => {
   // Serve-time content types come from the extension, never from what the
@@ -8,6 +12,14 @@ test("contentTypeForFilename maps allowlisted extensions, ignoring case", () => 
   assert.equal(contentTypeForFilename("part.3MF"), "model/3mf");
   assert.equal(contentTypeForFilename("photo.jpeg"), "image/jpeg");
   assert.equal(contentTypeForFilename("manual.pdf"), "application/pdf");
+});
+
+test(".scad is an allowlisted model extension with a non-text content type", () => {
+  // Parametric OpenSCAD source uploads as a model file. Its content type must
+  // never be text/* — /api/files would serve it in a way a browser renders.
+  assert.ok(allowedExtensions("model").includes(".scad"));
+  assert.equal(contentTypeForFilename("servo horn.SCAD"), "application/x-openscad");
+  assert.ok(!contentTypeForFilename("x.scad").startsWith("text/"));
 });
 
 test("contentTypeForFilename falls back to octet-stream for unknown extensions", () => {

@@ -152,7 +152,7 @@ export async function createModel(
 
   const uploads = input.files;
   if (!uploads.some((f) => f.kind === "model")) {
-    return { error: "At least one model file (.3mf or .step) is required" };
+    return { error: "At least one model file (.3mf, .scad or .step) is required" };
   }
   const uploadError = validateUploads(uploads);
   if (uploadError) return { error: uploadError };
@@ -264,6 +264,14 @@ export async function updateModel(
   if (model.userId !== session.user.id) return { error: "Not your model" };
 
   const removedIds = new Set(input.removedFileIds);
+  // Removing a parametric .scad also removes the .3mf variants generated from
+  // it. The DB FK cascade would drop the rows anyway, but the ids must be in
+  // the removed set so the S3 cleanup below deletes their objects too.
+  for (const f of model.files) {
+    if (f.generatedFromId !== null && removedIds.has(f.generatedFromId)) {
+      removedIds.add(f.id);
+    }
+  }
   const removed = model.files.filter((f) => removedIds.has(f.id));
   const kept = model.files.filter((f) => !removedIds.has(f.id));
   const keptById = new Map(kept.map((f) => [f.id, f]));
@@ -271,7 +279,7 @@ export async function updateModel(
   const hasModelFile =
     kept.some((f) => f.kind === "model") ||
     input.newFiles.some((f) => f.kind === "model");
-  if (!hasModelFile) return { error: "At least one model file (.3mf or .step) is required" };
+  if (!hasModelFile) return { error: "At least one model file (.3mf, .scad or .step) is required" };
 
   // Sniff new image headers up front (outside the transaction) so animated
   // covers are frozen to a poster frame in browse cards.
