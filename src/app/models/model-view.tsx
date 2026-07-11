@@ -479,13 +479,13 @@ export function ModelView({ data }: { data: ModelViewData }) {
                   isOwner &&
                   modelId &&
                   file.id && (
-                    <Button asChild variant="outline">
+                    <Button asChild size="lg">
                       <Link href={`/models/${modelId}/customize/${file.id}`}>
                         {/* eslint-disable-next-line @next/next/no-img-element */}
                         <img
                           src="/customize.svg"
                           alt=""
-                          className="size-5 dark:invert-0 invert"
+                          className="size-6 dark:invert-0 invert"
                         />
                         Customize
                       </Link>
