@@ -786,6 +786,9 @@ export function ModelForm({
 }) {
   const router = useRouter();
   const cancelHref = model ? `/models/${model.id}` : "/models/mine";
+  const discardMessage = model
+    ? "Your changes to this model will be lost."
+    : "This model won't be created.";
   const [step, setStep] = useState<1 | 2>(1);
   const [preview, setPreview] = useState(false);
   const [title, setTitle] = useState(model?.title ?? "");
@@ -828,8 +831,23 @@ export function ModelForm({
 
   const [sourceUrl, setSourceUrl] = useState<string | null>(null);
   const [onshapeMicroversion, setOnshapeMicroversion] = useState<string | null>(null);
+  const [showBackConfirm, setShowBackConfirm] = useState(false);
 
   const hasModelFile = modelFileEntries.length > 0;
+
+  // Trap the browser back button behind the same discard-changes prompt as
+  // the Cancel button: push a same-URL history entry so a back press is a
+  // popstate we can intercept, then re-push it to neutralize the back and
+  // show the confirm dialog instead of actually navigating away.
+  useEffect(() => {
+    window.history.pushState(null, "", window.location.href);
+    const handlePopState = () => {
+      window.history.pushState(null, "", window.location.href);
+      setShowBackConfirm(true);
+    };
+    window.addEventListener("popstate", handlePopState);
+    return () => window.removeEventListener("popstate", handlePopState);
+  }, []);
 
   // Hydrate from an import draft handed over by /models/import. Create mode
   // only; runs once after hydration (sessionStorage is client-only).
@@ -1375,11 +1393,22 @@ export function ModelForm({
             <AlertDialogContent>
               <AlertDialogHeader>
                 <AlertDialogTitle>Discard changes?</AlertDialogTitle>
-                <AlertDialogDescription>
-                  {model
-                    ? "Your changes to this model will be lost."
-                    : "This model won't be created."}
-                </AlertDialogDescription>
+                <AlertDialogDescription>{discardMessage}</AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>Keep editing</AlertDialogCancel>
+                <AlertDialogAction onClick={() => router.push(cancelHref)}>
+                  Discard
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
+
+          <AlertDialog open={showBackConfirm} onOpenChange={setShowBackConfirm}>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Discard changes?</AlertDialogTitle>
+                <AlertDialogDescription>{discardMessage}</AlertDialogDescription>
               </AlertDialogHeader>
               <AlertDialogFooter>
                 <AlertDialogCancel>Keep editing</AlertDialogCancel>
