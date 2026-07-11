@@ -5,6 +5,7 @@ import { collections, models } from "@/db/schema";
 import type { ModelCardData } from "@/components/model-card";
 import type { CollectionCardData } from "@/components/collection-card";
 import { fileSrc } from "@/lib/file-token";
+import { smartCollectionPreviews } from "@/lib/smart-collections";
 import {
   PAGE_SIZE,
   decodeCursor,
@@ -109,26 +110,39 @@ export async function listFeed(opts: {
       },
     });
 
-    collectionItems = collectionRows.map((c) => ({
-      id: c.id,
-      createdAt: c.createdAt,
-      type: "collection",
-      collection: {
+    // Smart collections have no collection_models rows — their covers and
+    // count come from evaluating the stored rules.
+    const smartPreviews = await smartCollectionPreviews(
+      collectionRows.filter((c) => c.smart).map((c) => ({ id: c.id, rules: c.rules })),
+    );
+
+    collectionItems = collectionRows.map((c) => {
+      const preview = smartPreviews.get(c.id);
+      return {
         id: c.id,
-        title: c.title,
-        user: c.user,
-        collectionModels: c.collectionModels.map((cm) => ({
-          model: {
-            id: cm.model.id,
-            files: cm.model.files.map((f) => ({
-              id: f.id,
-              src: fileSrc(f.id),
-              animated: f.animated,
+        createdAt: c.createdAt,
+        type: "collection",
+        collection: {
+          id: c.id,
+          title: c.title,
+          user: c.user,
+          smart: c.smart,
+          totalModels: preview?.totalModels,
+          collectionModels:
+            preview?.collectionModels ??
+            c.collectionModels.map((cm) => ({
+              model: {
+                id: cm.model.id,
+                files: cm.model.files.map((f) => ({
+                  id: f.id,
+                  src: fileSrc(f.id),
+                  animated: f.animated,
+                })),
+              },
             })),
-          },
-        })),
-      },
-    }));
+        },
+      };
+    });
   }
 
   return mergePage([modelItems, collectionItems]);
