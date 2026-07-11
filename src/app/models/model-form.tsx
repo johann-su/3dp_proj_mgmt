@@ -806,6 +806,8 @@ export function ModelForm({
     () => model?.files.filter((f) => f.kind === "pdf") ?? [],
   );
   const [pdfFiles, setPdfFiles] = useState<PendingFile[]>([]);
+  // PDFs pulled in by a URL import — already staged in S3 (create mode only).
+  const [stagedPdfFiles, setStagedPdfFiles] = useState<UploadedFile[]>([]);
   const [images, setImages] = useState<ImageEntry[]>(() =>
     (model?.files ?? [])
       .filter((f) => f.kind === "image")
@@ -853,6 +855,8 @@ export function ModelForm({
           .filter((f) => f.kind === "image")
           .map(stagedImageEntry),
       );
+      setStagedPdfFiles((draft.files ?? []).filter((f) => f.kind === "pdf"));
+      setBom(draft.bom ?? []);
       setStep(2);
       toast.success("Model imported — review and save");
       for (const warning of draft.warnings ?? []) {
@@ -1118,7 +1122,7 @@ export function ModelForm({
           description,
           categoryId: categoryId || null,
           tags: tags.split(","),
-          files: [...orderedModelFiles, ...uploadedPdfs, ...orderedImages],
+          files: [...orderedModelFiles, ...stagedPdfFiles, ...uploadedPdfs, ...orderedImages],
           bom,
           sourceUrl,
           onshapeMicroversion,
@@ -1238,6 +1242,10 @@ export function ModelForm({
                 removeExisting={(id) =>
                   setExistingPdfFiles((files) => files.filter((f) => f.id !== id))
                 }
+                staged={stagedPdfFiles}
+                removeStaged={(key) =>
+                  setStagedPdfFiles((files) => files.filter((f) => f.key !== key))
+                }
                 icon={<FileText className="size-6" />}
               />
 
@@ -1282,6 +1290,10 @@ export function ModelForm({
               })),
               pdfFiles: [
                 ...existingPdfFiles.map((f) => ({
+                  filename: f.filename,
+                  size: f.size,
+                })),
+                ...stagedPdfFiles.map((f) => ({
                   filename: f.filename,
                   size: f.size,
                 })),

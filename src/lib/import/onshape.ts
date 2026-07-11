@@ -109,6 +109,7 @@ export async function importFromOnshape(
       description: (document.description ?? "").trim(),
       tags: [],
       assets,
+      bom: [],
       warnings,
       onshapeMicroversion: microversion,
     };

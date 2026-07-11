@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
 import { ImportError, type ImportedProject } from "@/lib/import/types";
 import { stageImportedAssets, type StagedImportFile } from "@/lib/import/stage";
+import type { BomItemInput } from "@/lib/bom";
 import { importFromMakerworld, parseMakerworldUrl } from "@/lib/import/makerworld";
 import { parseMakerworldCollectionUrl } from "@/lib/import/makerworld-collection";
 import { importFromPrintables, parsePrintablesUrl } from "@/lib/import/printables";
@@ -21,6 +22,7 @@ export type ImportDraft = {
   description: string;
   tags: string[];
   files: StagedImportFile[];
+  bom: BomItemInput[];
   warnings: string[];
   onshapeMicroversion?: string | null;
 };
@@ -92,6 +94,7 @@ export async function POST(req: NextRequest) {
       description: project.description,
       tags: project.tags,
       files: staged.files,
+      bom: project.bom,
       warnings: [...project.warnings, ...staged.warnings],
       onshapeMicroversion: project.onshapeMicroversion ?? null,
     };

@@ -1,6 +1,12 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { parseMakerworldUrl, preferEnglish, selectImageUrls } from "@/lib/import/makerworld";
+import {
+  parseMakerworldUrl,
+  preferEnglish,
+  selectBomItems,
+  selectDocs,
+  selectImageUrls,
+} from "@/lib/import/makerworld";
 
 test("parseMakerworldUrl returns the model id for makerworld hosts", () => {
   assert.equal(
@@ -55,6 +61,84 @@ test("selectImageUrls leads with the cover, then the gallery, deduped", () => {
     selectImageUrls({ designExtension: { design_pictures: [{ url: "data:x" }, { url: "https://cdn/a.jpg" }] } }),
     ["https://cdn/a.jpg"],
   );
+});
+
+// Attached PDFs (assembly guide, BOM sheet) import as document files. Both the
+// guide and the BOM sheet live under designExtension as {name, url} links; a
+// missing name falls back to the URL's filename, and non-http links are dropped.
+test("selectDocs collects guide + BOM documents as pdf assets", () => {
+  const docs = selectDocs({
+    designExtension: {
+      design_guide: [
+        { name: "Assembly instructions.pdf", url: "https://cdn/guide.pdf" },
+        { url: "https://cdn/61de923d.pdf" }, // no name → derive from URL
+      ],
+      design_bom: [{ name: "BOM.pdf", url: "https://cdn/bom.pdf" }],
+    },
+  });
+  assert.deepEqual(docs, [
+    { url: "https://cdn/guide.pdf", filename: "Assembly instructions.pdf", kind: "pdf" },
+    { url: "https://cdn/61de923d.pdf", filename: "61de923d.pdf", kind: "pdf" },
+    { url: "https://cdn/bom.pdf", filename: "BOM.pdf", kind: "pdf" },
+  ]);
+
+  // no documents / non-http links → nothing imported
+  assert.deepEqual(selectDocs({ designExtension: {} }), []);
+  assert.deepEqual(
+    selectDocs({ designExtension: { design_guide: [{ url: "data:x" }] } }),
+    [],
+  );
+});
+
+// The structured BOM is split across product arrays (purchasable kits,
+// filaments, materials) plus a hand-listed "other parts" list. Products carry a
+// store link (handle) and image; other parts are name + quantity only. Each
+// group becomes its own section so the BOM mirrors the source layout.
+test("selectBomItems flattens the structured BOM into sectioned rows", () => {
+  const items = selectBomItems({
+    designExtension: {
+      boms_v2: [
+        {
+          spuName: "CyberBrick Hardware Kit",
+          handle: "cyberbrick-hardware-kit",
+          quantity: 1,
+          productSkuList: [{ image: "https://store/kit.png" }],
+        },
+      ],
+      boms_of_filaments_v2: [
+        { spuName: "PLA Metal", handle: "pla-metal", quantity: 2, productSkuList: [] },
+      ],
+      boms_of_other_part_list: [
+        { name: "Lubricating Grease", nameTranslated: "", quantity: 1 },
+      ],
+    },
+  });
+  assert.deepEqual(items, [
+    {
+      name: "CyberBrick Hardware Kit",
+      quantity: "1",
+      link: "https://store.bambulab.com/products/cyberbrick-hardware-kit",
+      imageUrl: "https://store/kit.png",
+      section: "Hardware",
+    },
+    {
+      name: "PLA Metal",
+      quantity: "2",
+      link: "https://store.bambulab.com/products/pla-metal",
+      imageUrl: null,
+      section: "Filament",
+    },
+    {
+      name: "Lubricating Grease",
+      quantity: "1",
+      link: null,
+      imageUrl: null,
+      section: "Other parts",
+    },
+  ]);
+
+  // no BOM → empty list (models without one)
+  assert.deepEqual(selectBomItems({ designExtension: {} }), []);
 });
 
 test("parseMakerworldUrl rejects non-makerworld or non-model URLs", () => {
