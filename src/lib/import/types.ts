@@ -10,6 +10,10 @@ export type RemoteAsset = {
   // Onshape element the asset was exported from; stored on the model file so
   // sync can replace exactly these files.
   onshapeElementId?: string;
+  // MakerWorld raw-model downloads: the URL may serve either a single .scad
+  // file or a zip of several. Staging buffers the download and extracts the
+  // .scad entries when it's a zip.
+  extractScad?: boolean;
 };
 
 export type ImportedProject = {

@@ -1,6 +1,9 @@
 "use client";
 
 import Link from "next/link";
+import { useState } from "react";
+import { useRouter } from "next/navigation";
+import { toast } from "sonner";
 import {
   Clock,
   Download,
@@ -9,13 +12,16 @@ import {
   FileText,
   HardDrive,
   Layers,
+  Loader2,
   Pencil,
   Printer,
   SquarePen,
+  Trash2,
   TriangleAlert,
   Weight,
 } from "lucide-react";
 import type { PrinterInfo } from "@/db/schema";
+import type { ScadParameterGroup } from "@/lib/scad-params";
 import type { SourcePlatform } from "@/lib/platform";
 import { platformLabels } from "@/lib/platform";
 import { formatBytes, formatDate, formatDuration, formatGrams } from "@/lib/format";
@@ -36,8 +42,32 @@ import { AddToCollection, type CollectionOption } from "./[id]/add-to-collection
 import { DeleteModelButton } from "./[id]/delete-model-button";
 import { OnshapeSyncButton } from "./[id]/onshape-sync-button";
 import { FileDownloadMenu } from "./[id]/file-download-menu";
+import { ScadCustomizer } from "./[id]/scad-customizer";
 
 export type { CollectionOption };
+
+export type PrintFileData = {
+  id: string | null;
+  filename: string;
+  // Signed /api/files access token for slicer deep links (null in the
+  // create-wizard preview, where the file has no id yet either).
+  downloadToken: string | null;
+  size: number;
+  printTime: number | null;
+  grams: number | null;
+  approx: boolean;
+  plateCount: number | null;
+  printer: PrinterInfo | null;
+  sliceStatus: string | null;
+  sliceError: string | null;
+  // Parametric .scad files: customizer schema parsed from the source (only
+  // set when the owner can render, i.e. OPENSCAD_URL is configured), plus the
+  // .3mf variants generated from this file.
+  customizer?: ScadParameterGroup[] | null;
+  variants?: PrintFileData[];
+  // On a generated variant: the customizer values it was rendered with.
+  paramsSummary?: string | null;
+};
 
 export type ModelViewData = {
   title: string;
@@ -53,21 +83,7 @@ export type ModelViewData = {
   makerworldUrl: string | null;
   images: Array<{ src: string }>;
   bom: BomItemInput[];
-  printFiles: Array<{
-    id: string | null;
-    filename: string;
-    // Signed /api/files access token for slicer deep links (null in the
-    // create-wizard preview, where the file has no id yet either).
-    downloadToken: string | null;
-    size: number;
-    printTime: number | null;
-    grams: number | null;
-    approx: boolean;
-    plateCount: number | null;
-    printer: PrinterInfo | null;
-    sliceStatus: string | null;
-    sliceError: string | null;
-  }>;
+  printFiles: PrintFileData[];
   pdfFiles: Array<{
     id: string | null;
     filename: string;
@@ -79,6 +95,200 @@ export type ModelViewData = {
   collectionOptions: CollectionOption[];
   slicerConfigured: boolean;
 };
+
+// Owner-only delete for a generated .3mf variant — they're cheap to
+// regenerate, so no confirmation dialog.
+function DeleteVariantButton({
+  modelId,
+  fileId,
+  filename,
+}: {
+  modelId: string;
+  fileId: string;
+  filename: string;
+}) {
+  const router = useRouter();
+  const [deleting, setDeleting] = useState(false);
+
+  async function handleDelete() {
+    setDeleting(true);
+    try {
+      const res = await fetch(`/api/models/${modelId}/customize`, {
+        method: "DELETE",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ fileId }),
+      });
+      const body = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(body?.error ?? `Delete failed (${res.status})`);
+      toast.success(`Deleted “${filename}”.`);
+      router.refresh();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Delete failed");
+      setDeleting(false);
+    }
+  }
+
+  return (
+    <Button
+      size="icon"
+      variant="ghost"
+      disabled={deleting}
+      onClick={handleDelete}
+      aria-label={`Delete ${filename}`}
+    >
+      {deleting ? (
+        <Loader2 className="size-4 animate-spin" />
+      ) : (
+        <Trash2 className="size-4 text-muted-foreground" />
+      )}
+    </Button>
+  );
+}
+
+function PrintFileRow({
+  file,
+  makerworldUrl,
+  slicerConfigured,
+  deletable,
+}: {
+  file: PrintFileData;
+  makerworldUrl: string | null;
+  slicerConfigured: boolean;
+  deletable?: { modelId: string };
+}) {
+  // Slicer deep links only make sense for .3mf files — Bambu Studio hard-
+  // rejects any other filename ("unknown file format") and Orca would save a
+  // useless download. Other model files (.scad, .step) get a plain download.
+  const is3mf = file.filename.toLowerCase().endsWith(".3mf");
+
+  return (
+    <div className="flex min-w-0 items-center gap-3 border rounded-lg px-3 py-2.5">
+      <div className="flex size-10 shrink-0 items-center justify-center rounded-md bg-muted">
+        <FileBox className="size-5 text-muted-foreground/80" />
+      </div>
+      <div className="min-w-0 flex-1 space-y-1">
+        <div className="text-sm font-medium truncate">{file.filename}</div>
+        {file.paramsSummary && (
+          <div className="text-xs text-muted-foreground truncate">
+            {file.paramsSummary}
+          </div>
+        )}
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
+          {file.printTime != null && (
+            <span className="inline-flex items-center gap-1.5 text-sm font-semibold">
+              <Clock className="size-4 text-primary" />
+              {file.approx ? "~" : ""}
+              {formatDuration(file.printTime)}
+            </span>
+          )}
+          {file.grams != null && (
+            <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
+              <Weight className="size-3.5 text-chart-3" />
+              {file.approx ? "~" : ""}
+              {formatGrams(file.grams)}
+            </span>
+          )}
+        </div>
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
+          {file.plateCount != null && (
+            <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
+              <Layers className="size-3.5 text-chart-2" />
+              {file.plateCount} {file.plateCount === 1 ? "plate" : "plates"}
+            </span>
+          )}
+          <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
+            <HardDrive className="size-3.5" />
+            {formatBytes(file.size)}
+          </span>
+          {file.sliceStatus === "pending" && slicerConfigured && (
+            <span className="text-xs text-muted-foreground animate-pulse">
+              estimating…
+            </span>
+          )}
+        </div>
+        {file.printer?.model && (
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+            <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
+              <Printer className="size-3.5" />
+              {file.printer.model}
+              {file.printer.nozzleDiameterMm != null &&
+                ` · ${file.printer.nozzleDiameterMm} mm`}
+            </span>
+          </div>
+        )}
+        {(file.printer?.filamentTypes?.length ||
+          file.printer?.bedType ||
+          file.sliceStatus === "failed") && (
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+            {file.printer?.filamentTypes?.map((type) => (
+              <Badge
+                key={type}
+                variant="secondary"
+                className="px-1.5 py-0 text-[10px] font-medium"
+              >
+                {type}
+              </Badge>
+            ))}
+            {file.printer?.bedType && (
+              <Badge
+                variant="outline"
+                className="px-1.5 py-0 text-[10px] font-normal text-muted-foreground"
+              >
+                {file.printer.bedType.toLowerCase()}
+              </Badge>
+            )}
+            {file.sliceStatus === "failed" && (
+              <span
+                className="inline-flex items-center gap-1 text-xs text-destructive"
+                title={file.sliceError ?? undefined}
+              >
+                <TriangleAlert className="size-3.5" />
+                Couldn&apos;t be sliced — the file may not be printable
+              </span>
+            )}
+          </div>
+        )}
+      </div>
+      <div className="flex shrink-0 items-center">
+        {deletable && file.id && (
+          <DeleteVariantButton
+            modelId={deletable.modelId}
+            fileId={file.id}
+            filename={file.filename}
+          />
+        )}
+        {file.id && file.downloadToken && is3mf ? (
+          <FileDownloadMenu
+            fileId={file.id}
+            token={file.downloadToken}
+            filename={file.filename}
+            makerworldUrl={makerworldUrl ?? undefined}
+          />
+        ) : file.id ? (
+          <Button
+            asChild
+            size="icon"
+            variant="outline"
+            aria-label={`Download ${file.filename}`}
+          >
+            <a href={`/api/files/${file.id}?download=1`}>
+              <Download className="size-4" />
+            </a>
+          </Button>
+        ) : (
+          <Button
+            size="icon"
+            variant="outline"
+            disabled
+            aria-label={`Download ${file.filename}`}
+          >
+            <Download className="size-4" />
+          </Button>
+        )}
+      </div>
+    </div>
+  );
+}
 
 export function ModelView({ data }: { data: ModelViewData }) {
   const {
@@ -224,119 +434,43 @@ export function ModelView({ data }: { data: ModelViewData }) {
         <Card>
           <CardHeader>
             <CardTitle className="text-base">
-              Files ({printFiles.length})
+              Files (
+              {printFiles.reduce((n, f) => n + 1 + (f.variants?.length ?? 0), 0)}
+              )
             </CardTitle>
           </CardHeader>
           <CardContent className="grid gap-2">
             {printFiles.map((file, index) => (
-              <div
-                key={file.id ?? `${file.filename}-${index}`}
-                className="flex min-w-0 items-center gap-3 border rounded-lg px-3 py-2.5"
-              >
-                <div className="flex size-10 shrink-0 items-center justify-center rounded-md bg-muted">
-                  <FileBox className="size-5 text-muted-foreground/80" />
-                </div>
-                <div className="min-w-0 flex-1 space-y-1">
-                  <div className="text-sm font-medium truncate">
-                    {file.filename}
-                  </div>
-                  <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
-                    {file.printTime != null && (
-                      <span className="inline-flex items-center gap-1.5 text-sm font-semibold">
-                        <Clock className="size-4 text-primary" />
-                        {file.approx ? "~" : ""}
-                        {formatDuration(file.printTime)}
-                      </span>
-                    )}
-                    {file.grams != null && (
-                      <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
-                        <Weight className="size-3.5 text-chart-3" />
-                        {file.approx ? "~" : ""}
-                        {formatGrams(file.grams)}
-                      </span>
-                    )}
-                  </div>
-                  <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
-                    {file.plateCount != null && (
-                      <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
-                        <Layers className="size-3.5 text-chart-2" />
-                        {file.plateCount}{" "}
-                        {file.plateCount === 1 ? "plate" : "plates"}
-                      </span>
-                    )}
-                    <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
-                      <HardDrive className="size-3.5" />
-                      {formatBytes(file.size)}
-                    </span>
-                    {file.sliceStatus === "pending" && slicerConfigured && (
-                      <span className="text-xs text-muted-foreground animate-pulse">
-                        estimating…
-                      </span>
-                    )}
-                  </div>
-                  {file.printer?.model && (
-                    <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                      <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
-                        <Printer className="size-3.5" />
-                        {file.printer.model}
-                        {file.printer.nozzleDiameterMm != null &&
-                          ` · ${file.printer.nozzleDiameterMm} mm`}
-                      </span>
-                    </div>
-                  )}
-                  {(file.printer?.filamentTypes?.length ||
-                    file.printer?.bedType ||
-                    file.sliceStatus === "failed") && (
-                    <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                      {file.printer?.filamentTypes?.map((type) => (
-                        <Badge
-                          key={type}
-                          variant="secondary"
-                          className="px-1.5 py-0 text-[10px] font-medium"
-                        >
-                          {type}
-                        </Badge>
-                      ))}
-                      {file.printer?.bedType && (
-                        <Badge
-                          variant="outline"
-                          className="px-1.5 py-0 text-[10px] font-normal text-muted-foreground"
-                        >
-                          {file.printer.bedType.toLowerCase()}
-                        </Badge>
-                      )}
-                      {file.sliceStatus === "failed" && (
-                        <span
-                          className="inline-flex items-center gap-1 text-xs text-destructive"
-                          title={file.sliceError ?? undefined}
-                        >
-                          <TriangleAlert className="size-3.5" />
-                          Couldn&apos;t be sliced — the file may not be
-                          printable
-                        </span>
-                      )}
-                    </div>
-                  )}
-                </div>
-                <div className="flex shrink-0 items-center">
-                  {file.id && file.downloadToken ? (
-                    <FileDownloadMenu
+              <div key={file.id ?? `${file.filename}-${index}`} className="grid gap-2">
+                <PrintFileRow
+                  file={file}
+                  makerworldUrl={makerworldUrl}
+                  slicerConfigured={slicerConfigured}
+                />
+                {file.customizer &&
+                  file.customizer.length > 0 &&
+                  isOwner &&
+                  modelId &&
+                  file.id && (
+                    <ScadCustomizer
+                      modelId={modelId}
                       fileId={file.id}
-                      token={file.downloadToken}
-                      filename={file.filename}
-                      makerworldUrl={makerworldUrl ?? undefined}
+                      groups={file.customizer}
                     />
-                  ) : (
-                    <Button
-                      size="icon"
-                      variant="outline"
-                      disabled
-                      aria-label={`Download ${file.filename}`}
-                    >
-                      <Download className="size-4" />
-                    </Button>
                   )}
-                </div>
+                {file.variants && file.variants.length > 0 && (
+                  <div className="grid gap-2 border-l-2 pl-3 ml-1">
+                    {file.variants.map((variant) => (
+                      <PrintFileRow
+                        key={variant.id ?? variant.filename}
+                        file={variant}
+                        makerworldUrl={makerworldUrl}
+                        slicerConfigured={slicerConfigured}
+                        deletable={isOwner && modelId ? { modelId } : undefined}
+                      />
+                    ))}
+                  </div>
+                )}
               </div>
             ))}
           </CardContent>

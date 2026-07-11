@@ -7,9 +7,18 @@ import { getSession } from "@/lib/auth";
 import { fileSrc, fileToken } from "@/lib/file-token";
 import { get3mfSliceInfo } from "@/lib/threemf-remote";
 import { processPendingSlices } from "@/lib/slicer";
+import { readTextFile } from "@/lib/storage";
+import { MAX_SCAD_SOURCE_BYTES, openscadConfigured } from "@/lib/openscad";
+import { parseScadParameters } from "@/lib/scad-params";
+import { fileExtension } from "@/lib/file-kind";
 import { parseOnshapeUrl } from "@/lib/onshape/api";
 import { platformFromSourceUrl } from "@/lib/platform";
-import { ModelView, type ModelViewData, type CollectionOption } from "../model-view";
+import {
+  ModelView,
+  type ModelViewData,
+  type CollectionOption,
+  type PrintFileData,
+} from "../model-view";
 
 export const dynamic = "force-dynamic";
 
@@ -70,6 +79,29 @@ export default async function ModelPage({
   const sliceInfos = await Promise.all(
     printFiles.map((f) => get3mfSliceInfo(f.s3Key, f.size)),
   );
+  const sliceInfoByFileId = new Map(
+    printFiles.map((f, index) => [f.id, sliceInfos[index]]),
+  );
+
+  // Parametric .scad files: parse the customizer schema from the source so
+  // the owner gets the parameter form. Only worth the S3 read when the
+  // OpenSCAD service is configured and the viewer could actually render.
+  const scadConfigured = openscadConfigured();
+  const scadGroupsByFileId = new Map<
+    string,
+    ReturnType<typeof parseScadParameters>
+  >();
+  if (scadConfigured && isOwner) {
+    const scadFiles = printFiles.filter(
+      (f) => fileExtension(f.filename) === ".scad",
+    );
+    await Promise.all(
+      scadFiles.map(async (f) => {
+        const source = await readTextFile(f.s3Key, f.size, MAX_SCAD_SOURCE_BYTES);
+        if (source) scadGroupsByFileId.set(f.id, parseScadParameters(source));
+      }),
+    );
+  }
 
   // Files can be left pending when the slicer service was unreachable (or
   // unconfigured) at upload time — retry them in the background so estimates
@@ -124,32 +156,50 @@ export default async function ModelPage({
     makerworldUrl,
     images: images.map((img) => ({ src: fileSrc(img.id) })),
     bom: model.bomItems,
-    printFiles: printFiles.map((file, index) => {
-      const info = sliceInfos[index];
-      const persisted = file.sliceStatus === "ok";
-      const approx = persisted && file.sliceSource === "slicer";
-      return {
-        id: file.id,
-        filename: file.filename,
-        // Signed access token for the slicer deep links, which download the
-        // file without the session cookie (see file-download-menu.tsx).
-        downloadToken: fileToken(file.id),
-        size: file.size,
-        printTime:
-          info?.printTimeSeconds ??
-          (persisted ? file.printTimeSeconds : null) ??
-          null,
-        grams:
-          info?.filamentGrams ??
-          (persisted ? file.filamentGrams : null) ??
-          null,
-        approx,
-        plateCount: info?.plateCount ?? null,
-        printer: file.printerInfo ?? null,
-        sliceStatus: file.sliceStatus ?? null,
-        sliceError: file.sliceError ?? null,
+    printFiles: (() => {
+      const toEntry = (file: (typeof printFiles)[number]): PrintFileData => {
+        const info = sliceInfoByFileId.get(file.id);
+        const persisted = file.sliceStatus === "ok";
+        const approx = persisted && file.sliceSource === "slicer";
+        return {
+          id: file.id,
+          filename: file.filename,
+          // Signed access token for the slicer deep links, which download the
+          // file without the session cookie (see file-download-menu.tsx).
+          downloadToken: fileToken(file.id),
+          size: file.size,
+          printTime:
+            info?.printTimeSeconds ??
+            (persisted ? file.printTimeSeconds : null) ??
+            null,
+          grams:
+            info?.filamentGrams ??
+            (persisted ? file.filamentGrams : null) ??
+            null,
+          approx,
+          plateCount: info?.plateCount ?? null,
+          printer: file.printerInfo ?? null,
+          sliceStatus: file.sliceStatus ?? null,
+          sliceError: file.sliceError ?? null,
+          paramsSummary: file.generatedParams
+            ? Object.entries(file.generatedParams)
+                .map(([key, value]) => `${key} = ${value}`)
+                .join(", ") || "default parameters"
+            : null,
+        };
       };
-    }),
+      // Generated .3mf variants render nested under their .scad source
+      // instead of cluttering the top-level file list.
+      return printFiles
+        .filter((f) => f.generatedFromId === null)
+        .map((file) => ({
+          ...toEntry(file),
+          customizer: scadGroupsByFileId.get(file.id) ?? null,
+          variants: printFiles
+            .filter((f) => f.generatedFromId === file.id)
+            .map(toEntry),
+        }));
+    })(),
     pdfFiles: pdfFiles.map((file) => ({
       id: file.id,
       filename: file.filename,

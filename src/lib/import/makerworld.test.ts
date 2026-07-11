@@ -1,12 +1,60 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
+  importFromMakerworld,
   parseMakerworldUrl,
   preferEnglish,
   selectBomItems,
   selectDocs,
   selectImageUrls,
 } from "@/lib/import/makerworld";
+
+test("importFromMakerworld downloads the OpenSCAD source of parametric designs", async (t) => {
+  // Parametric designs list their .scad under designExtension.model_files
+  // (modelType "scad"); the raw-model download endpoint exchanges the design
+  // id for a presigned URL of one zip with every raw file (modelType=all is
+  // the only value the API accepts — "scad" answers 404). The staged asset
+  // carries extractScad so staging pulls just the .scad entries out.
+  const design = {
+    id: 777516,
+    modelId: "US31d64271d31f2",
+    title: "Customizable Servo Horn",
+    instances: [{ id: 1, profileId: 42, title: "Default" }],
+    designExtension: {
+      model_files: [
+        { modelName: "Standard Sizes.3mf", modelType: "3mf" },
+        { modelName: "Custom Servo Horn.scad", modelType: "scad" },
+      ],
+    },
+  };
+  t.mock.method(globalThis, "fetch", async (input: URL | RequestInfo) => {
+    const url = String(input);
+    if (url.includes("/design-service/design/777516/model?modelType=all")) {
+      // the live API returns an empty name for the zip download
+      return Response.json({ name: "", url: "https://cdn.example/all.zip" });
+    }
+    if (url.includes("/iot-service/api/user/profile/42")) {
+      return Response.json({ name: "Default.3mf", url: "https://cdn.example/p.3mf" });
+    }
+    if (url.includes("/design-service/design/777516")) {
+      return Response.json(design);
+    }
+    return new Response("not found", { status: 404 });
+  });
+
+  const project = await importFromMakerworld(
+    new URL("https://makerworld.com/en/models/777516-customizable-servo-horn"),
+    { token: "token" },
+  );
+  const scad = project.assets.find((a) => a.extractScad);
+  assert.ok(scad, "raw-files asset imported");
+  assert.equal(scad.url, "https://cdn.example/all.zip");
+  assert.equal(scad.kind, "model");
+  // empty API name falls back to the scad entry's own filename
+  assert.equal(scad.filename, "Custom Servo Horn.scad");
+  // the sliced print profile still imports alongside the source
+  assert.ok(project.assets.some((a) => a.filename === "Default.3mf"));
+});
 
 test("parseMakerworldUrl returns the model id for makerworld hosts", () => {
   assert.equal(

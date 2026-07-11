@@ -207,6 +207,38 @@ Decisions taken and why — guidance for development.
   files uploaded before this feature are skipped. The service is optional:
   without `SLICER_URL`, unsliced files simply show no estimates and stay
   `pending`.
+- **Parametric OpenSCAD models**: a model can carry its `.scad` source as a
+  model file (uploaded, or imported — Printables serves `.scad` anonymously
+  via its `otherFiles` group; MakerWorld's comes through `GET
+  api.bambulab.com/v1/design-service/design/{id}/model?modelType=scad&type=download`,
+  undocumented and Bambu-login-gated like profile downloads, answering a
+  single file or a zip that staging unpacks). The owner gets a customizer
+  form on the model page built from the OpenSCAD customizer comments in the
+  source — parsed on view by the pure `src/lib/scad-params.ts` (the design
+  API's `scadConfig` field is empty in practice, so the source is the only
+  schema; `/* [Hidden] */` stays hidden, unrecognized annotations degrade to
+  plain inputs). "Generate .3mf" (owner-only, `POST
+  /api/models/{id}/customize`) renders through the **openscad service**
+  (`openscad/`, fourth compose container: zero-dependency wrapper around the
+  OpenSCAD CLI, Debian package + vendored pinned BOSL2/MCAD under
+  `OPENSCADPATH`) and **stores** the result as a `model_files` row flagged
+  `generated_from_id` + `generated_params` — stored rather than streamed back
+  because only stored files get slice estimates and slicer deep links.
+  Identical parameter sets dedupe via `generated_params_hash`; variants are
+  capped at 20 per source, render nested under the `.scad` card, and are
+  deletable (DELETE on the same route). Renders are normalized by
+  `normalizeThreeMf` (OpenSCAD centers on the origin like Onshape).
+  Security: values only travel via OpenSCAD's `-p` parameter-set JSON (never
+  `-D`/CLI), `coerceScadValues` clamps them against the parsed schema, and
+  `findForbiddenFileRefs` rejects `import()`/`surface()` and any
+  `include`/`use` outside the bundled libraries (multi-file projects are
+  unsupported — keep `SCAD_LIBRARY_ALLOWLIST` in sync with the Dockerfile).
+  The service itself runs non-root with a hard timeout and compose
+  memory/pid limits (CGAL happily eats unbounded RAM). Optional like the
+  slicer: without `OPENSCAD_URL` the customizer UI is hidden and `.scad`
+  files are plain downloads. Slicer deep links are `.3mf`-only — Bambu
+  Studio rejects other filenames, so `.scad`/`.step` rows render a plain
+  download button instead of `FileDownloadMenu`.
 - **Search** is a dedicated `/search` page backed entirely by Postgres (no
   separate search engine — kept simple and self-hostable). `src/lib/search.ts`
   runs one keyset-paginated query over a `models UNION ALL collections`
