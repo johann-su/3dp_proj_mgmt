@@ -4,7 +4,7 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 import Image from "next/image";
 import { Box, ChevronLeft, ChevronRight, Rotate3d, X, ZoomIn } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { ModelViewer } from "@/components/model-viewer";
+import { ModelViewer, type ViewerFile } from "@/components/model-viewer";
 
 type GalleryImage = { src: string };
 
@@ -12,21 +12,22 @@ export function ImageGallery({
   images,
   title,
   badge,
-  modelSrc,
+  modelFiles,
 }: {
   images: GalleryImage[];
   title: string;
   badge?: React.ReactNode;
-  // Tokened URL of a .3mf to offer as an interactive 3D preview (issue #35).
-  // When set, a Photos/3D toggle appears over the main frame.
-  modelSrc?: string;
+  // Previewable .3mf files to offer as an interactive 3D view (issue #35).
+  // When any are present, a Photos/3D toggle appears over the main frame.
+  modelFiles?: ViewerFile[];
 }) {
+  const hasModel = !!modelFiles && modelFiles.length > 0;
   const [selected, setSelected] = useState(0);
   const [lightboxOpen, setLightboxOpen] = useState(false);
   // 3D view is offered only when a .3mf is available; default to it when there
   // are no thumbnail images to show. A viewer error flips this off so we fall
   // back to the images (or the empty-state placeholder).
-  const [show3d, setShow3d] = useState(!!modelSrc && images.length === 0);
+  const [show3d, setShow3d] = useState(hasModel && images.length === 0);
   const thumbRefs = useRef<(HTMLButtonElement | null)[]>([]);
 
   const index = Math.min(selected, images.length - 1);
@@ -57,8 +58,8 @@ export function ImageGallery({
   if (images.length === 0) {
     return (
       <div className="relative aspect-[4/3] rounded-lg bg-muted overflow-hidden flex items-center justify-center">
-        {show3d && modelSrc ? (
-          <ModelViewer src={modelSrc} onError={() => setShow3d(false)} />
+        {show3d && hasModel ? (
+          <ModelViewer files={modelFiles} onError={() => setShow3d(false)} />
         ) : (
           <Box className="size-16 text-muted-foreground/40" />
         )}
@@ -68,7 +69,7 @@ export function ImageGallery({
 
   const current = images[index];
 
-  const ModeToggle = modelSrc && (
+  const ModeToggle = hasModel && (
     <div className="absolute left-1/2 top-2 z-10 flex -translate-x-1/2 gap-0.5 rounded-full bg-background/80 p-0.5 shadow-sm backdrop-blur">
       <button
         type="button"
@@ -150,8 +151,8 @@ export function ImageGallery({
 
     <div className="grid gap-2">
       <div className="relative aspect-[4/3] rounded-lg bg-muted overflow-hidden flex items-center justify-center group">
-        {show3d && modelSrc ? (
-          <ModelViewer src={modelSrc} onError={() => setShow3d(false)} />
+        {show3d && hasModel ? (
+          <ModelViewer files={modelFiles} onError={() => setShow3d(false)} />
         ) : (
           <button
             type="button"
