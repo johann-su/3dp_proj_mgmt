@@ -21,6 +21,9 @@ export type ModelCardData = {
   // components (ModelGrid's infinite scroll).
   files: { id: string; src: string; animated?: boolean }[];
   modelTags: { tag: { id: string; name: string } }[];
+  // True when the model ships a `.scad` source, i.e. it's customizable via the
+  // OpenSCAD parametric flow. Surfaced as a badge so browse cards flag it.
+  parametric?: boolean;
 };
 
 export function ModelCard({ model }: { model: ModelCardData }) {
@@ -65,8 +68,18 @@ export function ModelCard({ model }: { model: ModelCardData }) {
             by {model.user.name}
             {model.category ? ` · ${model.category.name}` : ""}
           </div>
-          {model.modelTags.length > 0 && (
-            <div className="flex flex-wrap gap-1 mt-2">
+          {(model.parametric || model.modelTags.length > 0) && (
+            <div className="flex flex-wrap items-center gap-1 mt-2">
+              {model.parametric && (
+                <Badge
+                  className="gap-1 bg-primary text-primary-foreground"
+                  title="Customizable OpenSCAD model"
+                >
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src="/customize.svg" alt="" className="size-3.5" />
+                  Parametric
+                </Badge>
+              )}
               {model.modelTags.slice(0, 3).map(({ tag }) => (
                 <Badge key={tag.id} variant="secondary" className="text-xs">
                   {tag.name}

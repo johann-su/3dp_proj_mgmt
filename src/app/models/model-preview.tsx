@@ -26,6 +26,9 @@ export function ModelPreview({ data }: { data: ModelPreviewData }) {
     category: data.categoryName ? { name: data.categoryName } : null,
     tags: data.tags.map((name) => ({ name })),
     platform: null,
+    parametric: data.printFiles.some((f) =>
+      f.filename.toLowerCase().endsWith(".scad"),
+    ),
     sourceUrl: null,
     sourceName: null,
     onshapeWvm: null,

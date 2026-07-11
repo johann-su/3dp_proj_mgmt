@@ -3,6 +3,7 @@ import { db } from "@/db";
 import type { ModelCardData } from "@/components/model-card";
 import type { CollectionCardData } from "@/components/collection-card";
 import { fileSrc } from "@/lib/file-token";
+import { parametricExtra } from "@/lib/parametric";
 import { PAGE_SIZE } from "@/lib/pagination";
 import {
   decodeSearchCursor,
@@ -237,6 +238,7 @@ async function hydrate(
     modelIds.length > 0
       ? db.query.models.findMany({
           where: (m, { inArray: within }) => within(m.id, modelIds),
+          extras: (m) => ({ parametric: parametricExtra(m.id) }),
           with: {
             user: { columns: { name: true } },
             category: true,
@@ -288,6 +290,7 @@ async function hydrate(
           animated: f.animated,
         })),
         modelTags: m.modelTags,
+        parametric: m.parametric,
       },
     ]),
   );
