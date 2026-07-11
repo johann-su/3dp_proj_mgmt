@@ -1,14 +1,10 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { desc } from "drizzle-orm";
 import { Box, Search } from "lucide-react";
 import { db } from "@/db";
-import { collections } from "@/db/schema";
 import { getSession } from "@/lib/auth";
-import { fileSrc } from "@/lib/file-token";
-import { listModels } from "@/lib/list-queries";
-import { ModelGrid } from "@/components/model-grid";
-import { CollectionCard } from "@/components/collection-card";
+import { listFeed } from "@/lib/list-queries";
+import { FeedGrid } from "@/components/feed-grid";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -31,45 +27,7 @@ export default async function HomePage({
   });
   const activeCategory = allCategories.find((c) => c.slug === category);
 
-  const recentCollections = await db.query.collections.findMany({
-    orderBy: desc(collections.createdAt),
-    limit: 8,
-    with: {
-      user: { columns: { name: true } },
-      collectionModels: {
-        with: {
-          model: {
-            columns: { id: true },
-            with: {
-              files: {
-                where: (f, { eq }) => eq(f.kind, "image"),
-                orderBy: (f, { asc }) => asc(f.position),
-                limit: 1,
-              },
-            },
-          },
-        },
-      },
-    },
-  });
-
-  const recentCollectionCards = recentCollections.map((c) => ({
-    id: c.id,
-    title: c.title,
-    user: c.user,
-    collectionModels: c.collectionModels.map((cm) => ({
-      model: {
-        id: cm.model.id,
-        files: cm.model.files.map((f) => ({
-          id: f.id,
-          src: fileSrc(f.id),
-          animated: f.animated,
-        })),
-      },
-    })),
-  }));
-
-  const { items: models, nextCursor } = await listModels({
+  const { items, nextCursor } = await listFeed({
     categoryId: activeCategory?.id,
   });
 
@@ -83,9 +41,9 @@ export default async function HomePage({
   return (
     <div className="mx-auto max-w-6xl px-4 py-8">
       <div className="mb-8">
-        <h1 className="text-3xl font-bold tracking-tight mb-1">Models</h1>
+        <h1 className="text-3xl font-bold tracking-tight mb-1">Browse</h1>
         <p className="text-muted-foreground">
-          Browse, search and download 3D printing models.
+          Browse, search and download 3D printing models and collections.
         </p>
       </div>
 
@@ -113,30 +71,7 @@ export default async function HomePage({
         ))}
       </div>
 
-      {recentCollectionCards.length > 0 && (
-        <div className="mb-10">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-xl font-semibold tracking-tight">Collections</h2>
-            <Link
-              href="/collections"
-              className="text-sm text-muted-foreground hover:text-foreground transition-colors"
-            >
-              See all
-            </Link>
-          </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
-            {recentCollectionCards.map((collection) => (
-              <CollectionCard key={collection.id} collection={collection} />
-            ))}
-          </div>
-        </div>
-      )}
-
-      <div className="mb-4">
-        <h2 className="text-xl font-semibold tracking-tight">Models</h2>
-      </div>
-
-      {models.length === 0 ? (
+      {items.length === 0 ? (
         <div className="text-center py-24 text-muted-foreground">
           <Box className="size-10 mx-auto mb-3 opacity-50" />
           {activeCategory ? (
@@ -151,9 +86,9 @@ export default async function HomePage({
           )}
         </div>
       ) : (
-        <ModelGrid
+        <FeedGrid
           key={category ?? ""}
-          initialItems={models}
+          initialItems={items}
           initialCursor={nextCursor}
           category={category}
         />

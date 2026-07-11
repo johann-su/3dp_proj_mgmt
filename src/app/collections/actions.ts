@@ -6,18 +6,6 @@ import { and, eq } from "drizzle-orm";
 import { db } from "@/db";
 import { collectionModels, collections, models } from "@/db/schema";
 import { getSession } from "@/lib/auth";
-import { listUserCollections } from "@/lib/list-queries";
-import type { MyCollectionData } from "@/components/my-collection-card";
-import type { Page } from "@/lib/pagination";
-
-// Fetches the next page of the signed-in user's collections for endless scroll.
-export async function loadMoreCollections(input: {
-  cursor: string;
-}): Promise<Page<MyCollectionData>> {
-  const session = await getSession();
-  if (!session) return { items: [], nextCursor: null };
-  return listUserCollections({ userId: session.user.id, cursor: input.cursor });
-}
 
 export async function createCollection(input: {
   title: string;
@@ -38,7 +26,7 @@ export async function createCollection(input: {
     })
     .returning({ id: collections.id });
 
-  revalidatePath("/collections");
+  revalidatePath("/");
   redirect(`/collections/${collection.id}`);
 }
 
@@ -69,7 +57,7 @@ export async function updateCollection(input: {
     })
     .where(eq(collections.id, collection.id));
 
-  revalidatePath("/collections");
+  revalidatePath("/");
   revalidatePath(`/collections/${collection.id}`);
   redirect(`/collections/${collection.id}`);
 }
@@ -88,8 +76,8 @@ export async function deleteCollection(
 
   await db.delete(collections).where(eq(collections.id, collectionId));
 
-  revalidatePath("/collections");
-  redirect("/collections");
+  revalidatePath("/");
+  redirect("/");
 }
 
 export async function toggleModelInCollection(input: {
@@ -130,6 +118,6 @@ export async function toggleModelInCollection(input: {
 
   revalidatePath(`/models/${input.modelId}`);
   revalidatePath(`/collections/${input.collectionId}`);
-  revalidatePath("/collections");
+  revalidatePath("/");
   return {};
 }
