@@ -259,10 +259,11 @@ export function CustomizeView({
       } else {
         toast.success(`Generated “${body.filename}” — added to the model's files.`);
       }
+      // Back to the model page, where the new variant is listed for download.
+      router.push(`/models/${modelId}`);
       router.refresh();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Rendering failed");
-    } finally {
       setGenerating(false);
     }
   }

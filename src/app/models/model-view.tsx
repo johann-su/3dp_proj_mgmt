@@ -82,6 +82,8 @@ export type ModelViewData = {
   onshapeWvm: string | null;
   makerworldUrl: string | null;
   images: Array<{ src: string }>;
+  // Previewable .3mf files for the gallery's interactive 3D view (issue #35).
+  modelFiles: Array<{ filename: string; src: string }>;
   bom: BomItemInput[];
   printFiles: PrintFileData[];
   pdfFiles: Array<{
@@ -304,6 +306,7 @@ export function ModelView({ data }: { data: ModelViewData }) {
     onshapeWvm,
     makerworldUrl,
     images,
+    modelFiles,
     bom,
     printFiles,
     pdfFiles,
@@ -320,6 +323,7 @@ export function ModelView({ data }: { data: ModelViewData }) {
         <ImageGallery
           images={images}
           title={title}
+          modelFiles={modelFiles}
           badge={
             platform && (
               <Tooltip>
