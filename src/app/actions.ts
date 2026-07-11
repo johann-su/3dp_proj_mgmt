@@ -4,18 +4,16 @@ import { eq } from "drizzle-orm";
 import { db } from "@/db";
 import { categories } from "@/db/schema";
 import { getSession } from "@/lib/auth";
-import { listModels } from "@/lib/list-queries";
-import type { ModelCardData } from "@/components/model-card";
+import { listFeed, type FeedItem } from "@/lib/list-queries";
 import type { Page } from "@/lib/pagination";
 
-// Fetches the next page of homepage models for endless scroll. Filters (search
-// query, category slug) are echoed back from the client so the paged results
-// match the currently displayed list.
-export async function loadMoreModels(input: {
-  q?: string;
+// Fetches the next page of the homepage feed (models + collections interleaved)
+// for endless scroll. The category slug is echoed back from the client so the
+// paged results match the currently displayed list.
+export async function loadMoreFeed(input: {
   category?: string;
   cursor: string;
-}): Promise<Page<ModelCardData>> {
+}): Promise<Page<FeedItem>> {
   // The catalog is private; an expired session just ends the endless scroll.
   const session = await getSession();
   if (!session) return { items: [], nextCursor: null };
@@ -30,5 +28,5 @@ export async function loadMoreModels(input: {
     categoryId = category?.id;
   }
 
-  return listModels({ q: input.q, categoryId, cursor: input.cursor });
+  return listFeed({ categoryId, cursor: input.cursor });
 }

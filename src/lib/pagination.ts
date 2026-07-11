@@ -63,3 +63,34 @@ export function toPage<T extends { id: string; createdAt: Date }>(
     hasMore && last ? encodeCursor({ createdAt: last.createdAt, id: last.id }) : null;
   return { items, nextCursor };
 }
+
+// Orders two rows under the same (createdAt desc, id desc) key as keysetWhere.
+// UUIDs render as lowercase canonical strings, whose lexicographic order
+// matches Postgres' uuid comparison, so a JS string compare stays consistent
+// with the DB predicate.
+function compareKeysetDesc(
+  a: { id: string; createdAt: Date },
+  b: { id: string; createdAt: Date },
+): number {
+  const byTime = b.createdAt.getTime() - a.createdAt.getTime();
+  if (byTime !== 0) return byTime;
+  return a.id < b.id ? 1 : a.id > b.id ? -1 : 0;
+}
+
+// Merges several already-keyset-ordered sources into a single page. Each source
+// must have been fetched with `limit PAGE_SIZE + 1` under the same cursor
+// predicate; because the PAGE_SIZE newest rows overall are guaranteed to sit
+// within the per-source over-fetch, concatenating, re-sorting and slicing to
+// PAGE_SIZE yields the correct global page. The next cursor comes from the last
+// kept row, so the following page re-queries every source from that key.
+export function mergePage<T extends { id: string; createdAt: Date }>(
+  sources: T[][],
+): Page<T> {
+  const merged = sources.flat().sort(compareKeysetDesc);
+  const hasMore = merged.length > PAGE_SIZE;
+  const items = hasMore ? merged.slice(0, PAGE_SIZE) : merged;
+  const last = items[items.length - 1];
+  const nextCursor =
+    hasMore && last ? encodeCursor({ createdAt: last.createdAt, id: last.id }) : null;
+  return { items, nextCursor };
+}

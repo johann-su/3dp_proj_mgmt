@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse, after } from "next/server";
 import { GetObjectCommand } from "@aws-sdk/client-s3";
 import { eq } from "drizzle-orm";
 import { db } from "@/db";
@@ -6,6 +6,7 @@ import { modelFiles } from "@/db/schema";
 import { s3, S3_BUCKET, contentTypeForFilename } from "@/lib/s3";
 import { getSession } from "@/lib/auth";
 import { verifyFileToken } from "@/lib/file-token";
+import { incrementFileDownloadCount } from "@/lib/metrics";
 
 export const runtime = "nodejs";
 
@@ -47,6 +48,9 @@ export async function GET(
 
   const asAttachment =
     file.kind === "model" || req.nextUrl.searchParams.get("download") === "1";
+  // Only count real downloads, not inline image views (gallery thumbnails,
+  // the next/image optimizer).
+  if (asAttachment) after(() => incrementFileDownloadCount(file.id));
 
   const headers = new Headers();
   // Content type comes from the allowlisted extension, not the stored value:

@@ -7,6 +7,7 @@ import { getSession } from "@/lib/auth";
 import { fileSrc, fileToken } from "@/lib/file-token";
 import { get3mfSliceInfo } from "@/lib/threemf-remote";
 import { processPendingSlices } from "@/lib/slicer";
+import { incrementModelViewCount } from "@/lib/metrics";
 import { readTextFile } from "@/lib/storage";
 import { MAX_SCAD_SOURCE_BYTES, openscadConfigured } from "@/lib/openscad";
 import { parseScadParameters } from "@/lib/scad-params";
@@ -49,6 +50,8 @@ export default async function ModelPage({
   // The whole catalog is private — self-hosted instances store paid models.
   if (!session) redirect("/sign-in");
   if (!model) notFound();
+
+  after(() => incrementModelViewCount(model.id));
 
   const images = model.files.filter((f) => f.kind === "image");
   const printFiles = model.files.filter((f) => f.kind === "model");
@@ -113,8 +116,10 @@ export default async function ModelPage({
 
   let collectionOptions: CollectionOption[] = [];
   if (session) {
+    // Smart collections are excluded: their membership is rule-defined, so
+    // there is nothing to add a model to (see toggleModelInCollection).
     const own = await db.query.collections.findMany({
-      where: eq(collections.userId, session.user.id),
+      where: and(eq(collections.userId, session.user.id), eq(collections.smart, false)),
       orderBy: asc(collections.title),
       columns: { id: true, title: true },
     });

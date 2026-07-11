@@ -6,22 +6,27 @@ import { and, eq } from "drizzle-orm";
 import { db } from "@/db";
 import { collectionModels, collections, models } from "@/db/schema";
 import { getSession } from "@/lib/auth";
-import { listUserCollections } from "@/lib/list-queries";
-import type { MyCollectionData } from "@/components/my-collection-card";
-import type { Page } from "@/lib/pagination";
+import { parseRuleTree, type RuleGroup } from "@/lib/collection-rules";
 
-// Fetches the next page of the signed-in user's collections for endless scroll.
-export async function loadMoreCollections(input: {
-  cursor: string;
-}): Promise<Page<MyCollectionData>> {
-  const session = await getSession();
-  if (!session) return { items: [], nextCursor: null };
-  return listUserCollections({ userId: session.user.id, cursor: input.cursor });
+// Validates the smart/rules pair of a create/update input. Smart collections
+// must carry a valid rule tree; manual ones store none (a stale tree left
+// behind after toggling smart off would silently come back on re-enable with
+// rules the user no longer sees).
+function resolveRules(input: {
+  smart: boolean;
+  rules?: unknown;
+}): { smart: boolean; rules: RuleGroup | null } | { error: string } {
+  if (!input.smart) return { smart: false, rules: null };
+  const parsed = parseRuleTree(input.rules);
+  if ("error" in parsed) return { error: parsed.error };
+  return { smart: true, rules: parsed.tree };
 }
 
 export async function createCollection(input: {
   title: string;
   description: string;
+  smart?: boolean;
+  rules?: unknown;
 }): Promise<{ error: string } | never> {
   const session = await getSession();
   if (!session) return { error: "You must be signed in" };
@@ -29,16 +34,21 @@ export async function createCollection(input: {
   const title = input.title.trim();
   if (!title) return { error: "Title is required" };
 
+  const resolved = resolveRules({ smart: input.smart === true, rules: input.rules });
+  if ("error" in resolved) return { error: resolved.error };
+
   const [collection] = await db
     .insert(collections)
     .values({
       title,
       description: input.description.trim(),
       userId: session.user.id,
+      smart: resolved.smart,
+      rules: resolved.rules,
     })
     .returning({ id: collections.id });
 
-  revalidatePath("/collections");
+  revalidatePath("/");
   redirect(`/collections/${collection.id}`);
 }
 
@@ -46,6 +56,8 @@ export async function updateCollection(input: {
   collectionId: string;
   title: string;
   description: string;
+  smart?: boolean;
+  rules?: unknown;
 }): Promise<{ error: string } | never> {
   const session = await getSession();
   if (!session) return { error: "You must be signed in" };
@@ -55,21 +67,31 @@ export async function updateCollection(input: {
 
   const collection = await db.query.collections.findFirst({
     where: eq(collections.id, input.collectionId),
-    columns: { id: true, userId: true },
+    columns: { id: true, userId: true, sourceUrl: true },
   });
   if (!collection) return { error: "Collection not found" };
   if (collection.userId !== session.user.id) return { error: "Not your collection" };
+
+  const resolved = resolveRules({ smart: input.smart === true, rules: input.rules });
+  if ("error" in resolved) return { error: resolved.error };
+  // Imported collections mirror an external MakerWorld list ("Sync" re-links
+  // members); rule-based membership would fight that.
+  if (resolved.smart && collection.sourceUrl) {
+    return { error: "Imported collections can't be smart collections" };
+  }
 
   await db
     .update(collections)
     .set({
       title,
       description: input.description.trim(),
+      smart: resolved.smart,
+      rules: resolved.rules,
       updatedAt: new Date(),
     })
     .where(eq(collections.id, collection.id));
 
-  revalidatePath("/collections");
+  revalidatePath("/");
   revalidatePath(`/collections/${collection.id}`);
   redirect(`/collections/${collection.id}`);
 }
@@ -88,8 +110,8 @@ export async function deleteCollection(
 
   await db.delete(collections).where(eq(collections.id, collectionId));
 
-  revalidatePath("/collections");
-  redirect("/collections");
+  revalidatePath("/");
+  redirect("/");
 }
 
 export async function toggleModelInCollection(input: {
@@ -105,6 +127,10 @@ export async function toggleModelInCollection(input: {
   });
   if (!collection) return { error: "Collection not found" };
   if (collection.userId !== session.user.id) return { error: "Not your collection" };
+  // Smart membership is computed from the rules; there are no rows to toggle.
+  if (collection.smart) {
+    return { error: "Smart collections manage their models by rules" };
+  }
 
   const model = await db.query.models.findFirst({
     where: eq(models.id, input.modelId),
@@ -130,6 +156,6 @@ export async function toggleModelInCollection(input: {
 
   revalidatePath(`/models/${input.modelId}`);
   revalidatePath(`/collections/${input.collectionId}`);
-  revalidatePath("/collections");
+  revalidatePath("/");
   return {};
 }

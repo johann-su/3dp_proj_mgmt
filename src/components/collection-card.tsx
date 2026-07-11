@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { FolderOpen, Layers, User } from "lucide-react";
+import { FolderOpen, Layers, Sparkles, User } from "lucide-react";
 import { CoverImage } from "@/components/cover-image";
 
 export type CollectionCardData = {
@@ -13,6 +13,10 @@ export type CollectionCardData = {
       files: { id: string; src: string; animated?: boolean }[];
     };
   }[];
+  // Smart collections (rule-based membership) hydrate only their first few
+  // members as covers, so the real count comes separately.
+  totalModels?: number;
+  smart?: boolean;
 };
 
 export function CollectionCard({
@@ -24,19 +28,20 @@ export function CollectionCard({
     .map((cm) => cm.model.files[0])
     .filter(Boolean)
     .slice(0, 4);
-  const totalModels = collection.collectionModels.length;
+  const totalModels = collection.totalModels ?? collection.collectionModels.length;
   const overflow = totalModels - 4;
 
   return (
-    <Link href={`/collections/${collection.id}`} className="group block">
+    <Link href={`/collections/${collection.id}`} className="group block h-full">
       {/* Stacked card effect — each layer is offset by an even 4px step
           (inset + drop) so the peeking edges look evenly spaced. */}
-      <div className="relative">
+      <div className="relative h-full">
         <div className="absolute inset-x-2 -bottom-2 h-full rounded-xl bg-muted/60 border border-border/40" />
         <div className="absolute inset-x-1 -bottom-1 h-full rounded-xl bg-muted/80 border border-border/50" />
 
-        {/* Main card */}
-        <div className="relative rounded-xl overflow-hidden shadow-sm transition-shadow group-hover:shadow-lg border border-border/60 bg-card">
+        {/* Main card — fills the grid row height (like ModelCard's h-full Card)
+            so models and collections line up at equal height. */}
+        <div className="relative flex h-full flex-col rounded-xl overflow-hidden shadow-sm transition-shadow group-hover:shadow-lg border border-border/60 bg-card">
           {/* 2×2 image grid */}
           <div className="aspect-[4/3] grid grid-cols-2 grid-rows-2 bg-muted">
             {covers.length === 0 ? (
@@ -96,6 +101,15 @@ export function CollectionCard({
                 <User className="size-3" />
                 {collection.user.name}
               </span>
+              {collection.smart && (
+                <span
+                  className="flex items-center gap-1"
+                  title="Membership is defined by rules and updates automatically"
+                >
+                  <Sparkles className="size-3" />
+                  Smart
+                </span>
+              )}
             </div>
           </div>
         </div>

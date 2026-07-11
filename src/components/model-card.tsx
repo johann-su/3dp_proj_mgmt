@@ -18,7 +18,7 @@ export type ModelCardData = {
   category: { name: string } | null;
   // `src` is the token-signed image URL (see fileSrc in @/lib/file-token),
   // signed server-side because this card also renders inside client
-  // components (ModelGrid's infinite scroll).
+  // components (FeedGrid's infinite scroll).
   files: { id: string; src: string; animated?: boolean }[];
   modelTags: { tag: { id: string; name: string } }[];
   // True when the model ships a `.scad` source, i.e. it's customizable via the
