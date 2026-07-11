@@ -19,12 +19,6 @@ This project should be a self hostable project management platform for .3mf file
 - **Pagination** — cursor-based endless scroll on the list screens (homepage `/` models grid, `/collections`)
 - **Authentication** — email/password with optional OIDC SSO; all pages require sign-in
 
-**Planned:**
-- import collections from printables
-- 3D preview of objects in the browser
-- Parametric models via [OpenSCAD](https://openscad.org/)
-- Bambu printer integration — send print jobs and monitor prints
-
 ## Tech stack
 
 - Nextjs
