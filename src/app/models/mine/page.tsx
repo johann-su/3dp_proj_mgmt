@@ -6,6 +6,7 @@ import { db } from "@/db";
 import { models } from "@/db/schema";
 import { getSession } from "@/lib/auth";
 import { fileSrc } from "@/lib/file-token";
+import { parametricExtra } from "@/lib/parametric";
 import { ModelCard } from "@/components/model-card";
 
 export const dynamic = "force-dynamic";
@@ -17,6 +18,7 @@ export default async function MyModelsPage() {
   const results = await db.query.models.findMany({
     where: eq(models.userId, session.user.id),
     orderBy: desc(models.createdAt),
+    extras: (m) => ({ parametric: parametricExtra(m.id) }),
     with: {
       user: { columns: { name: true } },
       category: true,

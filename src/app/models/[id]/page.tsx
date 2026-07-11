@@ -150,6 +150,7 @@ export default async function ModelPage({
       : null,
     tags: model.modelTags.map(({ tag }) => ({ id: tag.id, name: tag.name })),
     platform,
+    parametric: printFiles.some((f) => fileExtension(f.filename) === ".scad"),
     sourceUrl: model.sourceUrl ?? null,
     sourceName,
     onshapeWvm,

@@ -1,4 +1,5 @@
 import { and, desc, eq, ilike, or } from "drizzle-orm";
+import { parametricExtra } from "@/lib/parametric";
 import { db } from "@/db";
 import { collections, models } from "@/db/schema";
 import type { ModelCardData } from "@/components/model-card";
@@ -37,6 +38,7 @@ export async function listModels(opts: {
     where: conditions.length > 0 ? and(...conditions) : undefined,
     orderBy: [desc(models.createdAt), desc(models.id)],
     limit: PAGE_SIZE + 1,
+    extras: (m) => ({ parametric: parametricExtra(m.id) }),
     with: {
       user: { columns: { name: true } },
       category: true,
@@ -62,6 +64,7 @@ export async function listModels(opts: {
       animated: f.animated,
     })),
     modelTags: m.modelTags,
+    parametric: m.parametric,
   }));
   return { items, nextCursor: page.nextCursor };
 }

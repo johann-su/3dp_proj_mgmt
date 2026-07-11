@@ -18,7 +18,6 @@ import {
   SquarePen,
   Trash2,
   TriangleAlert,
-  Wand2,
   Weight,
 } from "lucide-react";
 import type { PrinterInfo } from "@/db/schema";
@@ -77,6 +76,8 @@ export type ModelViewData = {
   category: { name: string; slug?: string } | null;
   tags: Array<{ id?: string; name: string }>;
   platform: SourcePlatform | null;
+  // True when the model ships a `.scad` source (customizable via OpenSCAD).
+  parametric: boolean;
   sourceUrl: string | null;
   sourceName: string | null;
   onshapeWvm: string | null;
@@ -301,6 +302,7 @@ export function ModelView({ data }: { data: ModelViewData }) {
     category,
     tags,
     platform,
+    parametric,
     sourceUrl,
     sourceName,
     onshapeWvm,
@@ -325,22 +327,43 @@ export function ModelView({ data }: { data: ModelViewData }) {
           title={title}
           modelFiles={modelFiles}
           badge={
-            platform && (
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <div className="flex size-8 items-center justify-center rounded-lg bg-white/90 p-1.5 shadow-sm ring-1 ring-black/5 backdrop-blur">
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img
-                      src={`/logos/${platform}.svg`}
-                      alt={`${platformLabels[platform]} logo`}
-                      className="size-full object-contain"
-                    />
-                  </div>
-                </TooltipTrigger>
-                <TooltipContent side="right">
-                  {platformLabels[platform]}
-                </TooltipContent>
-              </Tooltip>
+            (platform || parametric) && (
+              <div className="flex flex-col gap-2">
+                {platform && (
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <div className="flex size-8 items-center justify-center rounded-lg bg-white/90 p-1.5 shadow-sm ring-1 ring-black/5 backdrop-blur">
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img
+                          src={`/logos/${platform}.svg`}
+                          alt={`${platformLabels[platform]} logo`}
+                          className="size-full object-contain"
+                        />
+                      </div>
+                    </TooltipTrigger>
+                    <TooltipContent side="right">
+                      {platformLabels[platform]}
+                    </TooltipContent>
+                  </Tooltip>
+                )}
+                {parametric && (
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <div className="flex size-8 items-center justify-center rounded-lg bg-primary p-1 shadow-sm ring-1 ring-black/5 backdrop-blur">
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img
+                          src="/customize.svg"
+                          alt="Parametric model"
+                          className="size-full object-contain"
+                        />
+                      </div>
+                    </TooltipTrigger>
+                    <TooltipContent side="right">
+                      Customizable OpenSCAD model
+                    </TooltipContent>
+                  </Tooltip>
+                )}
+              </div>
             )
           }
         />
@@ -456,9 +479,14 @@ export function ModelView({ data }: { data: ModelViewData }) {
                   isOwner &&
                   modelId &&
                   file.id && (
-                    <Button asChild variant="outline" size="sm">
+                    <Button asChild variant="outline">
                       <Link href={`/models/${modelId}/customize/${file.id}`}>
-                        <Wand2 className="size-4" />
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img
+                          src="/customize.svg"
+                          alt=""
+                          className="size-5 dark:invert-0 invert"
+                        />
                         Customize
                       </Link>
                     </Button>
