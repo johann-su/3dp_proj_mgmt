@@ -31,6 +31,8 @@ export function ModelPreview({ data }: { data: ModelPreviewData }) {
     onshapeWvm: null,
     makerworldUrl: null,
     images: data.images,
+    // Files aren't stored yet in the create wizard, so there's nothing to load.
+    modelSrc: null,
     bom: data.bom.filter((item) => item.name.trim()),
     printFiles: data.printFiles.map((f) => ({
       id: null,

@@ -2,8 +2,9 @@
 
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import Image from "next/image";
-import { Box, ChevronLeft, ChevronRight, X, ZoomIn } from "lucide-react";
+import { Box, ChevronLeft, ChevronRight, Rotate3d, X, ZoomIn } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { ModelViewer } from "@/components/model-viewer";
 
 type GalleryImage = { src: string };
 
@@ -11,13 +12,21 @@ export function ImageGallery({
   images,
   title,
   badge,
+  modelSrc,
 }: {
   images: GalleryImage[];
   title: string;
   badge?: React.ReactNode;
+  // Tokened URL of a .3mf to offer as an interactive 3D preview (issue #35).
+  // When set, a Photos/3D toggle appears over the main frame.
+  modelSrc?: string;
 }) {
   const [selected, setSelected] = useState(0);
   const [lightboxOpen, setLightboxOpen] = useState(false);
+  // 3D view is offered only when a .3mf is available; default to it when there
+  // are no thumbnail images to show. A viewer error flips this off so we fall
+  // back to the images (or the empty-state placeholder).
+  const [show3d, setShow3d] = useState(!!modelSrc && images.length === 0);
   const thumbRefs = useRef<(HTMLButtonElement | null)[]>([]);
 
   const index = Math.min(selected, images.length - 1);
@@ -43,15 +52,47 @@ export function ImageGallery({
     return () => window.removeEventListener("keydown", onKey);
   }, [lightboxOpen, images.length, closeLightbox]);
 
+  // No thumbnails: show the 3D viewer if we have a .3mf, otherwise the
+  // placeholder box.
   if (images.length === 0) {
     return (
-      <div className="aspect-[4/3] rounded-lg bg-muted flex items-center justify-center">
-        <Box className="size-16 text-muted-foreground/40" />
+      <div className="relative aspect-[4/3] rounded-lg bg-muted overflow-hidden flex items-center justify-center">
+        {show3d && modelSrc ? (
+          <ModelViewer src={modelSrc} onError={() => setShow3d(false)} />
+        ) : (
+          <Box className="size-16 text-muted-foreground/40" />
+        )}
       </div>
     );
   }
 
   const current = images[index];
+
+  const ModeToggle = modelSrc && (
+    <div className="absolute left-1/2 top-2 z-10 flex -translate-x-1/2 gap-0.5 rounded-full bg-background/80 p-0.5 shadow-sm backdrop-blur">
+      <button
+        type="button"
+        onClick={() => setShow3d(false)}
+        className={cn(
+          "rounded-full px-3 py-1 text-xs font-medium transition-colors",
+          show3d ? "text-muted-foreground hover:text-foreground" : "bg-primary text-primary-foreground",
+        )}
+      >
+        Photos
+      </button>
+      <button
+        type="button"
+        onClick={() => setShow3d(true)}
+        className={cn(
+          "inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-medium transition-colors",
+          show3d ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground",
+        )}
+      >
+        <Rotate3d className="size-3.5" />
+        3D
+      </button>
+    </div>
+  );
 
   function step(direction: -1 | 1) {
     setSelected((index + direction + images.length) % images.length);
@@ -109,28 +150,33 @@ export function ImageGallery({
 
     <div className="grid gap-2">
       <div className="relative aspect-[4/3] rounded-lg bg-muted overflow-hidden flex items-center justify-center group">
-        <button
-          type="button"
-          className="absolute inset-0 w-full h-full"
-          aria-label="View full size"
-          onClick={() => setLightboxOpen(true)}
-        >
-          <Image
-            src={current.src}
-            alt={title}
-            fill
-            sizes="(max-width: 1024px) 100vw, 60vw"
-            quality={90}
-            className="object-contain"
-          />
-          <span className="absolute right-2 top-2 flex size-8 items-center justify-center rounded-full bg-background/80 opacity-0 group-hover:opacity-100 transition-opacity">
-            <ZoomIn className="size-4" />
-          </span>
-        </button>
+        {show3d && modelSrc ? (
+          <ModelViewer src={modelSrc} onError={() => setShow3d(false)} />
+        ) : (
+          <button
+            type="button"
+            className="absolute inset-0 w-full h-full"
+            aria-label="View full size"
+            onClick={() => setLightboxOpen(true)}
+          >
+            <Image
+              src={current.src}
+              alt={title}
+              fill
+              sizes="(max-width: 1024px) 100vw, 60vw"
+              quality={90}
+              className="object-contain"
+            />
+            <span className="absolute right-2 top-2 flex size-8 items-center justify-center rounded-full bg-background/80 opacity-0 group-hover:opacity-100 transition-opacity">
+              <ZoomIn className="size-4" />
+            </span>
+          </button>
+        )}
+        {ModeToggle}
         {badge && (
           <div className="absolute left-2 top-2 pointer-events-none">{badge}</div>
         )}
-        {images.length > 1 && (
+        {!show3d && images.length > 1 && (
           <>
             <button
               type="button"
@@ -163,10 +209,13 @@ export function ImageGallery({
                 thumbRefs.current[i] = el;
               }}
               type="button"
-              onClick={() => setSelected(i)}
+              onClick={() => {
+                setSelected(i);
+                setShow3d(false);
+              }}
               className={cn(
                 "relative size-16 rounded-md overflow-hidden bg-muted border-2 shrink-0",
-                i === selected ? "border-primary" : "border-transparent",
+                i === selected && !show3d ? "border-primary" : "border-transparent",
               )}
               aria-label={`Show image ${i + 1}`}
             >

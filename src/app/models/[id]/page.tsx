@@ -155,6 +155,15 @@ export default async function ModelPage({
     onshapeWvm,
     makerworldUrl,
     images: images.map((img) => ({ src: fileSrc(img.id) })),
+    // First stored .3mf gets an interactive 3D preview in the gallery. Prefer a
+    // top-level file over a generated variant; .step/.scad can't be rendered.
+    modelSrc: (() => {
+      const previewable = [
+        ...printFiles.filter((f) => f.generatedFromId === null),
+        ...printFiles.filter((f) => f.generatedFromId !== null),
+      ].find((f) => f.filename.toLowerCase().endsWith(".3mf"));
+      return previewable ? fileSrc(previewable.id) : null;
+    })(),
     bom: model.bomItems,
     printFiles: (() => {
       const toEntry = (file: (typeof printFiles)[number]): PrintFileData => {
