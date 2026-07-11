@@ -1,0 +1,57 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": ["config:recommended", ":dependencyDashboard"],
+  "timezone": "Europe/Berlin",
+  "schedule": ["before 6am on monday"],
+  "minimumReleaseAge": "5 days",
+  "prConcurrentLimit": 5,
+  "packageRules": [
+    {
+      "description": "Next.js and its eslint config are pinned together — never split",
+      "groupName": "next",
+      "matchPackageNames": ["next", "eslint-config-next"]
+    },
+    {
+      "description": "React runtime pinned as a pair; treat major bumps as manual",
+      "groupName": "react",
+      "matchPackageNames": ["react", "react-dom", "@types/react", "@types/react-dom"]
+    },
+    {
+      "groupName": "radix",
+      "matchPackageNames": ["radix-ui", "/^@radix-ui//"]
+    },
+    {
+      "groupName": "aws-sdk",
+      "matchPackageNames": ["/^@aws-sdk//"]
+    },
+    {
+      "groupName": "tailwind",
+      "matchPackageNames": ["/tailwind/", "/^@tailwindcss//"]
+    },
+    {
+      "groupName": "drizzle",
+      "matchPackageNames": ["drizzle-orm", "drizzle-kit"]
+    },
+    {
+      "groupName": "type definitions",
+      "matchPackageNames": ["/^@types//"]
+    },
+    {
+      "description": "Automerge low-risk stuff once CI is green",
+      "matchUpdateTypes": ["patch", "pin", "digest"],
+      "automerge": true
+    },
+    {
+      "description": "Automerge devDependency minors too — build-only blast radius",
+      "matchDepTypes": ["devDependencies"],
+      "matchUpdateTypes": ["minor"],
+      "automerge": true
+    },
+    {
+      "description": "Never auto-merge majors — review by hand (React/Next especially)",
+      "matchUpdateTypes": ["major"],
+      "automerge": false,
+      "addLabels": ["breaking"]
+    }
+  ]
+}
