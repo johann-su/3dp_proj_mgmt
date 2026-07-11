@@ -28,15 +28,16 @@ export function CollectionCard({
   const overflow = totalModels - 4;
 
   return (
-    <Link href={`/collections/${collection.id}`} className="group block">
+    <Link href={`/collections/${collection.id}`} className="group block h-full">
       {/* Stacked card effect — each layer is offset by an even 4px step
           (inset + drop) so the peeking edges look evenly spaced. */}
-      <div className="relative">
+      <div className="relative h-full">
         <div className="absolute inset-x-2 -bottom-2 h-full rounded-xl bg-muted/60 border border-border/40" />
         <div className="absolute inset-x-1 -bottom-1 h-full rounded-xl bg-muted/80 border border-border/50" />
 
-        {/* Main card */}
-        <div className="relative rounded-xl overflow-hidden shadow-sm transition-shadow group-hover:shadow-lg border border-border/60 bg-card">
+        {/* Main card — fills the grid row height (like ModelCard's h-full Card)
+            so models and collections line up at equal height. */}
+        <div className="relative flex h-full flex-col rounded-xl overflow-hidden shadow-sm transition-shadow group-hover:shadow-lg border border-border/60 bg-card">
           {/* 2×2 image grid */}
           <div className="aspect-[4/3] grid grid-cols-2 grid-rows-2 bg-muted">
             {covers.length === 0 ? (

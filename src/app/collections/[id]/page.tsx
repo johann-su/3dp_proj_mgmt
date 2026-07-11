@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
+import { after } from "next/server";
 import { eq } from "drizzle-orm";
 import { ExternalLink, FolderOpen, SquarePen } from "lucide-react";
 import { db } from "@/db";
@@ -7,6 +8,7 @@ import { collections } from "@/db/schema";
 import { getSession } from "@/lib/auth";
 import { fileSrc } from "@/lib/file-token";
 import { formatDate } from "@/lib/format";
+import { incrementCollectionViewCount } from "@/lib/metrics";
 import { platformFromSourceUrl, platformLabels } from "@/lib/platform";
 import { Button } from "@/components/ui/button";
 import { ModelCard } from "@/components/model-card";
@@ -55,6 +57,8 @@ export default async function CollectionPage({
   // The whole catalog is private — self-hosted instances store paid models.
   if (!session) redirect("/sign-in");
   if (!collection) notFound();
+
+  after(() => incrementCollectionViewCount(collection.id));
 
   const isOwner = session.user.id === collection.userId;
   const sourcePlatform = platformFromSourceUrl(collection.sourceUrl);

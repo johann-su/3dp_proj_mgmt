@@ -91,6 +91,9 @@ export const models = pgTable("models", {
   // models not imported from Onshape (and for version-pinned imports, which
   // are immutable snapshots).
   onshapeMicroversion: text("onshape_microversion"),
+  // Page view count, incremented on each model detail page load — see
+  // src/lib/metrics.ts. Not surfaced in the UI yet.
+  viewCount: integer("view_count").notNull().default(0),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
@@ -185,6 +188,10 @@ export const modelFiles = pgTable("model_files", {
   ),
   generatedParams: jsonb("generated_params").$type<Record<string, string>>(),
   generatedParamsHash: text("generated_params_hash"),
+  // Incremented each time this file is served as a download (kind "model",
+  // or an image/pdf fetched with ?download=1) — see src/lib/metrics.ts.
+  // Inline image views (gallery thumbnails, next/image) don't count.
+  downloadCount: integer("download_count").notNull().default(0),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
@@ -233,6 +240,9 @@ export const collections = pgTable("collections", {
   // MakerWorld collection URL this collection was bulk-imported from; null
   // for hand-made collections. "Sync" re-runs the import job against it.
   sourceUrl: text("source_url"),
+  // Page view count, incremented on each collection page load — see
+  // src/lib/metrics.ts. Not surfaced in the UI yet.
+  viewCount: integer("view_count").notNull().default(0),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
