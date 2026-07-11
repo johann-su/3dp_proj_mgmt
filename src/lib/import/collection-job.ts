@@ -16,6 +16,7 @@ import { after } from "next/server";
 import { and, eq } from "drizzle-orm";
 import { db } from "@/db";
 import {
+  bomItems,
   collectionModels,
   collections,
   importJobs,
@@ -23,6 +24,7 @@ import {
   models,
 } from "@/db/schema";
 import { getBambuCredential } from "@/lib/bambu/credentials";
+import { sanitizeBomItems } from "@/lib/bom";
 import { linkTags, normalizeTagNames } from "@/lib/tags";
 import { sliceEligible, processPendingSlices } from "@/lib/slicer";
 import { BAMBU_EXPIRED_WARNING, importFromMakerworld } from "./makerworld";
@@ -165,6 +167,9 @@ async function createImportedModel(
   files: StagedImportFile[],
 ): Promise<string> {
   const tagNames = normalizeTagNames(project.tags);
+  // Scraped BOM — sanitize (validates links, caps count) as createModel does.
+  const bomResult = sanitizeBomItems(project.bom ?? []);
+  const bom = "items" in bomResult ? bomResult.items : [];
   // Sniff image headers up front so animated covers freeze to a poster frame.
   const animatedKeys = await animatedImageKeys(files);
   return db.transaction(async (tx) => {
@@ -194,6 +199,20 @@ async function createImportedModel(
           : null,
       })),
     );
+
+    if (bom.length > 0) {
+      await tx.insert(bomItems).values(
+        bom.map((item, i) => ({
+          modelId: model.id,
+          name: item.name,
+          quantity: item.quantity,
+          link: item.link,
+          imageUrl: item.imageUrl,
+          section: item.section,
+          position: i,
+        })),
+      );
+    }
 
     await linkTags(tx, model.id, tagNames);
 

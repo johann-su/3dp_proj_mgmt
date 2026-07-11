@@ -4,11 +4,12 @@
 
 import { stageBuffer, stageStream } from "@/lib/storage";
 import { normalizeThreeMf } from "@/lib/threemf-normalize";
-import { fileExtension, IMAGE_EXTENSIONS } from "@/lib/s3";
-import { IMPORT_USER_AGENT, type ImportedProject } from "./types";
+import { fileExtension, IMAGE_EXTENSIONS, PDF_EXTENSIONS } from "@/lib/s3";
+import { IMPORT_USER_AGENT, type ImportedProject, type RemoteAsset } from "./types";
 
 const MAX_MODEL_BYTES = 1024 * 1024 * 1024; // 1 GB
 const MAX_IMAGE_BYTES = 30 * 1024 * 1024;
+const MAX_PDF_BYTES = 100 * 1024 * 1024;
 
 const CONTENT_TYPES: Record<string, string> = {
   ".png": "image/png",
@@ -19,6 +20,13 @@ const CONTENT_TYPES: Record<string, string> = {
   ".3mf": "model/3mf",
   ".step": "model/step",
   ".stp": "model/step",
+  ".pdf": "application/pdf",
+};
+
+const MAX_BYTES: Record<RemoteAsset["kind"], number> = {
+  model: MAX_MODEL_BYTES,
+  image: MAX_IMAGE_BYTES,
+  pdf: MAX_PDF_BYTES,
 };
 
 export type StagedImportFile = {
@@ -26,7 +34,7 @@ export type StagedImportFile = {
   filename: string;
   size: number;
   contentType: string;
-  kind: "model" | "image";
+  kind: "model" | "image" | "pdf";
   onshapeElementId?: string;
 };
 
@@ -48,14 +56,20 @@ export async function stageImportedAssets(
         warnings.push(`Download failed for ${asset.filename} (${res.status})`);
         continue;
       }
-      const maxBytes = asset.kind === "model" ? MAX_MODEL_BYTES : MAX_IMAGE_BYTES;
+      const maxBytes = MAX_BYTES[asset.kind];
       const contentLength = Number(res.headers.get("content-length") ?? 0);
       if (contentLength > maxBytes) {
         warnings.push(`${asset.filename} is too large, skipped`);
         continue;
       }
       const ext = fileExtension(asset.filename);
+      // Extension-gate images and PDFs: createModel derives the stored content
+      // type from the extension and rejects a kind/extension mismatch, so a
+      // stray non-.pdf "document" or non-image "image" must be dropped here.
       if (asset.kind === "image" && !IMAGE_EXTENSIONS.includes(ext)) {
+        continue;
+      }
+      if (asset.kind === "pdf" && !PDF_EXTENSIONS.includes(ext)) {
         continue;
       }
       const contentType =

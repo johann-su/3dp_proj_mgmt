@@ -8,6 +8,7 @@
 // metadata + images are imported and the user adds the .3mf manually.
 
 import { htmlishToMarkdown } from "@/lib/html";
+import type { BomItemInput } from "@/lib/bom";
 import {
   apiBase,
   fetchProfileDownload,
@@ -17,6 +18,7 @@ import { ImportError, IMPORT_USER_AGENT, type ImportedProject, type RemoteAsset 
 
 const MAX_IMAGES = 8;
 const MAX_FILES = 8;
+const MAX_DOCS = 8;
 
 // Exact warning pushed when the stored Bambu token stops working. The
 // collection import job matches on it to abort early (every following
@@ -33,6 +35,40 @@ export function parseMakerworldUrl(url: URL): string | null {
 type DesignPicture = { url?: string; name?: string };
 type DesignInstance = { id?: number; profileId?: number; title?: string };
 
+// A downloadable document attached to a design (assembly guide / BOM sheet).
+type DesignDoc = { name?: string; url?: string };
+
+// One purchasable BOM entry from the MakerWorld store (hardware kit, filament,
+// material). The `*_v2` arrays all share this shape; the human-facing product
+// name is `spuName`, the store product page is keyed by `handle`, and the
+// gallery/thumbnail image lives on the first concrete SKU.
+type BomProduct = {
+  spuName?: string;
+  handle?: string;
+  quantity?: number;
+  productSkuList?: { image?: string }[];
+};
+
+// A non-purchasable "other part" the maker lists by hand (grease, glue, …).
+type BomOtherPart = {
+  name?: string;
+  nameTranslated?: string;
+  quantity?: number;
+};
+
+type DesignExtension = {
+  design_pictures?: DesignPicture[];
+  // Attached documents: assembly guide(s) and, when the maker uploads one, a
+  // BOM sheet. Both are download links (usually PDFs).
+  design_guide?: DesignDoc[];
+  design_bom?: DesignDoc[];
+  // Structured bill of materials, split by product kind.
+  boms_v2?: BomProduct[];
+  boms_of_filaments_v2?: BomProduct[];
+  boms_of_materials_v2?: BomProduct[];
+  boms_of_other_part_list?: BomOtherPart[];
+};
+
 type MakerworldDesign = {
   id?: number;
   modelId?: string;
@@ -43,7 +79,7 @@ type MakerworldDesign = {
   tags?: string[];
   tagsTranslated?: string[];
   coverUrl?: string;
-  designExtension?: { design_pictures?: DesignPicture[] };
+  designExtension?: DesignExtension;
   instances?: DesignInstance[];
   defaultInstanceId?: number;
 };
@@ -77,6 +113,77 @@ export function selectImageUrls(design: MakerworldDesign, max = MAX_IMAGES): str
     (u): u is string => typeof u === "string" && u.startsWith("http"),
   );
   return [...new Set(urls)].slice(0, max);
+}
+
+// Picks the design's attached documents (assembly guide + BOM sheet) as PDF
+// assets. Both live under `designExtension` as {name, url} download links; the
+// staging step drops anything that isn't actually a .pdf.
+export function selectDocs(design: MakerworldDesign, max = MAX_DOCS): RemoteAsset[] {
+  const ext = design.designExtension;
+  const docs = [...(ext?.design_guide ?? []), ...(ext?.design_bom ?? [])];
+  const seen = new Set<string>();
+  const assets: RemoteAsset[] = [];
+  for (const doc of docs) {
+    const url = doc.url;
+    if (typeof url !== "string" || !url.startsWith("http") || seen.has(url)) continue;
+    seen.add(url);
+    const fallback = url.split("/").pop()?.split("?")[0] || `document-${assets.length + 1}.pdf`;
+    assets.push({
+      url,
+      filename: (doc.name?.trim() || fallback),
+      kind: "pdf",
+    });
+    if (assets.length >= max) break;
+  }
+  return assets;
+}
+
+// Bill of materials link on the Bambu store. `store.bambulab.com` 302-redirects
+// to the visitor's regional store, so a single handle-based URL works globally.
+function storeUrl(handle: string | undefined): string | null {
+  const clean = handle?.trim();
+  return clean ? `https://store.bambulab.com/products/${clean}` : null;
+}
+
+// Flattens MakerWorld's structured bill of materials into the app's BOM rows.
+// The store products (hardware kits, filaments, materials) carry a name, a
+// purchase link and a product image; hand-listed "other parts" are name +
+// quantity only. Each group becomes a titled section, mirroring the site.
+export function selectBomItems(design: MakerworldDesign): BomItemInput[] {
+  const ext = design.designExtension;
+  const items: BomItemInput[] = [];
+
+  const addProducts = (products: BomProduct[] | undefined, section: string) => {
+    for (const product of products ?? []) {
+      const name = product.spuName?.trim();
+      if (!name) continue;
+      items.push({
+        name,
+        quantity: String(product.quantity ?? 1),
+        link: storeUrl(product.handle),
+        imageUrl: product.productSkuList?.find((s) => s.image)?.image ?? null,
+        section,
+      });
+    }
+  };
+
+  addProducts(ext?.boms_v2, "Hardware");
+  addProducts(ext?.boms_of_filaments_v2, "Filament");
+  addProducts(ext?.boms_of_materials_v2, "Materials");
+
+  for (const part of ext?.boms_of_other_part_list ?? []) {
+    const name = preferEnglish(part.nameTranslated, part.name);
+    if (!name) continue;
+    items.push({
+      name,
+      quantity: String(part.quantity ?? 1),
+      link: null,
+      imageUrl: null,
+      section: "Other parts",
+    });
+  }
+
+  return items;
 }
 
 function ensure3mf(name: string, fallback: string): string {
@@ -194,6 +301,9 @@ export async function importFromMakerworld(
     kind: "image",
   }));
 
+  // Attached PDFs (assembly guide / BOM sheet) import as document files.
+  assets.push(...selectDocs(design));
+
   const warnings: string[] = [];
   if (options.token) {
     const downloads = await resolveDownloads(design, options.token, region);
@@ -212,6 +322,7 @@ export async function importFromMakerworld(
     description: htmlishToMarkdown(preferEnglish(design.summaryTranslated, design.summary)),
     tags,
     assets,
+    bom: selectBomItems(design),
     warnings,
   };
 }

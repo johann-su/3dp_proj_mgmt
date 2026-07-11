@@ -1,7 +1,9 @@
+import type { BomItemInput } from "@/lib/bom";
+
 export type RemoteAsset = {
   url: string;
   filename: string;
-  kind: "model" | "image";
+  kind: "model" | "image" | "pdf";
   // Extra request headers for sources that gate downloads behind auth
   // (Onshape API downloads need the user's Basic auth header).
   headers?: Record<string, string>;
@@ -17,6 +19,9 @@ export type ImportedProject = {
   description: string;
   tags: string[];
   assets: RemoteAsset[];
+  // Bill of materials scraped from the source (MakerWorld). Empty for sources
+  // that don't expose one.
+  bom: BomItemInput[];
   warnings: string[];
   // Workspace microversion at export time (Onshape only, workspace pins only);
   // stored on the model so sync can tell whether the document changed.

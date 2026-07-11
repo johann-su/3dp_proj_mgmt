@@ -110,6 +110,7 @@ export async function importFromPrintables(
     description: htmlishToMarkdown(print.description || print.summary || ""),
     tags: (print.tags ?? []).map((t) => t.name.trim().toLowerCase()).filter(Boolean),
     assets: [],
+    bom: [],
     warnings: [],
   };
 
