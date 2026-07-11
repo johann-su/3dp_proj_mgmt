@@ -30,8 +30,11 @@ export function CollectionCard({
   return (
     <Link href={`/collections/${collection.id}`} className="group block h-full">
       {/* Stacked card effect — each layer is offset by an even 4px step
-          (inset + drop) so the peeking edges look evenly spaced. */}
-      <div className="relative h-full">
+          (inset + drop) so the peeking edges look evenly spaced. The wrapper
+          is shrunk by the largest drop (8px) so the peeking layers stay
+          within the grid cell instead of overflowing past its bottom edge,
+          which otherwise made collection cards look taller than model cards. */}
+      <div className="relative h-[calc(100%-8px)]">
         <div className="absolute inset-x-2 -bottom-2 h-full rounded-xl bg-muted/60 border border-border/40" />
         <div className="absolute inset-x-1 -bottom-1 h-full rounded-xl bg-muted/80 border border-border/50" />
 
