@@ -314,12 +314,12 @@ export function ModelViewer({
 
       {/* File switcher + full-screen toggle, top-right (top-left holds the
           platform badge, top-center the Photos/3D toggle). */}
-      <div className="absolute right-2 top-2 z-10 flex max-w-[70%] items-center gap-1.5">
+      <div className="absolute right-2 top-2 z-10 flex items-center gap-1.5">
         {multiFile && (
           <select
             value={fileIndex}
             onChange={(e) => setFileIndex(Number(e.target.value))}
-            className="min-w-0 truncate rounded-md border bg-background/90 px-2 py-1 text-xs shadow-sm backdrop-blur focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
+            className="w-32 min-w-0 truncate rounded-md border bg-background/90 px-2 py-1 text-xs shadow-sm backdrop-blur focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50 sm:w-44"
             aria-label="Choose a file to preview"
           >
             {files.map((f, i) => (
@@ -346,6 +346,9 @@ export function ModelViewer({
       {/* Plate selector, mirroring MakerWorld's per-plate rail. */}
       {multiPlate && !loading && !error && (
         <div className="absolute bottom-2 left-2 top-12 z-10 flex w-28 flex-col gap-1 overflow-y-auto rounded-lg bg-background/70 p-1 shadow-sm backdrop-blur">
+          <div className="sticky top-0 z-10 rounded-t-md bg-background/80 px-2 pt-1 pb-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground backdrop-blur">
+            Plates
+          </div>
           {plateNames.map((name, i) => (
             <button
               key={i}
