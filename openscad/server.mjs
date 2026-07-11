@@ -4,8 +4,10 @@
 // .scad source with a set of customizer values into a .3mf mesh.
 //
 //   GET  /healthz   liveness probe
-//   POST /render    body = JSON { source: string, parameters: {name: string} }
-//     -> 200 raw .3mf bytes (content-type model/3mf)
+//   POST /render    body = JSON { source, parameters: {name: string}, format? }
+//     format "3mf" (default, for storage) or "stl" (binary, for the browser
+//     preview — smaller and directly parseable by three.js)
+//     -> 200 raw model bytes (model/3mf or application/octet-stream)
 //     -> 400 { ok: false, error }   malformed request
 //     -> 422 { ok: false, error }   OpenSCAD rejected the source / timed out
 //     -> 413/500 on oversize body / unexpected errors
@@ -31,15 +33,27 @@ const OPENSCAD_BIN = process.env.OPENSCAD_BIN ?? "openscad";
 const TIMEOUT_MS = Number(process.env.RENDER_TIMEOUT_MS ?? 120_000);
 const MAX_BODY_BYTES = Number(process.env.MAX_BODY_BYTES ?? 8 * 1024 * 1024);
 
-function runOpenscad(dir, hasParameters) {
+// Output formats the service will produce. Keys are the request values, the
+// entries name the output file and OpenSCAD's --export-format id (binstl =
+// binary STL, a fraction of the ascii size).
+const FORMATS = {
+  "3mf": { file: "output.3mf", exportFormat: "3mf", contentType: "model/3mf" },
+  stl: {
+    file: "output.stl",
+    exportFormat: "binstl",
+    contentType: "application/octet-stream",
+  },
+};
+
+function runOpenscad(dir, hasParameters, format) {
   return new Promise((resolve) => {
     const child = spawn(
       OPENSCAD_BIN,
       [
         "-o",
-        join(dir, "output.3mf"),
+        join(dir, format.file),
         "--export-format",
-        "3mf",
+        format.exportFormat,
         ...(hasParameters ? ["-p", join(dir, "params.json"), "-P", "app"] : []),
         join(dir, "input.scad"),
       ],
@@ -68,14 +82,14 @@ function runOpenscad(dir, hasParameters) {
   });
 }
 
-async function render(source, paramsJson) {
+async function render(source, paramsJson, format) {
   const dir = await mkdtemp(join(tmpdir(), "scad-"));
   try {
     await writeFile(join(dir, "input.scad"), source);
     if (paramsJson !== null) {
       await writeFile(join(dir, "params.json"), paramsJson);
     }
-    const result = await runOpenscad(dir, paramsJson !== null);
+    const result = await runOpenscad(dir, paramsJson !== null, format);
     if (result.timedOut) {
       return {
         status: 422,
@@ -87,13 +101,15 @@ async function render(source, paramsJson) {
     }
     let data;
     try {
-      data = await readFile(join(dir, "output.3mf"));
+      data = await readFile(join(dir, format.file));
     } catch {
       // Exit 0 without output happens for e.g. an empty top-level object.
       return { status: 422, body: { ok: false, error: scrubErrorOutput(result.output) } };
     }
-    console.log(`rendered ${source.length}B source -> ${data.length}B 3mf`);
-    return { status: 200, data };
+    console.log(
+      `rendered ${source.length}B source -> ${data.length}B ${format.exportFormat}`,
+    );
+    return { status: 200, data, contentType: format.contentType };
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
@@ -143,12 +159,15 @@ const server = createServer(async (req, res) => {
       const raw = await readBody(req);
       let source;
       let paramsJson;
+      let format;
       try {
         const parsed = JSON.parse(raw.toString("utf8"));
         source = parsed.source;
         if (typeof source !== "string" || source.length === 0) {
           throw new Error("source must be a non-empty string");
         }
+        format = FORMATS[parsed.format ?? "3mf"];
+        if (!format) throw new Error("format must be 3mf or stl");
         const parameters = parsed.parameters ?? {};
         // Validate before queueing so bad input is a 400, not a queued 500.
         paramsJson =
@@ -156,10 +175,10 @@ const server = createServer(async (req, res) => {
       } catch (err) {
         return send(res, 400, { ok: false, error: err?.message ?? "invalid request" });
       }
-      const result = await enqueue(() => render(source, paramsJson));
+      const result = await enqueue(() => render(source, paramsJson, format));
       if (result.status === 200) {
         res.writeHead(200, {
-          "content-type": "model/3mf",
+          "content-type": result.contentType,
           "content-length": result.data.length,
         });
         return res.end(result.data);

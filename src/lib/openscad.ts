@@ -18,9 +18,14 @@ export type RenderResult =
   | { ok: true; data: Uint8Array }
   | { ok: false; status: number; error: string };
 
+// "3mf" for files that get stored; "stl" (binary) for the customize page's
+// browser preview, which three.js parses directly.
+export type RenderFormat = "3mf" | "stl";
+
 export async function renderScad(
   source: string,
   parameters: Record<string, string>,
+  format: RenderFormat = "3mf",
 ): Promise<RenderResult> {
   const url = process.env.OPENSCAD_URL;
   if (!url) {
@@ -32,7 +37,7 @@ export async function renderScad(
     res = await fetch(new URL("/render", url), {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ source, parameters }),
+      body: JSON.stringify({ source, parameters, format }),
       signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
     });
   } catch (err) {

@@ -3,20 +3,16 @@ import { revalidatePath } from "next/cache";
 import { after } from "next/server";
 import { createHash } from "node:crypto";
 import { and, eq } from "drizzle-orm";
-import { DeleteObjectsCommand, GetObjectCommand } from "@aws-sdk/client-s3";
+import { DeleteObjectsCommand } from "@aws-sdk/client-s3";
 import { db } from "@/db";
 import { modelFiles, models } from "@/db/schema";
 import { getSession } from "@/lib/auth";
-import { s3, S3_BUCKET, fileExtension } from "@/lib/s3";
+import { s3, S3_BUCKET } from "@/lib/s3";
 import { stageBuffer } from "@/lib/storage";
 import { normalizeThreeMf } from "@/lib/threemf-normalize";
 import { sliceEligible, processPendingSlices } from "@/lib/slicer";
-import { MAX_SCAD_SOURCE_BYTES, renderScad } from "@/lib/openscad";
-import {
-  coerceScadValues,
-  findForbiddenFileRefs,
-  parseScadParameters,
-} from "@/lib/scad-params";
+import { renderScad } from "@/lib/openscad";
+import { prepareScadRender } from "./render-request";
 
 export const runtime = "nodejs";
 // Rendering waits on the OpenSCAD service (2 min timeout plus queueing).
@@ -55,74 +51,12 @@ export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
-  const session = await getSession();
-  if (!session) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-
   const { id } = await params;
-  const model = await db.query.models.findFirst({
-    where: eq(models.id, id),
-    with: { files: true },
-  });
-  if (!model) {
-    return NextResponse.json({ error: "Model not found" }, { status: 404 });
+  const request = await prepareScadRender(id, await req.json().catch(() => null));
+  if ("error" in request) {
+    return NextResponse.json({ error: request.error }, { status: request.status });
   }
-  // Generated variants become part of the model, and mutations are owner-only
-  // (the site-wide rule) — visitors can still download the .scad and render
-  // locally.
-  if (model.userId !== session.user.id) {
-    return NextResponse.json({ error: "Not your model" }, { status: 403 });
-  }
-
-  const body = (await req.json().catch(() => null)) as {
-    fileId?: string;
-    values?: Record<string, unknown>;
-  } | null;
-  if (!body?.fileId || typeof body.values !== "object" || body.values === null) {
-    return NextResponse.json({ error: "Invalid request" }, { status: 400 });
-  }
-
-  const source = model.files.find(
-    (f) =>
-      f.id === body.fileId &&
-      f.kind === "model" &&
-      fileExtension(f.filename) === ".scad",
-  );
-  if (!source) {
-    return NextResponse.json(
-      { error: "Not a .scad file of this model" },
-      { status: 400 },
-    );
-  }
-  if (source.size > MAX_SCAD_SOURCE_BYTES) {
-    return NextResponse.json({ error: "Source file too large" }, { status: 422 });
-  }
-
-  const object = await s3.send(
-    new GetObjectCommand({ Bucket: S3_BUCKET, Key: source.s3Key }),
-  );
-  if (!object.Body) {
-    return NextResponse.json({ error: "Source file unavailable" }, { status: 502 });
-  }
-  const scadSource = Buffer.from(await object.Body.transformToByteArray()).toString(
-    "utf8",
-  );
-
-  const violations = findForbiddenFileRefs(scadSource);
-  if (violations.length > 0) {
-    return NextResponse.json(
-      {
-        error:
-          "This .scad file references external files, which is not supported: " +
-          violations.join("; "),
-      },
-      { status: 422 },
-    );
-  }
-
-  const groups = parseScadParameters(scadSource);
-  const values = coerceScadValues(groups, body.values);
+  const { model, source, scadSource, values } = request;
   const hash = paramsHash(values);
 
   const existing = model.files.find(

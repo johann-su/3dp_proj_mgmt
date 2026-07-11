@@ -210,14 +210,21 @@ Decisions taken and why — guidance for development.
 - **Parametric OpenSCAD models**: a model can carry its `.scad` source as a
   model file (uploaded, or imported — Printables serves `.scad` anonymously
   via its `otherFiles` group; MakerWorld's comes through `GET
-  api.bambulab.com/v1/design-service/design/{id}/model?modelType=scad&type=download`,
-  undocumented and Bambu-login-gated like profile downloads, answering a
-  single file or a zip that staging unpacks). The owner gets a customizer
-  form on the model page built from the OpenSCAD customizer comments in the
-  source — parsed on view by the pure `src/lib/scad-params.ts` (the design
-  API's `scadConfig` field is empty in practice, so the source is the only
-  schema; `/* [Hidden] */` stays hidden, unrecognized annotations degrade to
-  plain inputs). "Generate .3mf" (owner-only, `POST
+  api.bambulab.com/v1/design-service/design/{id}/model?modelType=all&type=download`,
+  undocumented and Bambu-login-gated like profile downloads; only
+  `modelType=all` exists ("scad"/"3mf" answer 404) and it returns one zip of
+  every raw file, from which staging extracts just the `.scad` entries). The
+  owner gets a "Customize" button on the model page linking to a full-page
+  customizer (`/models/{id}/customize/{fileId}`): a parameter rail built
+  from the OpenSCAD customizer comments in the source — parsed by the pure
+  `src/lib/scad-params.ts` (the design API's `scadConfig` field is empty in
+  practice, so the source is the only schema; `/* [Hidden] */` stays hidden,
+  unrecognized annotations degrade to plain inputs) — beside a live three.js
+  preview (plain `three`, no react-three-fiber; renders on demand, no rAF
+  loop) fed by `POST /api/models/{id}/customize/preview`, which returns
+  ephemeral **binary STL** (the service's second output format; nothing is
+  stored, the client debounces changes and drops stale responses via a
+  sequence counter). "Generate .3mf" (owner-only, `POST
   /api/models/{id}/customize`) renders through the **openscad service**
   (`openscad/`, fourth compose container: zero-dependency wrapper around the
   OpenSCAD CLI, Debian package + vendored pinned BOSL2/MCAD under

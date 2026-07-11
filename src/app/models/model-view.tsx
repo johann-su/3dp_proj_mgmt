@@ -18,6 +18,7 @@ import {
   SquarePen,
   Trash2,
   TriangleAlert,
+  Wand2,
   Weight,
 } from "lucide-react";
 import type { PrinterInfo } from "@/db/schema";
@@ -42,7 +43,6 @@ import { AddToCollection, type CollectionOption } from "./[id]/add-to-collection
 import { DeleteModelButton } from "./[id]/delete-model-button";
 import { OnshapeSyncButton } from "./[id]/onshape-sync-button";
 import { FileDownloadMenu } from "./[id]/file-download-menu";
-import { ScadCustomizer } from "./[id]/scad-customizer";
 
 export type { CollectionOption };
 
@@ -452,11 +452,12 @@ export function ModelView({ data }: { data: ModelViewData }) {
                   isOwner &&
                   modelId &&
                   file.id && (
-                    <ScadCustomizer
-                      modelId={modelId}
-                      fileId={file.id}
-                      groups={file.customizer}
-                    />
+                    <Button asChild variant="outline" size="sm">
+                      <Link href={`/models/${modelId}/customize/${file.id}`}>
+                        <Wand2 className="size-4" />
+                        Customize
+                      </Link>
+                    </Button>
                   )}
                 {file.variants && file.variants.length > 0 && (
                   <div className="grid gap-2 border-l-2 pl-3 ml-1">
