@@ -116,8 +116,10 @@ export default async function ModelPage({
 
   let collectionOptions: CollectionOption[] = [];
   if (session) {
+    // Smart collections are excluded: their membership is rule-defined, so
+    // there is nothing to add a model to (see toggleModelInCollection).
     const own = await db.query.collections.findMany({
-      where: eq(collections.userId, session.user.id),
+      where: and(eq(collections.userId, session.user.id), eq(collections.smart, false)),
       orderBy: asc(collections.title),
       columns: { id: true, title: true },
     });

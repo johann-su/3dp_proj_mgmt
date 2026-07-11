@@ -3,8 +3,10 @@ import { db } from "@/db";
 import type { ModelCardData } from "@/components/model-card";
 import type { CollectionCardData } from "@/components/collection-card";
 import { fileSrc } from "@/lib/file-token";
+import type { RuleBuilderFacets } from "@/app/collections/rule-builder";
 import { parametricExtra } from "@/lib/parametric";
 import { PAGE_SIZE } from "@/lib/pagination";
+import { smartCollectionPreviews } from "@/lib/smart-collections";
 import {
   decodeSearchCursor,
   effectiveSort,
@@ -294,25 +296,38 @@ async function hydrate(
       },
     ]),
   );
+  // Smart collections have no collection_models rows — their covers and count
+  // come from evaluating the stored rules (see smart-collections.ts).
+  const smartPreviews = await smartCollectionPreviews(
+    collectionRows.filter((c) => c.smart).map((c) => ({ id: c.id, rules: c.rules })),
+  );
+
   const collections = new Map<string, CollectionCardData>(
-    collectionRows.map((c) => [
-      c.id,
-      {
-        id: c.id,
-        title: c.title,
-        user: c.user,
-        collectionModels: c.collectionModels.map((cm) => ({
-          model: {
-            id: cm.model.id,
-            files: cm.model.files.map((f) => ({
-              id: f.id,
-              src: fileSrc(f.id),
-              animated: f.animated,
+    collectionRows.map((c) => {
+      const preview = smartPreviews.get(c.id);
+      return [
+        c.id,
+        {
+          id: c.id,
+          title: c.title,
+          user: c.user,
+          smart: c.smart,
+          totalModels: preview?.totalModels,
+          collectionModels:
+            preview?.collectionModels ??
+            c.collectionModels.map((cm) => ({
+              model: {
+                id: cm.model.id,
+                files: cm.model.files.map((f) => ({
+                  id: f.id,
+                  src: fileSrc(f.id),
+                  animated: f.animated,
+                })),
+              },
             })),
-          },
-        })),
-      },
-    ]),
+        },
+      ];
+    }),
   );
 
   const items: SearchItem[] = [];
@@ -375,6 +390,23 @@ export async function searchFacets(): Promise<SearchFacets> {
       .map((r) => Number(r.v))
       .filter((n) => Number.isFinite(n))
       .sort((a, b) => a - b),
+  };
+}
+
+// Dropdown options for the smart-collection rule builder: the /search facets
+// plus categories, which /search matches by text instead of listing. Tags are
+// deliberately free text there, like the model form's tag field.
+export async function ruleBuilderFacets(): Promise<RuleBuilderFacets> {
+  const [facets, categoryRows] = await Promise.all([
+    searchFacets(),
+    db.query.categories.findMany({ orderBy: (c, { asc }) => asc(c.name) }),
+  ]);
+  return {
+    users: facets.users,
+    printers: facets.printers,
+    filaments: facets.filaments,
+    nozzles: facets.nozzles,
+    categories: categoryRows.map((c) => ({ id: c.id, name: c.name })),
   };
 }
 

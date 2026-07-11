@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { FolderOpen, Layers, User } from "lucide-react";
+import { FolderOpen, Layers, Sparkles, User } from "lucide-react";
 import { CoverImage } from "@/components/cover-image";
 
 export type CollectionCardData = {
@@ -13,6 +13,10 @@ export type CollectionCardData = {
       files: { id: string; src: string; animated?: boolean }[];
     };
   }[];
+  // Smart collections (rule-based membership) hydrate only their first few
+  // members as covers, so the real count comes separately.
+  totalModels?: number;
+  smart?: boolean;
 };
 
 export function CollectionCard({
@@ -24,7 +28,7 @@ export function CollectionCard({
     .map((cm) => cm.model.files[0])
     .filter(Boolean)
     .slice(0, 4);
-  const totalModels = collection.collectionModels.length;
+  const totalModels = collection.totalModels ?? collection.collectionModels.length;
   const overflow = totalModels - 4;
 
   return (
@@ -100,6 +104,15 @@ export function CollectionCard({
                 <User className="size-3" />
                 {collection.user.name}
               </span>
+              {collection.smart && (
+                <span
+                  className="flex items-center gap-1"
+                  title="Membership is defined by rules and updates automatically"
+                >
+                  <Sparkles className="size-3" />
+                  Smart
+                </span>
+              )}
             </div>
           </div>
         </div>

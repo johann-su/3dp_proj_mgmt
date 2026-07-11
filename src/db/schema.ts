@@ -12,6 +12,7 @@ import {
   type AnyPgColumn,
 } from "drizzle-orm/pg-core";
 import { relations } from "drizzle-orm";
+import type { RuleGroup } from "@/lib/collection-rules";
 
 // --- BetterAuth tables ---
 
@@ -240,6 +241,13 @@ export const collections = pgTable("collections", {
   // MakerWorld collection URL this collection was bulk-imported from; null
   // for hand-made collections. "Sync" re-runs the import job against it.
   sourceUrl: text("source_url"),
+  // Smart collection: membership is defined by `rules` (a validated AND/OR
+  // rule tree, see src/lib/collection-rules.ts) evaluated against model
+  // metadata at read time — collection_models rows are ignored while smart.
+  // Mutually exclusive with sourceUrl (imported collections mirror an
+  // external list instead).
+  smart: boolean("smart").notNull().default(false),
+  rules: jsonb("rules").$type<RuleGroup>(),
   // Page view count, incremented on each collection page load — see
   // src/lib/metrics.ts. Not surfaced in the UI yet.
   viewCount: integer("view_count").notNull().default(0),
