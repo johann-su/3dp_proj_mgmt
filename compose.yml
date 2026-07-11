@@ -29,6 +29,19 @@ services:
     ports:
       - "127.0.0.1:8000:8000"
 
+  # Headless OpenSCAD wrapped in the same kind of HTTP service (./openscad).
+  # Renders parametric .scad model files into .3mf with user-chosen customizer
+  # values. Loopback-only for the same reason as the slicer; the memory/pid
+  # limits matter because OpenSCAD's CGAL renderer can eat unbounded RAM on a
+  # hostile or just overly ambitious model.
+  openscad:
+    build: ./openscad
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8001:8000"
+    mem_limit: 2g
+    pids_limit: 64
+
   # Full self-hosted deployment: docker compose --profile app up -d --build
   app:
     profiles: ["app"]
@@ -58,6 +71,8 @@ services:
       S3_FORCE_PATH_STYLE: ${S3_FORCE_PATH_STYLE:-true}
       # Headless slicer service for print time / filament estimates
       SLICER_URL: http://slicer:8000
+      # Headless OpenSCAD service for parametric .scad models (customizer)
+      OPENSCAD_URL: http://openscad:8000
     depends_on:
       postgres:
         condition: service_healthy

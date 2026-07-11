@@ -148,7 +148,7 @@ function stagedModelFileEntry(file: UploadedFile): ModelFileEntry {
   };
 }
 
-const MODEL_ACCEPT = ".3mf";
+const MODEL_ACCEPT = ".3mf,.scad";
 const IMAGE_ACCEPT = ".png,.jpg,.jpeg,.webp,.gif";
 const PDF_ACCEPT = ".pdf";
 
@@ -554,8 +554,9 @@ function ModelFilePicker({
         className="border border-dashed rounded-lg p-6 text-sm text-muted-foreground hover:bg-accent/50 transition-colors flex flex-col items-center gap-2"
       >
         <FileBox className="size-6" />
-        Click to add .3mf files — title, description, images and printer are
-        imported automatically. Drag rows to reorder.
+        Click to add .3mf files (title, description, images and printer are
+        imported automatically) or parametric .scad files. Drag rows to
+        reorder.
       </button>
       {entries.length > 0 && (
         <ul className="grid gap-1">
@@ -1005,7 +1006,7 @@ export function ModelForm({
     e.preventDefault();
 
     if (!hasModelFile) {
-      toast.error("Add at least one .3mf file");
+      toast.error("Add at least one model file (.3mf or .scad)");
       setPreview(false);
       setStep(1);
       return;

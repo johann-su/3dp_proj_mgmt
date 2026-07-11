@@ -5,8 +5,9 @@
 // 3mf is the primary format: a container with embedded metadata/images, which
 // keeps the upload UI and ingestion simple (stl support was deliberately
 // removed). step exists for the Onshape integration, whose exports are STEP
-// files; the upload UI still only offers .3mf.
-export const MODEL_EXTENSIONS = [".3mf", ".step", ".stp"];
+// files. scad is parametric OpenSCAD source — customized .3mf variants are
+// rendered from it via the openscad service (see AGENTS.md).
+export const MODEL_EXTENSIONS = [".3mf", ".step", ".stp", ".scad"];
 export const IMAGE_EXTENSIONS = [".png", ".jpg", ".jpeg", ".webp", ".gif"];
 // Optional documents attached to a model (build instructions, manual, …)
 export const PDF_EXTENSIONS = [".pdf"];
@@ -31,6 +32,9 @@ const EXTENSION_CONTENT_TYPES: Record<string, string> = {
   ".3mf": "model/3mf",
   ".step": "model/step",
   ".stp": "model/step",
+  // Plain text, but never text/* — /api/files must not serve it inline as
+  // something a browser would render (same stored-XSS reasoning as images).
+  ".scad": "application/x-openscad",
   ".png": "image/png",
   ".jpg": "image/jpeg",
   ".jpeg": "image/jpeg",

@@ -145,7 +145,7 @@ export async function importFromPrintables(
 
   if (fileCount === 0) {
     project.warnings.push(
-      "No downloadable model files (.3mf / .stl / .step) found — add them manually.",
+      "No downloadable model files (.3mf / .scad / .step) found — add them manually.",
     );
   }
 

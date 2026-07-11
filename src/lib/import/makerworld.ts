@@ -12,6 +12,7 @@ import type { BomItemInput } from "@/lib/bom";
 import {
   apiBase,
   fetchProfileDownload,
+  fetchRawModelDownload,
   type BambuRegion,
 } from "@/lib/bambu/cloud";
 import { ImportError, IMPORT_USER_AGENT, type ImportedProject, type RemoteAsset } from "./types";
@@ -56,8 +57,16 @@ type BomOtherPart = {
   quantity?: number;
 };
 
+// One raw model file of a design (the "raw model files" panel): unsliced
+// geometry or, for parametric models, the OpenSCAD source (modelType "scad").
+type DesignModelFile = {
+  modelName?: string;
+  modelType?: string;
+};
+
 type DesignExtension = {
   design_pictures?: DesignPicture[];
+  model_files?: DesignModelFile[];
   // Attached documents: assembly guide(s) and, when the maker uploads one, a
   // BOM sheet. Both are download links (usually PDFs).
   design_guide?: DesignDoc[];
@@ -209,44 +218,76 @@ async function resolveDownloads(
   );
   if (!modelId || instances.length === 0) {
     warnings.push("No downloadable print profiles were found for this model.");
-    return { assets, warnings };
   }
 
   const seen = new Set<number>();
-  for (const instance of instances) {
-    if (assets.length >= MAX_FILES) {
-      warnings.push(`Only the first ${MAX_FILES} print profiles were imported.`);
-      break;
-    }
-    if (seen.has(instance.profileId)) continue;
-    seen.add(instance.profileId);
+  if (modelId) {
+    for (const instance of instances) {
+      if (assets.length >= MAX_FILES) {
+        warnings.push(`Only the first ${MAX_FILES} print profiles were imported.`);
+        break;
+      }
+      if (seen.has(instance.profileId)) continue;
+      seen.add(instance.profileId);
 
-    const result = await fetchProfileDownload(
-      instance.profileId,
-      modelId,
-      token,
-      region,
-    );
-    if (result === "unauthorized") {
-      warnings.push(BAMBU_EXPIRED_WARNING);
-      break;
-    }
-    if (!result) {
-      warnings.push(
-        `Could not get a download for "${instance.title ?? instance.profileId}".`,
+      const result = await fetchProfileDownload(
+        instance.profileId,
+        modelId,
+        token,
+        region,
       );
-      continue;
+      if (result === "unauthorized") {
+        warnings.push(BAMBU_EXPIRED_WARNING);
+        break;
+      }
+      if (!result) {
+        warnings.push(
+          `Could not get a download for "${instance.title ?? instance.profileId}".`,
+        );
+        continue;
+      }
+      assets.push({
+        url: result.url,
+        filename: ensure3mf(result.name, instance.title ?? `profile-${instance.profileId}`),
+        kind: "model",
+      });
     }
-    assets.push({
-      url: result.url,
-      filename: ensure3mf(result.name, instance.title ?? `profile-${instance.profileId}`),
-      kind: "model",
-    });
   }
 
   if (assets.length === 0 && warnings.length === 0) {
     warnings.push("No .3mf files could be downloaded for this model.");
   }
+
+  // Parametric designs also carry their OpenSCAD source as a raw model file —
+  // import it so the model can be customized here (see AGENTS.md, OpenSCAD
+  // service). Skipped silently when absent; failures are warnings like any
+  // other download.
+  const scadFiles = (design.designExtension?.model_files ?? []).filter(
+    (f) => f.modelType === "scad",
+  );
+  if (scadFiles.length > 0 && typeof design.id === "number") {
+    // Only modelType=all exists — the download is a zip of every raw file
+    // (geometry included); staging extracts just the .scad entries from it.
+    const result = await fetchRawModelDownload(design.id, "all", token, region);
+    if (result === "unauthorized") {
+      if (!warnings.includes(BAMBU_EXPIRED_WARNING)) {
+        warnings.push(BAMBU_EXPIRED_WARNING);
+      }
+    } else if (!result) {
+      warnings.push("Could not download the model's OpenSCAD source files.");
+    } else {
+      assets.push({
+        url: result.url,
+        filename:
+          result.name.trim() ||
+          scadFiles[0].modelName?.trim() ||
+          "raw-files.zip",
+        kind: "model",
+        extractScad: true,
+      });
+    }
+  }
+
   return { assets, warnings };
 }
 
