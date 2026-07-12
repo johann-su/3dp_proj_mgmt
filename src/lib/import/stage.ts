@@ -2,10 +2,10 @@
 // ("uploads/…" keys, same shape as browser uploads). Shared by the one-shot
 // import route (POST /api/import) and the background collection import job.
 
-import { unzipSync } from "fflate";
 import { stageBuffer, stageStream } from "@/lib/storage";
 import { normalizeThreeMf } from "@/lib/threemf-normalize";
 import { fileExtension, IMAGE_EXTENSIONS, PDF_EXTENSIONS } from "@/lib/s3";
+import { extractScadFiles } from "./scad-archive";
 import { IMPORT_USER_AGENT, type ImportedProject, type RemoteAsset } from "./types";
 
 const MAX_MODEL_BYTES = 1024 * 1024 * 1024; // 1 GB
@@ -25,40 +25,28 @@ const CONTENT_TYPES: Record<string, string> = {
   ".pdf": "application/pdf",
 };
 
-// MakerWorld's raw-model download serves a single file or, for several
-// matching files, one zip — telling them apart needs the bytes (the response
-// filename decides). Stages every .scad found either way. Zips stay small
-// (sources are text), so buffering is fine.
-const MAX_SCAD_ARCHIVE_BYTES = 64 * 1024 * 1024;
+// MakerWorld's raw-model download serves a single .scad or, when a design has
+// several raw files, one zip bundling *all* of them — including hundreds of MB
+// of geometry next to the tiny .scad sources. `extractScadFiles` streams the
+// archive and only decompresses the .scad entries, so a large geometry payload
+// never gets buffered and can't push the source over a size cap (the original
+// bug: a 64 MB whole-archive cap silently dropped the .scad of big parametric
+// models). Each individual .scad is still bounded — sources are text.
+const MAX_SCAD_FILE_BYTES = 32 * 1024 * 1024;
 
 async function stageScadDownload(
   asset: RemoteAsset,
   res: Response,
 ): Promise<StagedImportFile[]> {
-  const data = new Uint8Array(await res.arrayBuffer());
-  if (data.byteLength > MAX_SCAD_ARCHIVE_BYTES) return [];
-
-  const isZip = data[0] === 0x50 && data[1] === 0x4b; // "PK"
-  if (!isZip) {
-    if (fileExtension(asset.filename) !== ".scad") return [];
-    return [
-      {
-        ...(await stageBuffer(asset.filename, data, CONTENT_TYPES[".scad"])),
-        kind: "model" as const,
-      },
-    ];
-  }
-
-  const staged: StagedImportFile[] = [];
-  const entries = unzipSync(data, {
-    filter: (entry) =>
-      fileExtension(entry.name) === ".scad" && !entry.name.startsWith("__MACOSX"),
+  if (!res.body) return [];
+  const scads = await extractScadFiles(res.body, {
+    fallbackName: asset.filename,
+    maxFileBytes: MAX_SCAD_FILE_BYTES,
   });
-  for (const [path, bytes] of Object.entries(entries)) {
-    const filename = path.split("/").pop();
-    if (!filename || bytes.length === 0) continue;
+  const staged: StagedImportFile[] = [];
+  for (const { name, bytes } of scads) {
     staged.push({
-      ...(await stageBuffer(filename, bytes, CONTENT_TYPES[".scad"])),
+      ...(await stageBuffer(name, bytes, CONTENT_TYPES[".scad"])),
       kind: "model" as const,
     });
   }

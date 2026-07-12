@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
+  collectScadModelFiles,
   importFromMakerworld,
   parseMakerworldUrl,
   preferEnglish,
@@ -54,6 +55,90 @@ test("importFromMakerworld downloads the OpenSCAD source of parametric designs",
   assert.equal(scad.filename, "Custom Servo Horn.scad");
   // the sliced print profile still imports alongside the source
   assert.ok(project.assets.some((a) => a.filename === "Default.3mf"));
+});
+
+// The raw-model-file panel is a tree: makers group files under labelled
+// folders, so a .scad frequently sits nested under a folder's `children`
+// (here a "SCAD File" folder) rather than at the top level — where the top
+// entries are the folders themselves (modelType ""). Missing these nested
+// sources was why parametric models with many folders imported no .scad.
+test("collectScadModelFiles finds .scad entries nested under folders", () => {
+  const scad = collectScadModelFiles([
+    {
+      modelName: "",
+      modelType: "", // a folder
+      children: [{ modelName: "Raw.zip", modelType: "zip" }],
+    },
+    {
+      modelName: "",
+      modelType: "", // the "SCAD File" folder
+      children: [
+        { modelName: "Parametric Model Maker.scad", modelType: "scad" },
+        { modelName: "Advanced Settings.scad", modelType: "scad" },
+      ],
+    },
+    { modelName: "Top level.scad", modelType: "scad" }, // still found at the root
+  ]);
+  assert.deepEqual(
+    scad.map((f) => f.modelName),
+    ["Parametric Model Maker.scad", "Advanced Settings.scad", "Top level.scad"],
+  );
+
+  assert.deepEqual(collectScadModelFiles(undefined), []);
+  assert.deepEqual(collectScadModelFiles([{ modelType: "3mf" }]), []);
+});
+
+// A popular design accumulates community-uploaded print profiles (no green
+// "Designer" tag). We import only the designer's own — an instance whose
+// author matches the design author — so a handful of MAX_FILES slots aren't
+// spent on other people's remixes. The .scad source imports regardless.
+test("importFromMakerworld imports only the designer's own print profiles", async (t) => {
+  const design = {
+    id: 47599,
+    modelId: "US31d64271d31f2",
+    title: "Ultimate Gridfinity Bins",
+    designCreator: { uid: 100 },
+    instances: [
+      { id: 1, profileId: 10, title: "Designer A", instanceCreator: { uid: 100 } },
+      { id: 2, profileId: 11, title: "Community B", instanceCreator: { uid: 200 } },
+      { id: 3, profileId: 12, title: "Designer C", instanceCreator: { uid: 100 } },
+    ],
+    designExtension: {
+      // .scad nested under a folder, like the live Gridfinity model
+      model_files: [
+        {
+          modelType: "",
+          children: [{ modelName: "Parametric Model Maker.scad", modelType: "scad" }],
+        },
+      ],
+    },
+  };
+  t.mock.method(globalThis, "fetch", async (input: URL | RequestInfo) => {
+    const url = String(input);
+    if (url.includes("/design-service/design/47599/model?modelType=all")) {
+      return Response.json({ name: "", url: "https://cdn.example/all.zip" });
+    }
+    const profile = url.match(/\/iot-service\/api\/user\/profile\/(\d+)/);
+    if (profile) {
+      return Response.json({ name: `p${profile[1]}.3mf`, url: `https://cdn.example/${profile[1]}.3mf` });
+    }
+    if (url.includes("/design-service/design/47599")) {
+      return Response.json(design);
+    }
+    return new Response("not found", { status: 404 });
+  });
+
+  const project = await importFromMakerworld(
+    new URL("https://makerworld.com/en/models/47599-gridfinity"),
+    { token: "token" },
+  );
+  const modelNames = project.assets.filter((a) => a.kind === "model").map((a) => a.filename);
+  // the two designer profiles import; the community one (profile 11) does not
+  assert.ok(modelNames.includes("p10.3mf"));
+  assert.ok(modelNames.includes("p12.3mf"));
+  assert.ok(!modelNames.includes("p11.3mf"));
+  // and the nested .scad source still imports
+  assert.ok(project.assets.some((a) => a.extractScad));
 });
 
 test("parseMakerworldUrl returns the model id for makerworld hosts", () => {
