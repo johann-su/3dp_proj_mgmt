@@ -4,7 +4,7 @@
   "timezone": "Europe/Berlin",
   "schedule": ["before 6am on monday"],
   "minimumReleaseAge": "5 days",
-  "prConcurrentLimit": 5,
+  "prConcurrentLimit": 10,
   "packageRules": [
     {
       "description": "Next.js and its eslint config are pinned together — never split",

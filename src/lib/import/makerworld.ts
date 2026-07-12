@@ -34,7 +34,16 @@ export function parseMakerworldUrl(url: URL): string | null {
 }
 
 type DesignPicture = { url?: string; name?: string };
-type DesignInstance = { id?: number; profileId?: number; title?: string };
+// A MakerWorld user (design author or the author of an individual print
+// profile). Only the numeric `uid` matters for telling the designer's own
+// profiles apart from community-contributed ones.
+type DesignUser = { uid?: number };
+type DesignInstance = {
+  id?: number;
+  profileId?: number;
+  title?: string;
+  instanceCreator?: DesignUser;
+};
 
 // A downloadable document attached to a design (assembly guide / BOM sheet).
 type DesignDoc = { name?: string; url?: string };
@@ -59,10 +68,30 @@ type BomOtherPart = {
 
 // One raw model file of a design (the "raw model files" panel): unsliced
 // geometry or, for parametric models, the OpenSCAD source (modelType "scad").
+// The panel is a tree — a maker can group files under labelled folders
+// (`isDir`), so a .scad often sits nested under `children` rather than at the
+// top level (e.g. a "SCAD File" folder); walk the whole tree to find them.
 type DesignModelFile = {
   modelName?: string;
   modelType?: string;
+  children?: DesignModelFile[];
 };
+
+// Flattens the (possibly nested) raw-model-file tree into just its .scad
+// entries, wherever they live in the folder hierarchy.
+export function collectScadModelFiles(
+  files: DesignModelFile[] | undefined,
+): DesignModelFile[] {
+  const scad: DesignModelFile[] = [];
+  const walk = (nodes: DesignModelFile[] | undefined) => {
+    for (const node of nodes ?? []) {
+      if (node.modelType === "scad") scad.push(node);
+      walk(node.children);
+    }
+  };
+  walk(files);
+  return scad;
+}
 
 type DesignExtension = {
   design_pictures?: DesignPicture[];
@@ -88,6 +117,7 @@ type MakerworldDesign = {
   tags?: string[];
   tagsTranslated?: string[];
   coverUrl?: string;
+  designCreator?: DesignUser;
   designExtension?: DesignExtension;
   instances?: DesignInstance[];
   defaultInstanceId?: number;
@@ -212,10 +242,21 @@ async function resolveDownloads(
   const warnings: string[] = [];
 
   const modelId = design.modelId;
-  const instances = (design.instances ?? []).filter(
-    (i): i is { profileId: number; title?: string } =>
+  let instances = (design.instances ?? []).filter(
+    (i): i is DesignInstance & { profileId: number } =>
       typeof i.profileId === "number",
   );
+  // A popular model can carry dozens of community-uploaded print profiles
+  // (the ones without the green "Designer" tag on MakerWorld). We only want
+  // the designer's own — an instance whose author is the design's author —
+  // so the MAX_FILES budget isn't spent on other people's remixes. Fall back
+  // to all profiles when we can't tell (missing author, or the designer
+  // published none of their own) rather than importing zero files.
+  const creatorUid = design.designCreator?.uid;
+  if (typeof creatorUid === "number") {
+    const own = instances.filter((i) => i.instanceCreator?.uid === creatorUid);
+    if (own.length > 0) instances = own;
+  }
   if (!modelId || instances.length === 0) {
     warnings.push("No downloadable print profiles were found for this model.");
   }
@@ -262,9 +303,7 @@ async function resolveDownloads(
   // import it so the model can be customized here (see AGENTS.md, OpenSCAD
   // service). Skipped silently when absent; failures are warnings like any
   // other download.
-  const scadFiles = (design.designExtension?.model_files ?? []).filter(
-    (f) => f.modelType === "scad",
-  );
+  const scadFiles = collectScadModelFiles(design.designExtension?.model_files);
   if (scadFiles.length > 0 && typeof design.id === "number") {
     // Only modelType=all exists — the download is a zip of every raw file
     // (geometry included); staging extracts just the .scad entries from it.
