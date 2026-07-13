@@ -91,7 +91,7 @@ export function CollectionCard({
           </div>
 
           {/* Info bar */}
-          <div className="px-3 py-2.5">
+          <div className="px-3 pt-2.5 pb-4">
             <div className="font-semibold truncate text-sm leading-snug">
               {collection.title}
             </div>
