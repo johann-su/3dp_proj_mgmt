@@ -1,12 +1,8 @@
 import { sql, type SQL } from "drizzle-orm";
 import { db } from "@/db";
-import type { ModelCardData } from "@/components/model-card";
-import type { CollectionCardData } from "@/components/collection-card";
-import { fileSrc } from "@/lib/file-token";
 import type { RuleBuilderFacets } from "@/app/collections/rule-builder";
-import { parametricExtra } from "@/lib/parametric";
+import { type CatalogItem, hydrateCatalogRows } from "@/lib/catalog-hydrate";
 import { PAGE_SIZE } from "@/lib/pagination";
-import { smartCollectionPreviews } from "@/lib/smart-collections";
 import {
   decodeSearchCursor,
   effectiveSort,
@@ -15,12 +11,9 @@ import {
   type SearchFilters,
 } from "@/lib/search-params";
 
-// A single hit in the combined (models ∪ collections) result stream. The two
-// card shapes render differently, so the discriminant lets /search pick the
-// right component.
-export type SearchItem =
-  | { kind: "model"; model: ModelCardData }
-  | { kind: "collection"; collection: CollectionCardData };
+// A single hit in the combined (models ∪ collections) result stream — see
+// CatalogItem in catalog-hydrate.ts.
+export type SearchItem = CatalogItem;
 
 export type SearchPage = { items: SearchItem[]; nextCursor: string | null };
 
@@ -95,6 +88,20 @@ function scoreExpr(alias: "m" | "c", f: SearchFilters): SQL {
   return sql`GREATEST(${sql.join(parts, sql`, `)})`;
 }
 
+// The numeric column the "views"/"downloads" sorts rank on; 0 (unused) for
+// every other sort. Downloads has no per-collection equivalent — model_files
+// carries download_count, collections have nothing analogous — so that branch
+// is only ever reached for the model half of the union (effectiveSort/the
+// caller's includeCollections check keep it out of the collection branch).
+function metricExpr(alias: "m" | "c", sort: SearchFilters["sort"]): SQL {
+  const a = sql.raw(alias);
+  if (sort === "views") return sql`${a}.view_count`;
+  if (sort === "downloads") {
+    return sql`(SELECT COALESCE(SUM(mf.download_count), 0) FROM model_files mf WHERE mf.model_id = m.id)`;
+  }
+  return sql`0`;
+}
+
 // The model-only filters (printer/filament/nozzle/print time) live on
 // model_files, so each is an EXISTS over the model's files.
 function modelFileConditions(f: SearchFilters): SQL[] {
@@ -148,8 +155,11 @@ export async function search(
   const sort = effectiveSort(f);
   const includeModels = f.type !== "collections";
   // Collections carry no printer metadata, so any model-only filter excludes
-  // them regardless of the requested type.
-  const includeCollections = f.type !== "models" && !hasModelOnlyFilter(f);
+  // them regardless of the requested type. "downloads" is model-only for the
+  // same reason (no per-collection download metric) — effectiveSort already
+  // downgrades it to "newest" for a collections-only search, so this never
+  // produces the empty-both-sides case below.
+  const includeCollections = f.type !== "models" && !hasModelOnlyFilter(f) && sort !== "downloads";
 
   if (!includeModels && !includeCollections) {
     return { items: [], nextCursor: null };
@@ -159,13 +169,13 @@ export async function search(
   if (includeModels) {
     const conds = [...textConditions("m", f), ...modelFileConditions(f)];
     parts.push(
-      sql`SELECT m.id AS id, 'model' AS kind, m.created_at AS created_at, ${scoreExpr("m", f)} AS score FROM models m ${whereClause(conds)}`,
+      sql`SELECT m.id AS id, 'model' AS kind, m.created_at AS created_at, ${scoreExpr("m", f)} AS score, ${metricExpr("m", sort)} AS metric FROM models m ${whereClause(conds)}`,
     );
   }
   if (includeCollections) {
     const conds = textConditions("c", f);
     parts.push(
-      sql`SELECT c.id AS id, 'collection' AS kind, c.created_at AS created_at, ${scoreExpr("c", f)} AS score FROM collections c ${whereClause(conds)}`,
+      sql`SELECT c.id AS id, 'collection' AS kind, c.created_at AS created_at, ${scoreExpr("c", f)} AS score, ${metricExpr("c", sort)} AS metric FROM collections c ${whereClause(conds)}`,
     );
   }
   const union = sql.join(parts, sql` UNION ALL `);
@@ -186,6 +196,11 @@ export async function search(
       keyset = sql`WHERE (created_at > ${d} OR (created_at = ${d} AND id > ${cursor.id}))`;
     }
     orderBy = sql`created_at ASC, id ASC`;
+  } else if (sort === "views" || sort === "downloads") {
+    if (cursor?.kind === "metric") {
+      keyset = sql`WHERE (metric < ${cursor.value} OR (metric = ${cursor.value} AND id < ${cursor.id}))`;
+    }
+    orderBy = sql`metric DESC, id DESC`;
   } else {
     // newest
     if (cursor?.kind === "time") {
@@ -200,8 +215,9 @@ export async function search(
     kind: "model" | "collection";
     created_at: Date;
     score: number;
+    metric: number;
   }>(sql`
-    SELECT id, kind, created_at, score
+    SELECT id, kind, created_at, score, metric
     FROM (${union}) AS matched
     ${keyset}
     ORDER BY ${orderBy}
@@ -212,7 +228,7 @@ export async function search(
   const hasMore = rows.length > PAGE_SIZE;
   const pageRows = hasMore ? rows.slice(0, PAGE_SIZE) : rows;
 
-  const items = await hydrate(pageRows);
+  const items = await hydrateCatalogRows(pageRows);
 
   let nextCursor: string | null = null;
   if (hasMore && pageRows.length > 0) {
@@ -220,127 +236,13 @@ export async function search(
     nextCursor = encodeSearchCursor(
       sort === "relevance"
         ? { kind: "score", score: Number(last.score), id: last.id }
-        : { kind: "time", createdAt: new Date(last.created_at).toISOString(), id: last.id },
+        : sort === "views" || sort === "downloads"
+          ? { kind: "metric", value: Number(last.metric), id: last.id }
+          : { kind: "time", createdAt: new Date(last.created_at).toISOString(), id: last.id },
     );
   }
 
   return { items, nextCursor };
-}
-
-// Turns the bare (id, kind) result rows into fully-populated card data,
-// preserving the ranked order. Models and collections are fetched in one query
-// each (not one-per-row) and stitched back together by id.
-async function hydrate(
-  rows: { id: string; kind: "model" | "collection" }[],
-): Promise<SearchItem[]> {
-  const modelIds = rows.filter((r) => r.kind === "model").map((r) => r.id);
-  const collectionIds = rows.filter((r) => r.kind === "collection").map((r) => r.id);
-
-  const [modelRows, collectionRows] = await Promise.all([
-    modelIds.length > 0
-      ? db.query.models.findMany({
-          where: (m, { inArray: within }) => within(m.id, modelIds),
-          extras: (m) => ({ parametric: parametricExtra(m.id) }),
-          with: {
-            user: { columns: { name: true } },
-            category: true,
-            files: {
-              where: (fl, { eq }) => eq(fl.kind, "image"),
-              orderBy: (fl, { asc }) => asc(fl.position),
-              limit: 1,
-            },
-            modelTags: { with: { tag: true } },
-          },
-        })
-      : Promise.resolve([]),
-    collectionIds.length > 0
-      ? db.query.collections.findMany({
-          where: (c, { inArray: within }) => within(c.id, collectionIds),
-          with: {
-            user: { columns: { name: true } },
-            collectionModels: {
-              with: {
-                model: {
-                  columns: { id: true },
-                  with: {
-                    files: {
-                      where: (fl, { eq }) => eq(fl.kind, "image"),
-                      orderBy: (fl, { asc }) => asc(fl.position),
-                      limit: 1,
-                    },
-                  },
-                },
-              },
-            },
-          },
-        })
-      : Promise.resolve([]),
-  ]);
-
-  const models = new Map<string, ModelCardData>(
-    modelRows.map((m) => [
-      m.id,
-      {
-        id: m.id,
-        title: m.title,
-        sourceUrl: m.sourceUrl,
-        user: m.user,
-        category: m.category,
-        files: m.files.map((f) => ({
-          id: f.id,
-          src: fileSrc(f.id),
-          animated: f.animated,
-        })),
-        modelTags: m.modelTags,
-        parametric: m.parametric,
-      },
-    ]),
-  );
-  // Smart collections have no collection_models rows — their covers and count
-  // come from evaluating the stored rules (see smart-collections.ts).
-  const smartPreviews = await smartCollectionPreviews(
-    collectionRows.filter((c) => c.smart).map((c) => ({ id: c.id, rules: c.rules })),
-  );
-
-  const collections = new Map<string, CollectionCardData>(
-    collectionRows.map((c) => {
-      const preview = smartPreviews.get(c.id);
-      return [
-        c.id,
-        {
-          id: c.id,
-          title: c.title,
-          user: c.user,
-          smart: c.smart,
-          totalModels: preview?.totalModels,
-          collectionModels:
-            preview?.collectionModels ??
-            c.collectionModels.map((cm) => ({
-              model: {
-                id: cm.model.id,
-                files: cm.model.files.map((f) => ({
-                  id: f.id,
-                  src: fileSrc(f.id),
-                  animated: f.animated,
-                })),
-              },
-            })),
-        },
-      ];
-    }),
-  );
-
-  const items: SearchItem[] = [];
-  for (const row of rows) {
-    if (row.kind === "model") {
-      const model = models.get(row.id);
-      if (model) items.push({ kind: "model", model });
-    } else {
-      const collection = collections.get(row.id);
-      if (collection) items.push({ kind: "collection", collection });
-    }
-  }
-  return items;
 }
 
 // Distinct filter values present in the corpus, used to populate the /search

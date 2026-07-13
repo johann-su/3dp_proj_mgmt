@@ -1,149 +1,124 @@
-import { and, desc, eq } from "drizzle-orm";
-import { parametricExtra } from "@/lib/parametric";
+import { sql, type SQL } from "drizzle-orm";
 import { db } from "@/db";
-import { collections, models } from "@/db/schema";
-import type { ModelCardData } from "@/components/model-card";
-import type { CollectionCardData } from "@/components/collection-card";
-import { fileSrc } from "@/lib/file-token";
-import { smartCollectionPreviews } from "@/lib/smart-collections";
+import { type CatalogItem, hydrateCatalogRows } from "@/lib/catalog-hydrate";
 import {
-  PAGE_SIZE,
-  decodeCursor,
-  keysetWhere,
-  mergePage,
-  type Page,
-} from "@/lib/pagination";
+  decodeFeedCursor,
+  encodeFeedCursor,
+  feedSortIsModelOnly,
+  type FeedSort,
+} from "@/lib/feed-params";
+import { PAGE_SIZE, type Page } from "@/lib/pagination";
 
-// One entry in the homepage feed: a model or a collection card, tagged so the
-// grid can pick the right component. `id`/`createdAt` are the keyset sort key
-// shared by both tables, letting the two sources merge into one ordered page.
-export type FeedItem = { id: string; createdAt: Date } & (
-  | { type: "model"; model: ModelCardData }
-  | { type: "collection"; collection: CollectionCardData }
-);
+// A single hit in the homepage feed — see CatalogItem in catalog-hydrate.ts.
+export type FeedItem = CatalogItem;
 
-// Cursor-paginated homepage feed of models and collections interleaved by
-// recency. Both tables share the (createdAt desc, id desc) keyset, so each is
-// over-fetched from the cursor and the two streams are merged into one page
-// (see mergePage). A category filter narrows to models only — collections have
-// no category — so filtered pages come from a single source.
+// The temporal column a "newest"/"oldest"/"updated" sort ranks on. newest and
+// oldest both order by created_at (only the direction differs); "updated"
+// swaps in updated_at instead — see the models/collections.updatedAt columns,
+// bumped on every edit.
+function timeColumn(alias: "m" | "c", sort: FeedSort): SQL {
+  const a = sql.raw(alias);
+  return sort === "updated" ? sql`${a}.updated_at` : sql`${a}.created_at`;
+}
+
+// The numeric column "views"/"downloads" rank on; 0 (unused) for the time
+// sorts. Downloads has no per-collection equivalent (model_files carries
+// download_count, collections have nothing to sum), so this branch is only
+// ever reached for the model half of the union — feedSortIsModelOnly keeps
+// collections out of that query entirely.
+function metricColumn(alias: "m" | "c", sort: FeedSort): SQL {
+  const a = sql.raw(alias);
+  if (sort === "views") return sql`${a}.view_count`;
+  if (sort === "downloads") {
+    return sql`(SELECT COALESCE(SUM(mf.download_count), 0) FROM model_files mf WHERE mf.model_id = m.id)`;
+  }
+  return sql`0`;
+}
+
+function whereClause(conds: SQL[]): SQL {
+  return conds.length > 0 ? sql`WHERE ${sql.join(conds, sql` AND `)}` : sql``;
+}
+
+// Cursor-paginated homepage feed of models and collections, ranked together
+// by the requested sort. One UNION ALL query (mirroring src/lib/search.ts)
+// selects a generic (sort_time, metric) pair per row so every sort shares one
+// keyset scheme, then hydrateCatalogRows fills in the card data. A category
+// filter narrows to models only (collections have no category); "downloads"
+// does too, since it has no per-collection metric to rank them by.
 export async function listFeed(opts: {
   categoryId?: string;
   cursor?: string | null;
+  sort?: FeedSort;
 }): Promise<Page<FeedItem>> {
-  const cursor = opts.cursor ? decodeCursor(opts.cursor) : null;
+  const sort = opts.sort ?? "newest";
+  const includeCollections = !opts.categoryId && !feedSortIsModelOnly(sort);
 
-  const modelConditions = [];
-  if (opts.categoryId) {
-    modelConditions.push(eq(models.categoryId, opts.categoryId));
-  }
-  if (cursor) {
-    modelConditions.push(keysetWhere(models.createdAt, models.id, cursor));
-  }
+  const modelConds: SQL[] = [];
+  if (opts.categoryId) modelConds.push(sql`m.category_id = ${opts.categoryId}`);
 
-  const modelRows = await db.query.models.findMany({
-    where: modelConditions.length > 0 ? and(...modelConditions) : undefined,
-    orderBy: [desc(models.createdAt), desc(models.id)],
-    limit: PAGE_SIZE + 1,
-    extras: (m) => ({ parametric: parametricExtra(m.id) }),
-    with: {
-      user: { columns: { name: true } },
-      category: true,
-      files: {
-        where: (f, { eq }) => eq(f.kind, "image"),
-        orderBy: (f, { asc }) => asc(f.position),
-        limit: 1,
-      },
-      modelTags: { with: { tag: true } },
-    },
-  });
-
-  const modelItems: FeedItem[] = modelRows.map((m) => ({
-    id: m.id,
-    createdAt: m.createdAt,
-    type: "model",
-    model: {
-      id: m.id,
-      title: m.title,
-      sourceUrl: m.sourceUrl,
-      user: m.user,
-      category: m.category,
-      files: m.files.map((f) => ({
-        id: f.id,
-        src: fileSrc(f.id),
-        animated: f.animated,
-      })),
-      modelTags: m.modelTags,
-      parametric: m.parametric,
-    },
-  }));
-
-  let collectionItems: FeedItem[] = [];
-  if (!opts.categoryId) {
-    const collectionConditions = [];
-    if (cursor) {
-      collectionConditions.push(
-        keysetWhere(collections.createdAt, collections.id, cursor),
-      );
-    }
-    const collectionRows = await db.query.collections.findMany({
-      where:
-        collectionConditions.length > 0 ? and(...collectionConditions) : undefined,
-      orderBy: [desc(collections.createdAt), desc(collections.id)],
-      limit: PAGE_SIZE + 1,
-      with: {
-        user: { columns: { name: true } },
-        collectionModels: {
-          with: {
-            model: {
-              columns: { id: true },
-              with: {
-                files: {
-                  where: (f, { eq }) => eq(f.kind, "image"),
-                  orderBy: (f, { asc }) => asc(f.position),
-                  limit: 1,
-                },
-              },
-            },
-          },
-        },
-      },
-    });
-
-    // Smart collections have no collection_models rows — their covers and
-    // count come from evaluating the stored rules.
-    const smartPreviews = await smartCollectionPreviews(
-      collectionRows.filter((c) => c.smart).map((c) => ({ id: c.id, rules: c.rules })),
+  const parts: SQL[] = [
+    sql`SELECT m.id AS id, 'model' AS kind, ${timeColumn("m", sort)} AS sort_time, ${metricColumn("m", sort)} AS metric FROM models m ${whereClause(modelConds)}`,
+  ];
+  if (includeCollections) {
+    parts.push(
+      sql`SELECT c.id AS id, 'collection' AS kind, ${timeColumn("c", sort)} AS sort_time, ${metricColumn("c", sort)} AS metric FROM collections c`,
     );
+  }
+  const union = sql.join(parts, sql` UNION ALL `);
 
-    collectionItems = collectionRows.map((c) => {
-      const preview = smartPreviews.get(c.id);
-      return {
-        id: c.id,
-        createdAt: c.createdAt,
-        type: "collection",
-        collection: {
-          id: c.id,
-          title: c.title,
-          user: c.user,
-          smart: c.smart,
-          totalModels: preview?.totalModels,
-          collectionModels:
-            preview?.collectionModels ??
-            c.collectionModels.map((cm) => ({
-              model: {
-                id: cm.model.id,
-                files: cm.model.files.map((f) => ({
-                  id: f.id,
-                  src: fileSrc(f.id),
-                  animated: f.animated,
-                })),
-              },
-            })),
-        },
-      };
-    });
+  // Keyset predicate + ordering. The tuple (sort key, id) is a stable total
+  // order per query, so paging never skips or repeats a row.
+  const cursor = opts.cursor ? decodeFeedCursor(opts.cursor) : null;
+  let keyset: SQL = sql``;
+  let orderBy: SQL;
+  if (sort === "oldest") {
+    if (cursor?.kind === "time") {
+      const d = new Date(cursor.at);
+      keyset = sql`WHERE (sort_time > ${d} OR (sort_time = ${d} AND id > ${cursor.id}))`;
+    }
+    orderBy = sql`sort_time ASC, id ASC`;
+  } else if (sort === "views" || sort === "downloads") {
+    if (cursor?.kind === "metric") {
+      keyset = sql`WHERE (metric < ${cursor.value} OR (metric = ${cursor.value} AND id < ${cursor.id}))`;
+    }
+    orderBy = sql`metric DESC, id DESC`;
+  } else {
+    // newest / updated — same direction, they only differ in which column fed sort_time
+    if (cursor?.kind === "time") {
+      const d = new Date(cursor.at);
+      keyset = sql`WHERE (sort_time < ${d} OR (sort_time = ${d} AND id < ${cursor.id}))`;
+    }
+    orderBy = sql`sort_time DESC, id DESC`;
   }
 
-  return mergePage([modelItems, collectionItems]);
+  const result = await db.execute<{
+    id: string;
+    kind: "model" | "collection";
+    sort_time: Date;
+    metric: number;
+  }>(sql`
+    SELECT id, kind, sort_time, metric
+    FROM (${union}) AS matched
+    ${keyset}
+    ORDER BY ${orderBy}
+    LIMIT ${PAGE_SIZE + 1}
+  `);
+
+  const rows = result.rows;
+  const hasMore = rows.length > PAGE_SIZE;
+  const pageRows = hasMore ? rows.slice(0, PAGE_SIZE) : rows;
+
+  const items = await hydrateCatalogRows(pageRows);
+
+  let nextCursor: string | null = null;
+  if (hasMore && pageRows.length > 0) {
+    const last = pageRows[pageRows.length - 1];
+    nextCursor = encodeFeedCursor(
+      sort === "views" || sort === "downloads"
+        ? { kind: "metric", value: Number(last.metric), id: last.id }
+        : { kind: "time", at: new Date(last.sort_time).toISOString(), id: last.id },
+    );
+  }
+
+  return { items, nextCursor };
 }

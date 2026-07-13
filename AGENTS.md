@@ -260,12 +260,22 @@ Decisions taken and why — guidance for development.
   printer, filament (jsonb `@>`), nozzle, and print-time bucket — apply to the
   model_files metadata via `EXISTS`; any model-only filter drops collections
   from the union. Sort is relevance (falls back to newest without a query),
-  newest, or oldest, each with its own self-describing keyset cursor
-  (score-based or time-based). All URL/param parsing and the cursor codec live
-  in the DB-free `src/lib/search-params.ts` (unit-tested); `pg_trgm` and the
-  supporting indexes are created in migration `0008_search.sql`. The homepage
-  is now a pure browse grid (category filter + recent collections/models); its
-  search box just submits the query to `/search`.
+  newest, oldest, most viewed, or most downloaded, each with its own
+  self-describing keyset cursor (score/time/metric-based). "Most downloaded"
+  sums `model_files.download_count` per model — collections have no download
+  metric to sum, so it's model-only like the printer/filament/nozzle filters
+  and degrades to newest for a collections-only search. Views/downloads are
+  fire-and-forget counters (`src/lib/metrics.ts`: `models`/`collections`
+  `view_count` bumped on page load, `model_files.download_count` on file
+  download). All URL/param parsing and the cursor codec live in the DB-free
+  `src/lib/search-params.ts` (unit-tested); `pg_trgm` and the supporting
+  indexes are created in migration `0008_search.sql`. The homepage
+  (`src/lib/list-queries.ts`) is the same kind of ranked `models UNION ALL
+  collections` listing — category filter plus a sort control (newest, oldest,
+  recently updated, most viewed, most downloaded) — and shares its
+  id-hydration step with search via `src/lib/catalog-hydrate.ts`; its own pure
+  sort/cursor parsing lives in `src/lib/feed-params.ts`. Its search box just
+  submits the query to `/search`.
 - **"Open in slicer" deep links** (`src/app/models/[id]/file-download-menu.tsx`)
   hand a `.3mf` to Bambu Studio / OrcaSlicer via their custom URL schemes. The
   two apps register different schemes **and parse the link differently**, so the

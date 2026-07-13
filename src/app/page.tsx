@@ -3,8 +3,10 @@ import { redirect } from "next/navigation";
 import { Box, Search } from "lucide-react";
 import { db } from "@/db";
 import { getSession } from "@/lib/auth";
+import { parseFeedSort } from "@/lib/feed-params";
 import { listFeed } from "@/lib/list-queries";
 import { FeedGrid } from "@/components/feed-grid";
+import { FeedSort } from "@/components/feed-sort";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -14,13 +16,14 @@ export const dynamic = "force-dynamic";
 export default async function HomePage({
   searchParams,
 }: {
-  searchParams: Promise<{ category?: string }>;
+  searchParams: Promise<{ category?: string; sort?: string }>;
 }) {
   // The whole catalog is private — self-hosted instances store paid models.
   const session = await getSession();
   if (!session) redirect("/sign-in");
 
-  const { category } = await searchParams;
+  const { category, sort: rawSort } = await searchParams;
+  const sort = parseFeedSort(rawSort);
 
   const allCategories = await db.query.categories.findMany({
     orderBy: (c, { asc }) => asc(c.name),
@@ -29,11 +32,13 @@ export default async function HomePage({
 
   const { items, nextCursor } = await listFeed({
     categoryId: activeCategory?.id,
+    sort,
   });
 
   function categoryHref(slug?: string) {
     const params = new URLSearchParams();
     if (slug) params.set("category", slug);
+    if (sort !== "newest") params.set("sort", sort);
     const qs = params.toString();
     return qs ? `/?${qs}` : "/";
   }
@@ -58,17 +63,20 @@ export default async function HomePage({
         </Button>
       </form>
 
-      <div className="flex flex-wrap gap-2 mb-8">
-        <Link href={categoryHref()}>
-          <Badge variant={activeCategory ? "outline" : "default"}>All</Badge>
-        </Link>
-        {allCategories.map((c) => (
-          <Link key={c.id} href={categoryHref(c.slug)}>
-            <Badge variant={activeCategory?.id === c.id ? "default" : "outline"}>
-              {c.name}
-            </Badge>
+      <div className="flex flex-wrap items-center justify-between gap-4 mb-8">
+        <div className="flex flex-wrap gap-2">
+          <Link href={categoryHref()}>
+            <Badge variant={activeCategory ? "outline" : "default"}>All</Badge>
           </Link>
-        ))}
+          {allCategories.map((c) => (
+            <Link key={c.id} href={categoryHref(c.slug)}>
+              <Badge variant={activeCategory?.id === c.id ? "default" : "outline"}>
+                {c.name}
+              </Badge>
+            </Link>
+          ))}
+        </div>
+        <FeedSort sort={sort} category={category} />
       </div>
 
       {items.length === 0 ? (
@@ -87,10 +95,11 @@ export default async function HomePage({
         </div>
       ) : (
         <FeedGrid
-          key={category ?? ""}
+          key={`${category ?? ""}:${sort}`}
           initialItems={items}
           initialCursor={nextCursor}
           category={category}
+          sort={sort}
         />
       )}
     </div>
