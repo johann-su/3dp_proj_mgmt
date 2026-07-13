@@ -56,7 +56,7 @@ export async function POST(
   if ("error" in request) {
     return NextResponse.json({ error: request.error }, { status: request.status });
   }
-  const { model, source, scadSource, values } = request;
+  const { model, source, scadSource, values, userId } = request;
   const hash = paramsHash(values);
 
   const existing = model.files.find(
@@ -112,6 +112,7 @@ export async function POST(
       generatedFromId: source.id,
       generatedParams: values,
       generatedParamsHash: hash,
+      generatedBy: userId,
       sliceStatus: sliceEligible("model", staged.filename)
         ? ("pending" as const)
         : null,
@@ -143,9 +144,6 @@ export async function DELETE(
   if (!model) {
     return NextResponse.json({ error: "Model not found" }, { status: 404 });
   }
-  if (model.userId !== session.user.id) {
-    return NextResponse.json({ error: "Not your model" }, { status: 403 });
-  }
 
   const body = (await req.json().catch(() => null)) as { fileId?: string } | null;
   if (!body?.fileId) {
@@ -160,6 +158,14 @@ export async function DELETE(
       { error: "Not a generated variant of this model" },
       { status: 400 },
     );
+  }
+  // The model owner can delete any variant; anyone else only the variants they
+  // generated themselves (generatedBy). Legacy variants (null generatedBy) are
+  // owner-only.
+  const canDelete =
+    model.userId === session.user.id || file.generatedBy === session.user.id;
+  if (!canDelete) {
+    return NextResponse.json({ error: "Not allowed" }, { status: 403 });
   }
 
   await db.delete(modelFiles).where(eq(modelFiles.id, file.id));

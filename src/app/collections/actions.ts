@@ -70,7 +70,8 @@ export async function updateCollection(input: {
     columns: { id: true, userId: true, sourceUrl: true },
   });
   if (!collection) return { error: "Collection not found" };
-  if (collection.userId !== session.user.id) return { error: "Not your collection" };
+  // Editing is open to any signed-in user (collaborative library); only
+  // deletion stays owner-only. See deleteCollection.
 
   const resolved = resolveRules({ smart: input.smart === true, rules: input.rules });
   if ("error" in resolved) return { error: resolved.error };
@@ -106,6 +107,8 @@ export async function deleteCollection(
     where: eq(collections.id, collectionId),
   });
   if (!collection) return { error: "Collection not found" };
+  // Deletion stays owner-only even though editing is open to everyone — losing
+  // a collection is destructive and non-recoverable, unlike an edit.
   if (collection.userId !== session.user.id) return { error: "Not your collection" };
 
   await db.delete(collections).where(eq(collections.id, collectionId));
@@ -126,7 +129,8 @@ export async function toggleModelInCollection(input: {
     where: eq(collections.id, input.collectionId),
   });
   if (!collection) return { error: "Collection not found" };
-  if (collection.userId !== session.user.id) return { error: "Not your collection" };
+  // Adding/removing models is an edit — open to any signed-in user, like the
+  // rest of collection editing. Only deletion is owner-gated.
   // Smart membership is computed from the rules; there are no rows to toggle.
   if (collection.smart) {
     return { error: "Smart collections manage their models by rules" };

@@ -119,20 +119,20 @@ export default async function CollectionPage({
             </p>
           )}
         </div>
-        {isOwner && (
-          <div className="flex items-center gap-2">
-            <Button asChild variant="outline" size="sm">
-              <Link href={`/collections/${collection.id}/edit`}>
-                <SquarePen className="size-4" />
-                Edit
-              </Link>
-            </Button>
-            {collection.sourceUrl && (
-              <CollectionSyncButton collectionId={collection.id} />
-            )}
-            <DeleteCollectionButton collectionId={collection.id} />
-          </div>
-        )}
+        {/* Editing (edit + sync) is open to any signed-in user; deletion is
+            owner-only. The page already redirects signed-out visitors. */}
+        <div className="flex items-center gap-2">
+          <Button asChild variant="outline" size="sm">
+            <Link href={`/collections/${collection.id}/edit`}>
+              <SquarePen className="size-4" />
+              Edit
+            </Link>
+          </Button>
+          {collection.sourceUrl && (
+            <CollectionSyncButton collectionId={collection.id} />
+          )}
+          {isOwner && <DeleteCollectionButton collectionId={collection.id} />}
+        </div>
       </div>
 
       {modelCards.length === 0 ? (
@@ -142,10 +142,9 @@ export default async function CollectionPage({
             {isSmart
               ? "No models match this collection's rules yet."
               : "No models in this collection yet."}
-            {isOwner &&
-              (isSmart
-                ? " Edit the collection to adjust its rules."
-                : " Use “Add to collection” on a model page to add some.")}
+            {isSmart
+              ? " Edit the collection to adjust its rules."
+              : " Use “Add to collection” on a model page to add some."}
           </p>
         </div>
       ) : (

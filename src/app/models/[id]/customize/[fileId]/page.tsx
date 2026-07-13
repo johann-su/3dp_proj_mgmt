@@ -16,8 +16,8 @@ const UUID_RE =
 
 // Full-page customizer for a parametric .scad model file: parameter rail on
 // the left, live 3D preview (rendered by the openscad service) on the right.
-// Owner-only, like generating variants — everyone else is sent back to the
-// model page.
+// Open to any signed-in user (generated variants land on the owner's model) —
+// only sent back to the model page when the openscad service is unconfigured.
 export default async function CustomizePage({
   params,
 }: {
@@ -35,7 +35,7 @@ export default async function CustomizePage({
   ]);
   if (!session) redirect("/sign-in");
   if (!model) notFound();
-  if (model.userId !== session.user.id || !openscadConfigured()) {
+  if (!openscadConfigured()) {
     redirect(`/models/${id}`);
   }
 

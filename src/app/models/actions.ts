@@ -266,7 +266,8 @@ export async function updateModel(
     with: { files: true },
   });
   if (!model) return { error: "Model not found" };
-  if (model.userId !== session.user.id) return { error: "Not your model" };
+  // Editing is open to any signed-in user (collaborative library for a trusted
+  // self-hosted group) — only deletion stays owner-only. See deleteModel.
 
   const removedIds = new Set(input.removedFileIds);
   // Removing a parametric .scad also removes the .3mf variants generated from
@@ -424,6 +425,8 @@ export async function deleteModel(
     with: { files: true },
   });
   if (!model) return { error: "Model not found" };
+  // Deletion stays owner-only even though editing is open to everyone — losing
+  // a model is destructive and non-recoverable, unlike an edit.
   if (model.userId !== session.user.id) return { error: "Not your model" };
 
   if (model.files.length > 0) {

@@ -33,7 +33,9 @@ export default async function EditCollectionPage({
     getSession(),
     ruleBuilderFacets(),
   ]);
-  if (!collection || session?.user.id !== collection.userId) notFound();
+  // Editing is open to any signed-in user (collaborative library); only
+  // deletion is owner-gated. See updateCollection / deleteCollection.
+  if (!collection || !session) notFound();
 
   return (
     <div className="mx-auto max-w-2xl px-4 py-8">

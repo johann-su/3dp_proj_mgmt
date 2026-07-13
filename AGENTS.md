@@ -81,8 +81,16 @@ Decisions taken and why — guidance for development.
   verifies the session server-side (`getSession()` + redirect), and every API
   route and server action checks it too (list-type actions return an empty
   page instead). Keep both checks when adding a page. There is no
-  finer-grained RBAC on purpose: signed in = full read access, mutations are
-  owner-only.
+  finer-grained RBAC on purpose: signed in = full read access, and **editing
+  is collaborative — any signed-in user can edit a model or collection**
+  (update fields/files, generate customizer variants, run Onshape/MakerWorld
+  sync, add/remove collection members), since a self-hosted instance serves a
+  trusted group and shared editing is worth more than the risk. **Destructive/
+  owner-scoped actions stay owner-only**: deleting a model (`deleteModel`) or
+  collection (`deleteCollection`); deleting a generated variant is owner-or-
+  its-generator. When adding a mutation, follow this split — open editing to
+  any session, gate only deletion/ownership transfer on
+  `record.userId === session.user.id`.
 - **Uploads** stream through `POST /api/upload` to S3 (no browser↔S3 CORS setup needed);
   only signed-in users can upload, and file extensions are validated server-side.
   Stored content types are always derived from the allowlisted extension

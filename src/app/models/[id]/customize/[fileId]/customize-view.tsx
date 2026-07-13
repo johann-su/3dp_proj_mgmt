@@ -17,6 +17,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { ScadPreview } from "./scad-preview";
 
 type Values = Record<string, unknown>;
@@ -167,6 +172,17 @@ function ParameterField({
 // enough to survive slider drags, short enough to feel live.
 const PREVIEW_DEBOUNCE_MS = 800;
 
+// Parameter panel width (px) on the lg row layout. Clamped so it can't shrink
+// past readability or grow big enough to crowd out the preview.
+const PANEL_DEFAULT_WIDTH = 384; // matches the previous fixed lg:w-96
+const PANEL_MIN_WIDTH = 280;
+const PANEL_MAX_WIDTH = 720;
+const PANEL_WIDTH_KEY = "scad-customizer-panel-width";
+
+function clampPanelWidth(width: number) {
+  return Math.min(PANEL_MAX_WIDTH, Math.max(PANEL_MIN_WIDTH, width));
+}
+
 export function CustomizeView({
   modelId,
   modelTitle,
@@ -189,6 +205,44 @@ export function CustomizeView({
   // Monotonic counter so a slow older render can't overwrite a newer one.
   const previewSeq = useRef(0);
   const debounceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const asideRef = useRef<HTMLElement | null>(null);
+  const [panelWidth, setPanelWidth] = useState(PANEL_DEFAULT_WIDTH);
+  const resizing = useRef(false);
+
+  // Restore the last dragged width once mounted (avoids SSR/localStorage skew).
+  useEffect(() => {
+    const stored = Number(window.localStorage.getItem(PANEL_WIDTH_KEY));
+    if (Number.isFinite(stored) && stored > 0) setPanelWidth(clampPanelWidth(stored));
+  }, []);
+
+  const startResize = useCallback((e: React.PointerEvent) => {
+    e.preventDefault();
+    resizing.current = true;
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
+  }, []);
+
+  useEffect(() => {
+    function onMove(e: PointerEvent) {
+      if (!resizing.current || !asideRef.current) return;
+      const left = asideRef.current.getBoundingClientRect().left;
+      setPanelWidth(clampPanelWidth(e.clientX - left));
+    }
+    function onUp() {
+      if (!resizing.current) return;
+      resizing.current = false;
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+      window.localStorage.setItem(PANEL_WIDTH_KEY, String(panelWidth));
+    }
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+    return () => {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+    };
+  }, [panelWidth]);
 
   const runPreview = useCallback(
     async (previewValues: Values) => {
@@ -270,7 +324,11 @@ export function CustomizeView({
 
   return (
     <div className="flex h-[calc(100dvh-3.5rem)] flex-col lg:flex-row">
-      <aside className="flex min-h-0 flex-col border-b lg:w-96 lg:shrink-0 lg:border-b-0 lg:border-r order-2 lg:order-1">
+      <aside
+        ref={asideRef}
+        style={{ "--panel-width": `${panelWidth}px` } as React.CSSProperties}
+        className="relative flex min-h-0 flex-col border-b lg:w-[var(--panel-width)] lg:shrink-0 lg:border-b-0 lg:border-r order-2 lg:order-1"
+      >
         <div className="flex items-center gap-2 border-b px-4 py-3">
           <Button asChild variant="ghost" size="icon" className="shrink-0">
             <Link href={`/models/${modelId}`} aria-label="Back to model">
@@ -321,15 +379,30 @@ export function CustomizeView({
             )}
             {generating ? "Rendering…" : "Generate .3mf"}
           </Button>
-          <Button
-            variant="outline"
-            size="icon"
-            disabled={generating}
-            onClick={resetDefaults}
-            aria-label="Reset parameters to defaults"
-          >
-            <RotateCcw className="size-4" />
-          </Button>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="outline"
+                size="icon"
+                disabled={generating}
+                onClick={resetDefaults}
+                aria-label="Reset parameters to defaults"
+              >
+                <RotateCcw className="size-4" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>Reset parameters to defaults</TooltipContent>
+          </Tooltip>
+        </div>
+
+        {/* Drag to resize the panel width (lg row layout only). */}
+        <div
+          role="separator"
+          aria-orientation="vertical"
+          onPointerDown={startResize}
+          className="group absolute inset-y-0 -right-1 z-10 hidden w-2 cursor-col-resize touch-none lg:block"
+        >
+          <div className="mx-auto h-full w-1 rounded-full bg-transparent transition-colors group-hover:bg-primary/40" />
         </div>
       </aside>
 

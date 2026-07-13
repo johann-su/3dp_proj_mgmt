@@ -193,6 +193,13 @@ export const modelFiles = pgTable("model_files", {
   ),
   generatedParams: jsonb("generated_params").$type<Record<string, string>>(),
   generatedParamsHash: text("generated_params_hash"),
+  // Who generated this variant — a signed-in user, not necessarily the model
+  // owner (customizing is open to everyone). Lets a non-owner delete their own
+  // variants while the owner can delete any. Null for non-generated files and
+  // legacy variants; set null on user deletion so their variants survive.
+  generatedBy: text("generated_by").references(() => user.id, {
+    onDelete: "set null",
+  }),
   // Incremented each time this file is served as a download (kind "model",
   // or an image/pdf fetched with ?download=1) — see src/lib/metrics.ts.
   // Inline image views (gallery thumbnails, next/image) don't count.
