@@ -21,6 +21,9 @@ export type ImportDraft = {
   title: string;
   description: string;
   tags: string[];
+  // Source platform category names (most specific first) — the create form
+  // uses them to suggest one of our categories.
+  categories: string[];
   files: StagedImportFile[];
   bom: BomItemInput[];
   warnings: string[];
@@ -93,6 +96,7 @@ export async function POST(req: NextRequest) {
       title: project.title,
       description: project.description,
       tags: project.tags,
+      categories: project.categories,
       files: staged.files,
       bom: project.bom,
       warnings: [...project.warnings, ...staged.warnings],

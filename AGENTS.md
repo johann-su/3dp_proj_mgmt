@@ -246,6 +246,22 @@ Decisions taken and why — guidance for development.
   files are plain downloads. Slicer deep links are `.3mf`-only — Bambu
   Studio rejects other filenames, so `.scad`/`.step` rows render a plain
   download button instead of `FileDownloadMenu`.
+- **Categories are a fixed, keyword-tagged set** — the seeded list
+  (`src/lib/category-defaults.ts`) is the whole taxonomy; imports never add
+  categories (that would sprawl into duplicates). Each category carries
+  `keywords` matched by the pure `src/lib/category-suggest.ts` against a
+  model's title, tags and — strongest signal — the source platform's own
+  category names (MakerWorld's `categories` list leaf-first, Printables'
+  `category.path`; both flow through `ImportedProject.categories` into the
+  create-form draft). The keyword lists embed the MakerWorld taxonomy mapped
+  onto ours, so source categories rank existing ones instead of creating new
+  ones. No model stays uncategorized: the form preselects the live suggestion
+  (fallback "Other") until the user picks manually, the collection-import job
+  assigns one on direct insert (`pickCategoryId` in `src/lib/categories.ts`),
+  the server actions fall back to "Other" on null, and migration 0015
+  backfilled existing blanks. "Other" has no keywords on purpose — it is only
+  ever the fallback. Keyword defaults live in both `category-defaults.ts` and
+  migration `0015_category_keywords.sql`; keep them in sync.
 - **Search** is a dedicated `/search` page backed entirely by Postgres (no
   separate search engine — kept simple and self-hostable). `src/lib/search.ts`
   runs one keyset-paginated query over a `models UNION ALL collections`

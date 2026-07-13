@@ -72,6 +72,10 @@ export const categories = pgTable("categories", {
   id: uuid("id").primaryKey().defaultRandom(),
   name: text("name").notNull().unique(),
   slug: text("slug").notNull().unique(),
+  // Match keywords for category suggestion (src/lib/category-suggest.ts) —
+  // compared against a model's title, tags and, on import, the source
+  // platform's category names. Defaults live in src/lib/category-defaults.ts.
+  keywords: text("keywords").array().notNull().default([]),
 });
 
 export const models = pgTable("models", {

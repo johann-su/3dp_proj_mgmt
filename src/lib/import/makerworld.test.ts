@@ -141,6 +141,22 @@ test("importFromMakerworld imports only the designer's own print profiles", asyn
   assert.ok(project.assets.some((a) => a.extractScad));
 });
 
+test("importFromMakerworld surfaces the design's category names leaf-first", async (t) => {
+  // MakerWorld lists the leaf category before its parent; the importer keeps
+  // that order so category suggestion can weight the most specific one.
+  const design = {
+    id: 605675,
+    title: "Swift Logo Desktop Decoration",
+    categories: [{ name: "Signs & Logos" }, { name: "Art" }],
+  };
+  t.mock.method(globalThis, "fetch", async () => Response.json(design));
+
+  const project = await importFromMakerworld(
+    new URL("https://makerworld.com/en/models/605675"),
+  );
+  assert.deepEqual(project.categories, ["Signs & Logos", "Art"]);
+});
+
 test("parseMakerworldUrl returns the model id for makerworld hosts", () => {
   assert.equal(
     parseMakerworldUrl(new URL("https://makerworld.com/en/models/12345-cool-thing")),

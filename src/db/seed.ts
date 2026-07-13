@@ -1,28 +1,23 @@
+import { sql } from "drizzle-orm";
 import { db } from "./index";
 import { categories } from "./schema";
-
-const defaults = [
-  "Art",
-  "Fashion",
-  "Functional",
-  "Gadgets",
-  "Games & Toys",
-  "Household",
-  "Miniatures",
-  "Tools",
-  "Other",
-];
+import { DEFAULT_CATEGORIES } from "@/lib/category-defaults";
 
 async function seed() {
   await db
     .insert(categories)
     .values(
-      defaults.map((name) => ({
+      DEFAULT_CATEGORIES.map(({ name, slug, keywords }) => ({
         name,
-        slug: name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, ""),
+        slug,
+        keywords,
       })),
     )
-    .onConflictDoNothing();
+    // Keywords follow the shipped defaults on re-seed; names stay untouched.
+    .onConflictDoUpdate({
+      target: categories.slug,
+      set: { keywords: sql`excluded.keywords` },
+    });
   console.log("Seeded categories");
   process.exit(0);
 }

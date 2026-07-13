@@ -107,6 +107,10 @@ type DesignExtension = {
   boms_of_other_part_list?: BomOtherPart[];
 };
 
+// MakerWorld's own category taxonomy entry. `categories` lists the leaf
+// first, then its parents (e.g. "Signs & Logos", then "Art").
+type DesignCategory = { name?: string };
+
 type MakerworldDesign = {
   id?: number;
   modelId?: string;
@@ -116,6 +120,7 @@ type MakerworldDesign = {
   summaryTranslated?: string;
   tags?: string[];
   tagsTranslated?: string[];
+  categories?: DesignCategory[];
   coverUrl?: string;
   designCreator?: DesignUser;
   designExtension?: DesignExtension;
@@ -401,6 +406,9 @@ export async function importFromMakerworld(
     title: preferEnglish(design.titleTranslated, design.title),
     description: htmlishToMarkdown(preferEnglish(design.summaryTranslated, design.summary)),
     tags,
+    categories: (design.categories ?? [])
+      .map((c) => c.name?.trim() ?? "")
+      .filter(Boolean),
     assets,
     bom: selectBomItems(design),
     warnings,

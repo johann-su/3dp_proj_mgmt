@@ -14,6 +14,7 @@ import {
   type FileKind,
 } from "@/db/schema";
 import { getSession } from "@/lib/auth";
+import { otherCategoryId } from "@/lib/categories";
 import { linkTags, normalizeTagNames } from "@/lib/tags";
 import { sanitizeBomItems, type BomItemInput } from "@/lib/bom";
 import {
@@ -178,13 +179,17 @@ export async function createModel(
   // can be frozen to a poster frame in browse cards.
   const animatedKeys = await animatedImageKeys(uploads);
 
+  // No model stays uncategorized — the form preselects a suggestion, but a
+  // stale/hand-crafted request still lands in "Other".
+  const categoryId = input.categoryId || (await otherCategoryId());
+
   const modelId = await db.transaction(async (tx) => {
     const [model] = await tx
       .insert(models)
       .values({
         title,
         description: input.description.trim(),
-        categoryId: input.categoryId || null,
+        categoryId,
         userId: session.user.id,
         sourceUrl,
         onshapeMicroversion,
@@ -285,13 +290,16 @@ export async function updateModel(
   // covers are frozen to a poster frame in browse cards.
   const animatedKeys = await animatedImageKeys(input.newFiles);
 
+  // Same fallback as createModel: clearing the category means "Other".
+  const categoryId = input.categoryId || (await otherCategoryId());
+
   await db.transaction(async (tx) => {
     await tx
       .update(models)
       .set({
         title,
         description: input.description.trim(),
-        categoryId: input.categoryId || null,
+        categoryId,
         updatedAt: new Date(),
       })
       .where(eq(models.id, model.id));

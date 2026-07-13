@@ -108,6 +108,9 @@ export async function importFromOnshape(
       title: (document.name ?? "").trim() || "Onshape model",
       description: (document.description ?? "").trim(),
       tags: [],
+      // Onshape has no model taxonomy — the suggestion falls back to
+      // title/tag keywords, then "Other".
+      categories: [],
       assets,
       bom: [],
       warnings,

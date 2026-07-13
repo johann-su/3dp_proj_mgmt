@@ -22,6 +22,12 @@ export type ImportedProject = {
   title: string;
   description: string;
   tags: string[];
+  // Source platform category names, most specific first (MakerWorld's
+  // `categories` list, Printables' `category.path`). Used only as an
+  // indicator to suggest one of OUR existing categories
+  // (src/lib/category-suggest.ts) — never to create new ones. Empty for
+  // sources without a taxonomy (Onshape).
+  categories: string[];
   assets: RemoteAsset[];
   // Bill of materials scraped from the source (MakerWorld). Empty for sources
   // that don't expose one.
