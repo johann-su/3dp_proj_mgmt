@@ -87,14 +87,15 @@ export default async function ModelPage({
   );
 
   // Parametric .scad files: parse the customizer schema from the source so
-  // the owner gets the parameter form. Only worth the S3 read when the
-  // OpenSCAD service is configured and the viewer could actually render.
+  // any signed-in viewer gets the parameter form (customizing is open to
+  // non-owners too). Only worth the S3 read when the OpenSCAD service is
+  // configured and the viewer could actually render.
   const scadConfigured = openscadConfigured();
   const scadGroupsByFileId = new Map<
     string,
     ReturnType<typeof parseScadParameters>
   >();
-  if (scadConfigured && isOwner) {
+  if (scadConfigured) {
     const scadFiles = printFiles.filter(
       (f) => fileExtension(f.filename) === ".scad",
     );
@@ -197,6 +198,10 @@ export default async function ModelPage({
                 .map(([key, value]) => `${key} = ${value}`)
                 .join(", ") || "default parameters"
             : null,
+          // The owner may delete any variant; anyone else only the ones they
+          // generated (generatedBy). Matches the DELETE route's check.
+          deletableByViewer:
+            isOwner || (!!session && file.generatedBy === session.user.id),
         };
       };
       // Generated .3mf variants render nested under their .scad source

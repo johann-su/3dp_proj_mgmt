@@ -93,6 +93,8 @@ export function SearchFilters({
             <SelectItem value="relevance">Relevance</SelectItem>
             <SelectItem value="newest">Newest</SelectItem>
             <SelectItem value="oldest">Oldest</SelectItem>
+            <SelectItem value="views">Most viewed</SelectItem>
+            <SelectItem value="downloads">Most downloaded</SelectItem>
           </SelectContent>
         </Select>
       </div>

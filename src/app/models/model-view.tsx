@@ -59,13 +59,16 @@ export type PrintFileData = {
   printer: PrinterInfo | null;
   sliceStatus: string | null;
   sliceError: string | null;
-  // Parametric .scad files: customizer schema parsed from the source (only
-  // set when the owner can render, i.e. OPENSCAD_URL is configured), plus the
-  // .3mf variants generated from this file.
+  // Parametric .scad files: customizer schema parsed from the source (set for
+  // any signed-in viewer when OPENSCAD_URL is configured), plus the .3mf
+  // variants generated from this file.
   customizer?: ScadParameterGroup[] | null;
   variants?: PrintFileData[];
   // On a generated variant: the customizer values it was rendered with.
   paramsSummary?: string | null;
+  // On a generated variant: whether the current viewer may delete it (the
+  // model owner may delete any variant; anyone else only those they generated).
+  deletableByViewer?: boolean;
 };
 
 export type ModelViewData = {
@@ -99,8 +102,8 @@ export type ModelViewData = {
   slicerConfigured: boolean;
 };
 
-// Owner-only delete for a generated .3mf variant — they're cheap to
-// regenerate, so no confirmation dialog.
+// Delete for a generated .3mf variant — shown to the model owner (any variant)
+// and to whoever generated it. Cheap to regenerate, so no confirmation dialog.
 function DeleteVariantButton({
   modelId,
   fileId,
@@ -415,7 +418,7 @@ export function ModelView({ data }: { data: ModelViewData }) {
                 Edit in Onshape
               </a>
             </Button>
-            {isOwner &&
+            {isLoggedIn &&
               modelId &&
               (onshapeWvm === "v" ? (
                 <span className="text-xs text-muted-foreground">
@@ -476,7 +479,6 @@ export function ModelView({ data }: { data: ModelViewData }) {
                 />
                 {file.customizer &&
                   file.customizer.length > 0 &&
-                  isOwner &&
                   modelId &&
                   file.id && (
                     <Button asChild size="lg">
@@ -499,7 +501,11 @@ export function ModelView({ data }: { data: ModelViewData }) {
                         file={variant}
                         makerworldUrl={makerworldUrl}
                         slicerConfigured={slicerConfigured}
-                        deletable={isOwner && modelId ? { modelId } : undefined}
+                        deletable={
+                          variant.deletableByViewer && modelId
+                            ? { modelId }
+                            : undefined
+                        }
                       />
                     ))}
                   </div>
@@ -571,7 +577,7 @@ export function ModelView({ data }: { data: ModelViewData }) {
           </Card>
         )}
 
-        {isOwner && modelId && (
+        {isLoggedIn && modelId && (
           <>
             <Separator />
             <div className="flex items-center gap-2">
@@ -581,7 +587,8 @@ export function ModelView({ data }: { data: ModelViewData }) {
                   Edit model
                 </Link>
               </Button>
-              <DeleteModelButton modelId={modelId} />
+              {/* Editing is open to all; deleting stays owner-only. */}
+              {isOwner && <DeleteModelButton modelId={modelId} />}
             </div>
           </>
         )}

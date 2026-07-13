@@ -81,8 +81,16 @@ Decisions taken and why — guidance for development.
   verifies the session server-side (`getSession()` + redirect), and every API
   route and server action checks it too (list-type actions return an empty
   page instead). Keep both checks when adding a page. There is no
-  finer-grained RBAC on purpose: signed in = full read access, mutations are
-  owner-only.
+  finer-grained RBAC on purpose: signed in = full read access, and **editing
+  is collaborative — any signed-in user can edit a model or collection**
+  (update fields/files, generate customizer variants, run Onshape/MakerWorld
+  sync, add/remove collection members), since a self-hosted instance serves a
+  trusted group and shared editing is worth more than the risk. **Destructive/
+  owner-scoped actions stay owner-only**: deleting a model (`deleteModel`) or
+  collection (`deleteCollection`); deleting a generated variant is owner-or-
+  its-generator. When adding a mutation, follow this split — open editing to
+  any session, gate only deletion/ownership transfer on
+  `record.userId === session.user.id`.
 - **Uploads** stream through `POST /api/upload` to S3 (no browser↔S3 CORS setup needed);
   only signed-in users can upload, and file extensions are validated server-side.
   Stored content types are always derived from the allowlisted extension
@@ -246,6 +254,22 @@ Decisions taken and why — guidance for development.
   files are plain downloads. Slicer deep links are `.3mf`-only — Bambu
   Studio rejects other filenames, so `.scad`/`.step` rows render a plain
   download button instead of `FileDownloadMenu`.
+- **Categories are a fixed, keyword-tagged set** — the seeded list
+  (`src/lib/category-defaults.ts`) is the whole taxonomy; imports never add
+  categories (that would sprawl into duplicates). Each category carries
+  `keywords` matched by the pure `src/lib/category-suggest.ts` against a
+  model's title, tags and — strongest signal — the source platform's own
+  category names (MakerWorld's `categories` list leaf-first, Printables'
+  `category.path`; both flow through `ImportedProject.categories` into the
+  create-form draft). The keyword lists embed the MakerWorld taxonomy mapped
+  onto ours, so source categories rank existing ones instead of creating new
+  ones. No model stays uncategorized: the form preselects the live suggestion
+  (fallback "Other") until the user picks manually, the collection-import job
+  assigns one on direct insert (`pickCategoryId` in `src/lib/categories.ts`),
+  the server actions fall back to "Other" on null, and migration 0015
+  backfilled existing blanks. "Other" has no keywords on purpose — it is only
+  ever the fallback. Keyword defaults live in both `category-defaults.ts` and
+  migration `0015_category_keywords.sql`; keep them in sync.
 - **Search** is a dedicated `/search` page backed entirely by Postgres (no
   separate search engine — kept simple and self-hostable). `src/lib/search.ts`
   runs one keyset-paginated query over a `models UNION ALL collections`
@@ -260,12 +284,22 @@ Decisions taken and why — guidance for development.
   printer, filament (jsonb `@>`), nozzle, and print-time bucket — apply to the
   model_files metadata via `EXISTS`; any model-only filter drops collections
   from the union. Sort is relevance (falls back to newest without a query),
-  newest, or oldest, each with its own self-describing keyset cursor
-  (score-based or time-based). All URL/param parsing and the cursor codec live
-  in the DB-free `src/lib/search-params.ts` (unit-tested); `pg_trgm` and the
-  supporting indexes are created in migration `0008_search.sql`. The homepage
-  is now a pure browse grid (category filter + recent collections/models); its
-  search box just submits the query to `/search`.
+  newest, oldest, most viewed, or most downloaded, each with its own
+  self-describing keyset cursor (score/time/metric-based). "Most downloaded"
+  sums `model_files.download_count` per model — collections have no download
+  metric to sum, so it's model-only like the printer/filament/nozzle filters
+  and degrades to newest for a collections-only search. Views/downloads are
+  fire-and-forget counters (`src/lib/metrics.ts`: `models`/`collections`
+  `view_count` bumped on page load, `model_files.download_count` on file
+  download). All URL/param parsing and the cursor codec live in the DB-free
+  `src/lib/search-params.ts` (unit-tested); `pg_trgm` and the supporting
+  indexes are created in migration `0008_search.sql`. The homepage
+  (`src/lib/list-queries.ts`) is the same kind of ranked `models UNION ALL
+  collections` listing — category filter plus a sort control (newest, oldest,
+  recently updated, most viewed, most downloaded) — and shares its
+  id-hydration step with search via `src/lib/catalog-hydrate.ts`; its own pure
+  sort/cursor parsing lives in `src/lib/feed-params.ts`. Its search box just
+  submits the query to `/search`.
 - **"Open in slicer" deep links** (`src/app/models/[id]/file-download-menu.tsx`)
   hand a `.3mf` to Bambu Studio / OrcaSlicer via their custom URL schemes. The
   two apps register different schemes **and parse the link differently**, so the

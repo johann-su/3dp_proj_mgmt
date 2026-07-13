@@ -56,6 +56,24 @@ test("effectiveSort collapses relevance to newest when there is no query", () =>
   assert.equal(effectiveSort(parseSearchParams({ sort: "oldest" })), "oldest");
 });
 
+// "downloads" totals model_files.download_count, which collections have no
+// equivalent of — a collections-only search falls back to newest rather than
+// silently returning nothing.
+test("effectiveSort collapses downloads to newest for a collections-only search", () => {
+  assert.equal(
+    effectiveSort(parseSearchParams({ sort: "downloads", type: "collections" })),
+    "newest",
+  );
+  assert.equal(
+    effectiveSort(parseSearchParams({ sort: "downloads", type: "models" })),
+    "downloads",
+  );
+  assert.equal(
+    effectiveSort(parseSearchParams({ sort: "views", type: "collections" })),
+    "views",
+  );
+});
+
 // Collections carry no printer metadata, so any of these filters means the
 // results are model-only — the flag drives that exclusion.
 test("hasModelOnlyFilter reflects the printer/filament/nozzle/print-time filters", () => {
@@ -100,12 +118,15 @@ test("searchFiltersToQueryString repeats array params", () => {
 
 // The cursor is self-describing: it carries its own kind so decode never needs
 // to know which sort produced it.
-test("search cursor round-trips both keyset shapes", () => {
+test("search cursor round-trips all three keyset shapes", () => {
   const score = { kind: "score", score: 0.42, id: "abc" } as const;
   assert.deepEqual(decodeSearchCursor(encodeSearchCursor(score)), score);
 
   const time = { kind: "time", createdAt: "2026-01-02T03:04:05.000Z", id: "def" } as const;
   assert.deepEqual(decodeSearchCursor(encodeSearchCursor(time)), time);
+
+  const metric = { kind: "metric", value: 42, id: "ghi" } as const;
+  assert.deepEqual(decodeSearchCursor(encodeSearchCursor(metric)), metric);
 });
 
 // A tampered or malformed cursor degrades to "first page" (null), never a throw.

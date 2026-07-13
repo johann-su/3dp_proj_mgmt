@@ -42,9 +42,9 @@ export async function POST(
   if (!model) {
     return NextResponse.json({ error: "Model not found" }, { status: 404 });
   }
-  if (model.userId !== session.user.id) {
-    return NextResponse.json({ error: "Not your model" }, { status: 403 });
-  }
+  // Syncing re-exports the model's files, so it counts as editing — open to any
+  // signed-in user (uses their own Onshape connection, which must have access
+  // to the linked document). Only deletion is owner-gated.
 
   let pin = null;
   try {

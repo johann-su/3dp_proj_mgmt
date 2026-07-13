@@ -27,6 +27,9 @@ type PrintablesPrint = {
   description: string | null;
   summary: string | null;
   tags: { name: string }[];
+  // Printables' own taxonomy; `path` is root-first (["3D Printers", "Test
+  // Models"]).
+  category: { path: { name: string }[] } | null;
   images: { filePath: string }[];
   stls: PrintablesFile[] | null;
   slas: PrintablesFile[] | null;
@@ -59,6 +62,7 @@ const PRINT_QUERY = `query Print($id: ID!) {
     description
     summary
     tags { name }
+    category { path { name } }
     images { filePath }
     stls { id name fileSize }
     slas { id name fileSize }
@@ -109,6 +113,11 @@ export async function importFromPrintables(
     title: print.name?.trim() ?? "",
     description: htmlishToMarkdown(print.description || print.summary || ""),
     tags: (print.tags ?? []).map((t) => t.name.trim().toLowerCase()).filter(Boolean),
+    // Reversed to most-specific-first, matching MakerWorld's order.
+    categories: (print.category?.path ?? [])
+      .map((c) => c.name.trim())
+      .filter(Boolean)
+      .reverse(),
     assets: [],
     bom: [],
     warnings: [],

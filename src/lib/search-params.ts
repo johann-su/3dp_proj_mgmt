@@ -3,7 +3,7 @@
 // these filters lives in search.ts.
 
 export type SearchType = "all" | "models" | "collections";
-export type SearchSort = "relevance" | "newest" | "oldest";
+export type SearchSort = "relevance" | "newest" | "oldest" | "views" | "downloads";
 
 // Fixed print-time buckets (in seconds) offered as a filter — the corpus is
 // small and the exact per-file numbers are approximate (~), so buckets read
@@ -29,7 +29,7 @@ export type SearchFilters = {
 };
 
 const TYPES: SearchType[] = ["all", "models", "collections"];
-const SORTS: SearchSort[] = ["relevance", "newest", "oldest"];
+const SORTS: SearchSort[] = ["relevance", "newest", "oldest", "views", "downloads"];
 
 // The implicit sort when the URL doesn't pin one: relevance ranks a query,
 // recency orders a plain browse. Shared by parse and serialize so a round-trip
@@ -63,8 +63,12 @@ export function hasModelOnlyFilter(f: SearchFilters): boolean {
 
 // Relevance ordering is only meaningful with a query term; without one it
 // degrades to "newest" so the results still have a stable, sensible order.
-export function effectiveSort(f: SearchFilters): Exclude<SearchSort, "relevance"> | "relevance" {
+// "downloads" totals model_files.download_count, which collections have no
+// equivalent of, so a collections-only search degrades it to "newest" too —
+// the same "quietly fall back rather than return nothing" rule as relevance.
+export function effectiveSort(f: SearchFilters): SearchSort {
   if (f.sort === "relevance" && f.q === "") return "newest";
+  if (f.sort === "downloads" && f.type === "collections") return "newest";
   return f.sort;
 }
 
@@ -121,18 +125,22 @@ export function searchFiltersToQueryString(f: SearchFilters): string {
 // Keyset cursors for the combined (models ∪ collections) result stream. The
 // cursor is self-describing — it carries its own `kind` tag so decoding never
 // needs to know which sort produced it. Relevance keysets on the trigram score
-// (score desc, id desc); the time sorts keyset on created_at. `|` never occurs
-// in a UUID, ISO timestamp, or JSON number, so it's a safe separator.
+// (score desc, id desc); the time sorts keyset on created_at; "views"/
+// "downloads" keyset on that numeric metric. `|` never occurs in a UUID, ISO
+// timestamp, or JSON number, so it's a safe separator.
 
 export type SearchCursor =
   | { kind: "score"; score: number; id: string }
-  | { kind: "time"; createdAt: string; id: string };
+  | { kind: "time"; createdAt: string; id: string }
+  | { kind: "metric"; value: number; id: string };
 
 export function encodeSearchCursor(cursor: SearchCursor): string {
   const raw =
     cursor.kind === "score"
       ? `score|${cursor.score}|${cursor.id}`
-      : `time|${cursor.createdAt}|${cursor.id}`;
+      : cursor.kind === "time"
+        ? `time|${cursor.createdAt}|${cursor.id}`
+        : `metric|${cursor.value}|${cursor.id}`;
   return Buffer.from(raw, "utf8").toString("base64url");
 }
 
@@ -157,6 +165,11 @@ export function decodeSearchCursor(raw: string): SearchCursor | null {
   if (kind === "time") {
     if (Number.isNaN(new Date(value).getTime())) return null;
     return { kind: "time", createdAt: value, id };
+  }
+  if (kind === "metric") {
+    const metric = Number(value);
+    if (!Number.isFinite(metric)) return null;
+    return { kind: "metric", value: metric, id };
   }
   return null;
 }

@@ -1,6 +1,6 @@
 // Shared validation for the customize endpoints (generate + preview): checks
-// ownership, locates the .scad file, fetches its source from S3 and coerces
-// the submitted customizer values against the parsed schema.
+// the viewer is signed in, locates the .scad file, fetches its source from S3
+// and coerces the submitted customizer values against the parsed schema.
 
 import { eq } from "drizzle-orm";
 import { GetObjectCommand } from "@aws-sdk/client-s3";
@@ -23,6 +23,9 @@ export type ScadRenderRequest = {
   source: FileRow;
   scadSource: string;
   values: Record<string, string>;
+  // The signed-in user driving the render — stored as the variant's generator
+  // so a non-owner can later delete the variants they created.
+  userId: string;
 };
 
 export async function prepareScadRender(
@@ -37,11 +40,9 @@ export async function prepareScadRender(
     with: { files: true },
   })) as ModelWithFiles | undefined;
   if (!model) return { error: "Model not found", status: 404 };
-  // Rendering costs real CPU and (for generate) mutates the model — owner
-  // only, the site-wide mutation rule. Visitors can download the .scad.
-  if (model.userId !== session.user.id) {
-    return { error: "Not your model", status: 403 };
-  }
+  // Customizing (preview + generating a stored variant) is open to any
+  // signed-in user, not just the owner — generated variants land on the
+  // owner's model like a shared render. Deleting variants stays owner-only.
 
   const parsed = body as { fileId?: string; values?: Record<string, unknown> } | null;
   if (!parsed?.fileId || typeof parsed.values !== "object" || parsed.values === null) {
@@ -91,5 +92,6 @@ export async function prepareScadRender(
     source,
     scadSource,
     values: coerceScadValues(groups, parsed.values),
+    userId: session.user.id,
   };
 }

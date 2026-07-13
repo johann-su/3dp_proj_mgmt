@@ -72,6 +72,10 @@ export const categories = pgTable("categories", {
   id: uuid("id").primaryKey().defaultRandom(),
   name: text("name").notNull().unique(),
   slug: text("slug").notNull().unique(),
+  // Match keywords for category suggestion (src/lib/category-suggest.ts) —
+  // compared against a model's title, tags and, on import, the source
+  // platform's category names. Defaults live in src/lib/category-defaults.ts.
+  keywords: text("keywords").array().notNull().default([]),
 });
 
 export const models = pgTable("models", {
@@ -189,6 +193,13 @@ export const modelFiles = pgTable("model_files", {
   ),
   generatedParams: jsonb("generated_params").$type<Record<string, string>>(),
   generatedParamsHash: text("generated_params_hash"),
+  // Who generated this variant — a signed-in user, not necessarily the model
+  // owner (customizing is open to everyone). Lets a non-owner delete their own
+  // variants while the owner can delete any. Null for non-generated files and
+  // legacy variants; set null on user deletion so their variants survive.
+  generatedBy: text("generated_by").references(() => user.id, {
+    onDelete: "set null",
+  }),
   // Incremented each time this file is served as a download (kind "model",
   // or an image/pdf fetched with ?download=1) — see src/lib/metrics.ts.
   // Inline image views (gallery thumbnails, next/image) don't count.

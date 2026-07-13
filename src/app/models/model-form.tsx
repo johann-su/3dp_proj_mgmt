@@ -26,6 +26,8 @@ import {
   type UploadedFile,
 } from "@/app/models/actions";
 import { extract3mfMetadata } from "@/lib/threemf";
+import { suggestCategory } from "@/lib/category-suggest";
+import { OTHER_CATEGORY_SLUG } from "@/lib/category-defaults";
 import type { BomItemInput } from "@/lib/bom";
 import { IMPORT_DRAFT_KEY, type ImportDraftPayload } from "./import-draft";
 import { BomEditor } from "./bom-editor";
@@ -57,7 +59,7 @@ import {
 import { Card, CardContent } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 
-type Category = { id: string; name: string; slug: string };
+type Category = { id: string; name: string; slug: string; keywords: string[] };
 
 export type ExistingFile = {
   id: string;
@@ -825,6 +827,12 @@ export function ModelForm({
       })),
   );
   const [categoryId, setCategoryId] = useState<string>(model?.categoryId ?? "");
+  // Until the user picks a category themselves, the select tracks a live
+  // suggestion (edit mode keeps the stored choice untouched).
+  const [categoryTouched, setCategoryTouched] = useState(!!model);
+  // Source platform category names from a URL import — the strongest
+  // suggestion signal (e.g. MakerWorld's "Signs & Logos" → Art).
+  const [sourceCategories, setSourceCategories] = useState<string[]>([]);
   const [bom, setBom] = useState<BomItemInput[]>(model?.bom ?? []);
   const [status, setStatus] = useState<string | null>(null);
   const [extracting, setExtracting] = useState(0);
@@ -862,6 +870,7 @@ export function ModelForm({
       setTitle(draft.title ?? "");
       setDescription(draft.description ?? "");
       setTags((draft.tags ?? []).join(", "));
+      setSourceCategories(draft.categories ?? []);
       setSourceUrl(draft.sourceUrl ?? null);
       setOnshapeMicroversion(draft.onshapeMicroversion ?? null);
       setModelFileEntries(
@@ -885,6 +894,23 @@ export function ModelForm({
       // corrupt draft — start with an empty form
     }
   }, [model]);
+
+  // Keep the category synced to the best suggestion (from title, tags and the
+  // import source's own categories) until the user picks one; "Other" when
+  // nothing matches, so no model is created without a category.
+  useEffect(() => {
+    if (categoryTouched) return;
+    const suggested =
+      suggestCategory(categories, {
+        title,
+        tags: tags.split(",").map((t) => t.trim()).filter(Boolean),
+        sourceCategories,
+      }) ??
+      categories.find((c) => c.slug === OTHER_CATEGORY_SLUG)?.id ??
+      "";
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setCategoryId(suggested);
+  }, [categoryTouched, categories, title, tags, sourceCategories]);
 
   // New images render from object URLs; revoke them when the form unmounts.
   const imagesRef = useRef(images);
@@ -1224,7 +1250,13 @@ export function ModelForm({
               <div className="grid gap-2 sm:grid-cols-2 sm:gap-4">
                 <div className="grid gap-2">
                   <Label>Category</Label>
-                  <Select value={categoryId} onValueChange={setCategoryId}>
+                  <Select
+                    value={categoryId}
+                    onValueChange={(value) => {
+                      setCategoryTouched(true);
+                      setCategoryId(value);
+                    }}
+                  >
                     <SelectTrigger>
                       <SelectValue placeholder="Select a category" />
                     </SelectTrigger>
@@ -1236,6 +1268,12 @@ export function ModelForm({
                       ))}
                     </SelectContent>
                   </Select>
+                  {!categoryTouched && categoryId && (
+                    <p className="text-xs text-muted-foreground">
+                      Suggested from the title, tags and import source — change
+                      it if it doesn&apos;t fit.
+                    </p>
+                  )}
                 </div>
                 <div className="grid gap-2">
                   <Label htmlFor="tags">Tags</Label>

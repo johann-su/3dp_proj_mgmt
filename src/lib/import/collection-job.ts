@@ -24,6 +24,7 @@ import {
   models,
 } from "@/db/schema";
 import { getBambuCredential } from "@/lib/bambu/credentials";
+import { pickCategoryId } from "@/lib/categories";
 import { sanitizeBomItems } from "@/lib/bom";
 import { linkTags, normalizeTagNames } from "@/lib/tags";
 import { sliceEligible, processPendingSlices } from "@/lib/slicer";
@@ -172,12 +173,20 @@ async function createImportedModel(
   const bom = "items" in bomResult ? bomResult.items : [];
   // Sniff image headers up front so animated covers freeze to a poster frame.
   const animatedKeys = await animatedImageKeys(files);
+  // No form step to pick a category, so suggest one from MakerWorld's own
+  // categories (plus tags/title); "Other" when nothing matches.
+  const categoryId = await pickCategoryId({
+    title: project.title,
+    tags: project.tags,
+    sourceCategories: project.categories,
+  });
   return db.transaction(async (tx) => {
     const [model] = await tx
       .insert(models)
       .values({
         title: project.title,
         description: project.description.trim(),
+        categoryId,
         userId,
         sourceUrl: project.sourceUrl,
       })

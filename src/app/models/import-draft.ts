@@ -8,6 +8,9 @@ export type ImportDraftPayload = {
   title: string;
   description: string;
   tags: string[];
+  // Source platform category names (most specific first); used to suggest a
+  // category in the form. May be absent in drafts written by older sessions.
+  categories?: string[];
   files: UploadedFile[];
   // Bill of materials scraped from the source; empty when none.
   bom?: BomItemInput[];

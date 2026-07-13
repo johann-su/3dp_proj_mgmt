@@ -32,7 +32,9 @@ export default async function EditModelPage({
     }),
     db.query.categories.findMany({ orderBy: (c, { asc }) => asc(c.name) }),
   ]);
-  if (!model || model.userId !== session.user.id) notFound();
+  // Editing is open to any signed-in user (collaborative library); only
+  // deletion is owner-gated. See updateModel / deleteModel in ../../actions.ts.
+  if (!model) notFound();
 
   return (
     <div className="mx-auto max-w-6xl px-4 py-8">

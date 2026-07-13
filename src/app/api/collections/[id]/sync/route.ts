@@ -30,9 +30,10 @@ export async function POST(
   if (!collection) {
     return NextResponse.json({ error: "Collection not found" }, { status: 404 });
   }
-  if (collection.userId !== session.user.id) {
-    return NextResponse.json({ error: "Not your collection" }, { status: 403 });
-  }
+  // Syncing re-imports the MakerWorld list into this collection, so it counts
+  // as editing — open to any signed-in user (uses their own Bambu connection;
+  // newly-imported models are owned by the syncer and linked here). Only
+  // deletion is owner-gated.
   if (!collection.sourceUrl) {
     return NextResponse.json(
       { error: "This collection was not imported from MakerWorld" },
