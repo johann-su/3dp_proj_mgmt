@@ -185,6 +185,13 @@ export function AppSidebar({ user }: { user: SessionUser | null }) {
                     </Link>
                   </DropdownMenuItem>
                   <DropdownMenuSeparator />
+                  <DropdownMenuItem asChild>
+                    <Link href="/models/trash">
+                      <Trash2 className="size-4" />
+                      Trash
+                    </Link>
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
                   <DropdownMenuItem
                     onClick={async () => {
                       await signOut();
