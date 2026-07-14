@@ -56,7 +56,7 @@ export function ModelPreview({ data }: { data: ModelPreviewData }) {
       size: f.size,
     })),
     modelId: null,
-    isOwner: false,
+    canManage: false,
     isLoggedIn: false,
     collectionOptions: [],
     slicerConfigured: false,

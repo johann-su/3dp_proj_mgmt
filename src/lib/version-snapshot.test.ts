@@ -1,0 +1,84 @@
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import type { ModelVersionSnapshot, VersionFileSnapshot } from "@/db/schema";
+import { snapshotsEqual, summarizeVersionChange } from "@/lib/version-snapshot";
+
+function file(overrides: Partial<VersionFileSnapshot> = {}): VersionFileSnapshot {
+  return {
+    kind: "model",
+    filename: "part.3mf",
+    s3Key: "uploads/aaaaaaaa-0000-0000-0000-000000000000/part.3mf",
+    size: 1024,
+    contentType: "model/3mf",
+    animated: false,
+    onshapeElementId: null,
+    sliceStatus: null,
+    sliceSource: null,
+    printTimeSeconds: null,
+    filamentGrams: null,
+    sliceError: null,
+    printerInfo: null,
+    ...overrides,
+  };
+}
+
+function snapshot(overrides: Partial<ModelVersionSnapshot> = {}): ModelVersionSnapshot {
+  return {
+    title: "Talon 1400",
+    description: "A glider",
+    categoryId: "cat-1",
+    tags: ["glider", "rc"],
+    bom: [],
+    files: [file()],
+    ...overrides,
+  };
+}
+
+test("snapshotsEqual detects identical state so no-op saves write no version", () => {
+  assert.equal(snapshotsEqual(snapshot(), snapshot()), true);
+  assert.equal(
+    snapshotsEqual(snapshot(), snapshot({ title: "Renamed" })),
+    false,
+  );
+});
+
+test("initial version summary counts files and BOM items", () => {
+  const next = snapshot({
+    files: [file(), file({ s3Key: "uploads/b/img.png", kind: "image" })],
+    bom: [{ name: "M3 screw", quantity: "4", link: null, imageUrl: null, section: null }],
+  });
+  assert.equal(summarizeVersionChange(null, next), "2 files, 1 BOM item");
+});
+
+test("files are identified by s3Key: a new filename on the same key is a rename, not remove+add", () => {
+  const prev = snapshot();
+  const next = snapshot({
+    files: [file({ filename: "wing.3mf" })],
+  });
+  assert.equal(summarizeVersionChange(prev, next), "1 file renamed");
+});
+
+test("added and removed files are counted by key difference", () => {
+  const prev = snapshot({ files: [file(), file({ s3Key: "uploads/b/old.3mf" })] });
+  const next = snapshot({ files: [file(), file({ s3Key: "uploads/c/new.3mf" })] });
+  assert.equal(summarizeVersionChange(prev, next), "1 file added, 1 file removed");
+});
+
+test("field edits combine into one summary line", () => {
+  const prev = snapshot();
+  const next = snapshot({ title: "Talon 1400 v2", tags: ["glider"] });
+  assert.equal(
+    summarizeVersionChange(prev, next),
+    "renamed to “Talon 1400 v2”, tags updated",
+  );
+});
+
+test("same file set with changed metadata degrades to a generic summary", () => {
+  // Slice estimates landing between two saves change per-file metadata
+  // without any user-visible edit — the summary must not claim file changes.
+  const prev = snapshot();
+  const next = snapshot({
+    files: [file({ sliceStatus: "ok", printTimeSeconds: 5460 })],
+  });
+  assert.equal(summarizeVersionChange(prev, next), "file details updated");
+});

@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Cloud, Shapes, UserCog } from "lucide-react";
+import { Cloud, Shapes, UserCog, Users } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const items = [
@@ -11,12 +11,16 @@ const items = [
   { href: "/settings/bambu", label: "Bambu Cloud", icon: Cloud },
 ];
 
-export function SettingsNav() {
+// User management is admin-only (the page enforces it server-side; the nav
+// entry just hides for everyone else).
+const usersItem = { href: "/settings/users", label: "Users", icon: Users };
+
+export function SettingsNav({ showUsers }: { showUsers: boolean }) {
   const pathname = usePathname();
 
   return (
     <nav className="flex gap-1 overflow-x-auto sm:flex-col sm:gap-0.5">
-      {items.map((item) => {
+      {(showUsers ? [...items, usersItem] : items).map((item) => {
         const active = pathname === item.href;
         return (
           <Link

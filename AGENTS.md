@@ -86,11 +86,74 @@ Decisions taken and why — guidance for development.
   (update fields/files, generate customizer variants, run Onshape/MakerWorld
   sync, add/remove collection members), since a self-hosted instance serves a
   trusted group and shared editing is worth more than the risk. **Destructive/
-  owner-scoped actions stay owner-only**: deleting a model (`deleteModel`) or
+  owner-scoped actions stay owner-gated**: deleting a model (`deleteModel`,
+  a soft delete into the owner's trash — see the versioning bullet below) or
   collection (`deleteCollection`); deleting a generated variant is owner-or-
   its-generator. When adding a mutation, follow this split — open editing to
   any session, gate only deletion/ownership transfer on
-  `record.userId === session.user.id`.
+  `canActAsOwner(session.user, record.userId)` (owner, or a moderator/admin
+  acting owner-equivalent — see the roles bullet).
+- **User roles** (issue #54; tier definitions + pure helpers in
+  `src/lib/roles.ts`): `user.role` is `user | moderator | admin`, exposed as
+  `session.user.role` via BetterAuth `user.additionalFields` (`input: false`,
+  so sign-up payloads can't self-assign a role). **Moderator =
+  owner-equivalent on content**: `canActAsOwner(session.user, ownerId)` is
+  the standard owner gate and passes for moderators/admins — model
+  trash/restore/purge, collection deletion, variant deletion, and the
+  matching UI flags all use it; moderators also see (and their page load
+  sweeps) *everyone's* trash. **Admin = moderator + user management**:
+  Settings → Users (`src/app/settings/users/`) lists all accounts and edits
+  roles (`setUserRole` — the one mutation gated on `isAdmin`; admins cannot
+  change their own role, so someone can always undo a mistake). First-admin
+  bootstrap: `INITIAL_ADMIN_EMAIL` applies only while the DB has **no admin
+  at all** — enforced at user creation (`databaseHooks.user.create.before`
+  in `src/lib/auth.ts`, covers fresh DBs incl. first OIDC login) and lazily
+  on settings-layout load (`ensureInitialAdmin` in `src/lib/admin.ts`,
+  covers accounts predating the feature; same no-scheduler pattern as the
+  trash sweep) — once an admin exists it is inert, doubling as recovery for
+  a zero-admin DB. **OIDC group mapping**: `OIDC_ADMIN_GROUP` /
+  `OIDC_MODERATOR_GROUP` name IdP groups (exact strings from the `groups`
+  claim; Authentik sends it with the `profile` scope) whose membership is
+  authoritative on every SSO login — synced in `mapProfileToUser`
+  (`applyOidcGroupRole`), which must update the row itself because
+  BetterAuth strips `input: false` fields from provider profiles; first
+  logins hand the role to the create hook via the `pendingOidcRoles` map. A
+  missing/malformed claim leaves stored roles untouched (no mass-demotion
+  on IdP misconfig). Deliberately **not** BetterAuth's organization plugin
+  (per-organization membership roles + org/member/invitation tables — the
+  wrong shape for one instance-global role) nor its admin plugin (would add
+  ban/impersonation endpoints and schema columns this app doesn't want).
+  When adding an owner-gated mutation use `canActAsOwner`; gate admin-only
+  surfaces on `isAdmin(session.user.role)`.
+- **Model versioning & trash** (issue #55; `src/lib/model-versions.ts`, pure
+  snapshot helpers in `src/lib/version-snapshot.ts`): every completed model
+  mutation (create, edit, Onshape sync, revert) appends a `model_versions` row
+  holding a full JSON snapshot of the mutable state — title, description,
+  category, tags, BOM, and the ordered file list including each file's
+  `s3Key`. `model_files` deliberately keeps meaning **"the live files only"**
+  (no query has to filter out historical rows): removing a file deletes its
+  row but *not* its S3 object, because earlier snapshots still reference the
+  key; the model page's History panel reverts to any version (open to every
+  signed-in user, like editing), re-inserting file rows from the snapshot and
+  appending a new version rather than rewriting history. Versions are capped
+  (`VERSION_CAP`, 30/model); pruning deletes only S3 objects no remaining
+  snapshot or live row references. Generated OpenSCAD variants are excluded
+  from snapshots on purpose (additive, individually deletable, cheap to
+  regenerate) — their bytes *are* deleted when their `.scad` source or the
+  variant itself is removed. Models predating the feature get their pre-edit
+  state recorded lazily on the next mutation (`ensureBaselineVersion`) — no
+  data migration. **When adding a model mutation path**: run it in one
+  transaction with `ensureBaselineVersion` first and `recordVersion` last,
+  S3-delete only the keys those helpers return, and never delete a
+  non-variant model file's S3 object directly. Deletion is a trash bin:
+  `deleteModel` just sets `models.deleted_at`; every listing hides trashed
+  models (`deleted_at IS NULL` in `list-queries`/`search`/`smart-collections`
+  plus the collection member/cover paths — **new model listings must add the
+  same condition**); `/models/trash` restores (clear `deleted_at`) or purges
+  permanently — scoped to the viewer's own models, except moderators/admins,
+  who see the whole instance's trash — and loading it purges models trashed
+  longer than `TRASH_RETENTION_DAYS` (30) — the same lazy no-scheduler
+  pattern as the `import_jobs` heartbeat check.
 - **Uploads** stream through `POST /api/upload` to S3 (no browser↔S3 CORS setup needed);
   only signed-in users can upload, and file extensions are validated server-side.
   Stored content types are always derived from the allowlisted extension

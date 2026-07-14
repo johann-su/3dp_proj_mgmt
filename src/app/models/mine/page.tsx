@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { desc, eq } from "drizzle-orm";
+import { and, desc, eq, isNull } from "drizzle-orm";
 import { Box } from "lucide-react";
 import { db } from "@/db";
 import { models } from "@/db/schema";
@@ -16,7 +16,8 @@ export default async function MyModelsPage() {
   if (!session) redirect("/sign-in");
 
   const results = await db.query.models.findMany({
-    where: eq(models.userId, session.user.id),
+    // Trashed models live on /models/trash instead.
+    where: and(eq(models.userId, session.user.id), isNull(models.deletedAt)),
     orderBy: desc(models.createdAt),
     extras: (m) => ({ parametric: parametricExtra(m.id) }),
     with: {

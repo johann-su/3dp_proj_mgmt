@@ -40,6 +40,7 @@ import {
 import { BomSection } from "./bom-section";
 import { AddToCollection, type CollectionOption } from "./[id]/add-to-collection";
 import { DeleteModelButton } from "./[id]/delete-model-button";
+import { HistoryPanel, type ModelHistoryEntry } from "./[id]/history-panel";
 import { OnshapeSyncButton } from "./[id]/onshape-sync-button";
 import { FileDownloadMenu } from "./[id]/file-download-menu";
 
@@ -96,10 +97,14 @@ export type ModelViewData = {
     size: number;
   }>;
   modelId: string | null;
-  isOwner: boolean;
+  // Viewer may delete the model and any variant: the owner or a
+  // moderator/admin (see canActAsOwner).
+  canManage: boolean;
   isLoggedIn: boolean;
   collectionOptions: CollectionOption[];
   slicerConfigured: boolean;
+  // Edit history, newest first (absent in the create-wizard preview).
+  history?: ModelHistoryEntry[];
 };
 
 // Delete for a generated .3mf variant — shown to the model owner (any variant)
@@ -316,10 +321,11 @@ export function ModelView({ data }: { data: ModelViewData }) {
     printFiles,
     pdfFiles,
     modelId,
-    isOwner,
+    canManage,
     isLoggedIn,
     collectionOptions,
     slicerConfigured,
+    history,
   } = data;
 
   return (
@@ -577,6 +583,10 @@ export function ModelView({ data }: { data: ModelViewData }) {
           </Card>
         )}
 
+        {isLoggedIn && modelId && history && history.length > 0 && (
+          <HistoryPanel modelId={modelId} entries={history} />
+        )}
+
         {isLoggedIn && modelId && (
           <>
             <Separator />
@@ -587,8 +597,9 @@ export function ModelView({ data }: { data: ModelViewData }) {
                   Edit model
                 </Link>
               </Button>
-              {/* Editing is open to all; deleting stays owner-only. */}
-              {isOwner && <DeleteModelButton modelId={modelId} />}
+              {/* Editing is open to all; deleting stays with the owner and
+                  moderators/admins (canManage). */}
+              {canManage && <DeleteModelButton modelId={modelId} />}
             </div>
           </>
         )}

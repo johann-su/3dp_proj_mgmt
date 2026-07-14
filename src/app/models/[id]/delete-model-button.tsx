@@ -49,8 +49,9 @@ export function DeleteModelButton({ modelId }: { modelId: string }) {
         <AlertDialogHeader>
           <AlertDialogTitle>Delete this model?</AlertDialogTitle>
           <AlertDialogDescription>
-            This permanently deletes the model and all of its files. This cannot
-            be undone.
+            The model moves to your trash and disappears from the library. You
+            can restore it from the trash for 30 days; after that it is deleted
+            permanently.
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>

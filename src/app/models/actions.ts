@@ -4,22 +4,28 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { after } from "next/server";
 import { and, eq, inArray } from "drizzle-orm";
-import { DeleteObjectsCommand } from "@aws-sdk/client-s3";
 import { db } from "@/db";
 import {
   bomItems,
   modelFiles,
   models,
   modelTags,
+  modelVersions,
   type FileKind,
 } from "@/db/schema";
 import { getSession } from "@/lib/auth";
+import { canActAsOwner } from "@/lib/roles";
 import { otherCategoryId } from "@/lib/categories";
 import { linkTags, normalizeTagNames } from "@/lib/tags";
 import { sanitizeBomItems, type BomItemInput } from "@/lib/bom";
 import {
-  s3,
-  S3_BUCKET,
+  deleteS3Keys,
+  ensureBaselineVersion,
+  purgeModel,
+  recordVersion,
+  restoreSnapshot,
+} from "@/lib/model-versions";
+import {
   allowedExtensions,
   contentTypeForFilename,
   fileExtension,
@@ -233,6 +239,9 @@ export async function createModel(
 
     await linkTags(tx, model.id, tagNames);
 
+    // Version 1 — the append-only edit history starts at creation (issue #55).
+    await recordVersion(tx, model.id, session.user.id, "create");
+
     return model.id;
   });
 
@@ -265,7 +274,7 @@ export async function updateModel(
     where: eq(models.id, input.modelId),
     with: { files: true },
   });
-  if (!model) return { error: "Model not found" };
+  if (!model || model.deletedAt) return { error: "Model not found" };
   // Editing is open to any signed-in user (collaborative library for a trusted
   // self-hosted group) — only deletion stays owner-only. See deleteModel.
 
@@ -294,7 +303,11 @@ export async function updateModel(
   // Same fallback as createModel: clearing the category means "Other".
   const categoryId = input.categoryId || (await otherCategoryId());
 
-  await db.transaction(async (tx) => {
+  const s3KeysToDelete = await db.transaction(async (tx) => {
+    // Models that predate versioning get their pre-edit state recorded as
+    // version 1 first, so this edit stays revertable (issue #55).
+    await ensureBaselineVersion(tx, model.id, model.userId);
+
     await tx
       .update(models)
       .set({
@@ -395,16 +408,20 @@ export async function updateModel(
 
     await tx.delete(modelTags).where(eq(modelTags.modelId, model.id));
     await linkTags(tx, model.id, tagNames);
+
+    // Snapshot the post-edit state. Removed files keep their S3 objects —
+    // earlier versions still reference the keys, so they stay revertable.
+    // Only generated variants (never referenced by snapshots) lose their
+    // bytes when their .scad source is removed, plus whatever version
+    // pruning orphaned.
+    const pruned = await recordVersion(tx, model.id, session.user.id, "edit");
+    const variantKeys = removed
+      .filter((f) => f.generatedFromId !== null)
+      .map((f) => f.s3Key);
+    return [...variantKeys, ...pruned];
   });
 
-  if (removed.length > 0) {
-    await s3.send(
-      new DeleteObjectsCommand({
-        Bucket: S3_BUCKET,
-        Delete: { Objects: removed.map((f) => ({ Key: f.s3Key })) },
-      }),
-    );
-  }
+  await deleteS3Keys(s3KeysToDelete);
 
   // Estimate print time & filament use once the response is sent.
   after(() => processPendingSlices(model.id));
@@ -414,6 +431,10 @@ export async function updateModel(
   redirect(`/models/${model.id}`);
 }
 
+// Moves the model to the trash (soft delete). Nothing is destroyed: the rows,
+// version history and S3 objects stay, the model just disappears from every
+// listing. The owner can restore it from /models/trash for
+// TRASH_RETENTION_DAYS; after that the lazy sweep purges it for real.
 export async function deleteModel(
   modelId: string,
 ): Promise<{ error: string } | never> {
@@ -422,23 +443,122 @@ export async function deleteModel(
 
   const model = await db.query.models.findFirst({
     where: eq(models.id, modelId),
-    with: { files: true },
+    columns: { userId: true, deletedAt: true },
   });
-  if (!model) return { error: "Model not found" };
-  // Deletion stays owner-only even though editing is open to everyone — losing
-  // a model is destructive and non-recoverable, unlike an edit.
-  if (model.userId !== session.user.id) return { error: "Not your model" };
-
-  if (model.files.length > 0) {
-    await s3.send(
-      new DeleteObjectsCommand({
-        Bucket: S3_BUCKET,
-        Delete: { Objects: model.files.map((f) => ({ Key: f.s3Key })) },
-      }),
-    );
+  if (!model || model.deletedAt) return { error: "Model not found" };
+  // Deletion stays owner-gated even though editing is open to everyone —
+  // trashing removes the model from the shared library, unlike an edit.
+  // Moderators/admins pass as owner-equivalent (issue #54).
+  if (!canActAsOwner(session.user, model.userId)) {
+    return { error: "Not your model" };
   }
-  await db.delete(models).where(eq(models.id, modelId));
+
+  await db
+    .update(models)
+    .set({ deletedAt: new Date() })
+    .where(eq(models.id, modelId));
 
   revalidatePath("/");
+  revalidatePath(`/models/${modelId}`);
   redirect("/");
+}
+
+// Takes a model back out of the trash — deletion is just deleted_at, so
+// restoring is clearing it. Gated like the deletion it undoes: the owner, or
+// a moderator/admin.
+export async function restoreModel(
+  modelId: string,
+): Promise<{ error: string } | Record<string, never>> {
+  const session = await getSession();
+  if (!session) return { error: "You must be signed in" };
+
+  const model = await db.query.models.findFirst({
+    where: eq(models.id, modelId),
+    columns: { userId: true, deletedAt: true },
+  });
+  if (!model || !model.deletedAt) return { error: "Model not found in trash" };
+  if (!canActAsOwner(session.user, model.userId)) {
+    return { error: "Not your model" };
+  }
+
+  await db
+    .update(models)
+    .set({ deletedAt: null })
+    .where(eq(models.id, modelId));
+
+  revalidatePath("/");
+  revalidatePath(`/models/${modelId}`);
+  return {};
+}
+
+// The old hard delete, now opt-in from the trash page only: removes the rows,
+// the version history and every S3 object any of them reference.
+export async function deleteModelPermanently(
+  modelId: string,
+): Promise<{ error: string } | Record<string, never>> {
+  const session = await getSession();
+  if (!session) return { error: "You must be signed in" };
+
+  const model = await db.query.models.findFirst({
+    where: eq(models.id, modelId),
+    columns: { userId: true, deletedAt: true },
+  });
+  // Only trashed models can be purged — the trash is the single doorway to
+  // destroying data.
+  if (!model || !model.deletedAt) return { error: "Model not found in trash" };
+  if (!canActAsOwner(session.user, model.userId)) {
+    return { error: "Not your model" };
+  }
+
+  await purgeModel(modelId);
+
+  revalidatePath("/");
+  return {};
+}
+
+// Restores the state a version snapshot recorded — fields, tags, BOM and
+// files (previously removed files come back; their bytes never left S3).
+// Open to any signed-in user like editing itself, and append-only: the revert
+// writes a new version instead of rewriting history, so reverting a revert
+// always works.
+export async function revertModelVersion(
+  modelId: string,
+  versionId: number,
+): Promise<{ error: string } | Record<string, never>> {
+  const session = await getSession();
+  if (!session) return { error: "You must be signed in" };
+
+  const model = await db.query.models.findFirst({
+    where: eq(models.id, modelId),
+    columns: { id: true, deletedAt: true },
+  });
+  if (!model || model.deletedAt) return { error: "Model not found" };
+
+  const version = await db.query.modelVersions.findFirst({
+    where: and(eq(modelVersions.id, versionId), eq(modelVersions.modelId, modelId)),
+  });
+  if (!version) return { error: "Version not found" };
+
+  // Same fallback as create/update: a null category means "Other".
+  const fallbackCategoryId = await otherCategoryId();
+
+  const s3KeysToDelete = await db.transaction(async (tx) => {
+    const variantKeys = await restoreSnapshot(
+      tx,
+      modelId,
+      version.snapshot,
+      fallbackCategoryId,
+    );
+    const pruned = await recordVersion(tx, modelId, session.user.id, "revert");
+    return [...variantKeys, ...pruned];
+  });
+
+  await deleteS3Keys(s3KeysToDelete);
+
+  // Re-inserted files may carry a pending slice status from their snapshot.
+  after(() => processPendingSlices(modelId));
+
+  revalidatePath("/");
+  revalidatePath(`/models/${modelId}`);
+  return {};
 }

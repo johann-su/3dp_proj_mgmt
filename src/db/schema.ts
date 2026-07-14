@@ -13,6 +13,8 @@ import {
 } from "drizzle-orm/pg-core";
 import { relations } from "drizzle-orm";
 import type { RuleGroup } from "@/lib/collection-rules";
+import type { BomItemInput } from "@/lib/bom";
+import type { UserRole } from "@/lib/roles";
 
 // --- BetterAuth tables ---
 
@@ -22,6 +24,10 @@ export const user = pgTable("user", {
   email: text("email").notNull().unique(),
   emailVerified: boolean("email_verified").notNull().default(false),
   image: text("image"),
+  // Instance-wide role (issue #54): moderators/admins pass the owner-only
+  // gates on all models/collections, admins additionally manage users under
+  // Settings → Users. See src/lib/roles.ts; first admin via src/lib/admin.ts.
+  role: text("role").$type<UserRole>().notNull().default("user"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
@@ -99,6 +105,11 @@ export const models = pgTable("models", {
   // Page view count, incremented on each model detail page load — see
   // src/lib/metrics.ts. Not surfaced in the UI yet.
   viewCount: integer("view_count").notNull().default(0),
+  // Soft delete ("trash"): a trashed model is hidden from every listing (the
+  // queries add `deleted_at IS NULL`) but keeps its rows, versions and S3
+  // objects so the owner can restore it from /models/trash. Purged for real
+  // (rows + S3) after TRASH_RETENTION_DAYS — see src/lib/model-versions.ts.
+  deletedAt: timestamp("deleted_at"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
@@ -204,6 +215,66 @@ export const modelFiles = pgTable("model_files", {
   // or an image/pdf fetched with ?download=1) — see src/lib/metrics.ts.
   // Inline image views (gallery thumbnails, next/image) don't count.
   downloadCount: integer("download_count").notNull().default(0),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+// --- Model versioning (issue #55) ---
+//
+// Every completed mutation of a model (create, edit, Onshape sync, revert)
+// appends one model_versions row holding a full JSON snapshot of the mutable
+// state. model_files stays "the live files only" — a removed file's row is
+// deleted as before, but its S3 object is kept as long as any snapshot still
+// references its s3Key, and reverting re-inserts the row from the snapshot.
+// That keeps every existing query untouched (nothing needs to filter out
+// historical rows) at the cost of file ids/download counts not surviving a
+// remove+revert round trip. Generated OpenSCAD variants are excluded from
+// snapshots on purpose: they are additive, individually deletable, and cheap
+// to regenerate. Version rows are capped per model; pruning deletes S3
+// objects no longer referenced by any remaining snapshot or live file — see
+// src/lib/model-versions.ts.
+
+export type ModelVersionReason = "create" | "edit" | "onshape-sync" | "revert";
+
+// One file as recorded in a snapshot, in display order. Everything needed to
+// re-insert the model_files row on revert; the bytes stay at s3Key.
+export type VersionFileSnapshot = {
+  kind: FileKind;
+  filename: string;
+  s3Key: string;
+  size: number;
+  contentType: string;
+  animated: boolean;
+  onshapeElementId: string | null;
+  sliceStatus: SliceStatus | null;
+  sliceSource: SliceSource | null;
+  printTimeSeconds: number | null;
+  filamentGrams: number | null;
+  sliceError: string | null;
+  printerInfo: PrinterInfo | null;
+};
+
+export type ModelVersionSnapshot = {
+  title: string;
+  description: string;
+  categoryId: string | null;
+  tags: string[];
+  bom: BomItemInput[];
+  files: VersionFileSnapshot[];
+};
+
+export const modelVersions = pgTable("model_versions", {
+  // Identity (not uuid): versions created in the same transaction share a
+  // now() timestamp, so insertion order is the only reliable version order.
+  id: bigint("id", { mode: "number" }).primaryKey().generatedAlwaysAsIdentity(),
+  modelId: uuid("model_id")
+    .notNull()
+    .references(() => models.id, { onDelete: "cascade" }),
+  // Who saved this version; null after the user account is deleted.
+  editorUserId: text("editor_user_id").references(() => user.id, {
+    onDelete: "set null",
+  }),
+  reason: text("reason").$type<ModelVersionReason>().notNull(),
+  snapshot: jsonb("snapshot").$type<ModelVersionSnapshot>().notNull(),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
@@ -329,6 +400,18 @@ export const modelsRelations = relations(models, ({ one, many }) => ({
   bomItems: many(bomItems),
   modelTags: many(modelTags),
   collectionModels: many(collectionModels),
+  versions: many(modelVersions),
+}));
+
+export const modelVersionsRelations = relations(modelVersions, ({ one }) => ({
+  model: one(models, {
+    fields: [modelVersions.modelId],
+    references: [models.id],
+  }),
+  editor: one(user, {
+    fields: [modelVersions.editorUserId],
+    references: [user.id],
+  }),
 }));
 
 export const collectionsRelations = relations(collections, ({ one, many }) => ({
