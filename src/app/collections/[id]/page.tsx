@@ -6,6 +6,7 @@ import { ExternalLink, FolderOpen, Sparkles, SquarePen } from "lucide-react";
 import { db } from "@/db";
 import { collections } from "@/db/schema";
 import { getSession } from "@/lib/auth";
+import { canActAsOwner } from "@/lib/roles";
 import { fileSrc } from "@/lib/file-token";
 import { formatDate } from "@/lib/format";
 import { incrementCollectionViewCount } from "@/lib/metrics";
@@ -62,7 +63,8 @@ export default async function CollectionPage({
 
   after(() => incrementCollectionViewCount(collection.id));
 
-  const isOwner = session.user.id === collection.userId;
+  // Deleting the collection: the owner or a moderator/admin.
+  const canManage = canActAsOwner(session.user, collection.userId);
   const sourcePlatform = platformFromSourceUrl(collection.sourceUrl);
   const isSmart = collection.smart && collection.rules != null;
 
@@ -122,8 +124,9 @@ export default async function CollectionPage({
             </p>
           )}
         </div>
-        {/* Editing (edit + sync) is open to any signed-in user; deletion is
-            owner-only. The page already redirects signed-out visitors. */}
+        {/* Editing (edit + sync) is open to any signed-in user; deletion
+            stays with the owner and moderators/admins. The page already
+            redirects signed-out visitors. */}
         <div className="flex items-center gap-2">
           <Button asChild variant="outline" size="sm">
             <Link href={`/collections/${collection.id}/edit`}>
@@ -134,7 +137,7 @@ export default async function CollectionPage({
           {collection.sourceUrl && (
             <CollectionSyncButton collectionId={collection.id} />
           )}
-          {isOwner && <DeleteCollectionButton collectionId={collection.id} />}
+          {canManage && <DeleteCollectionButton collectionId={collection.id} />}
         </div>
       </div>
 

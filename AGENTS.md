@@ -86,12 +86,45 @@ Decisions taken and why — guidance for development.
   (update fields/files, generate customizer variants, run Onshape/MakerWorld
   sync, add/remove collection members), since a self-hosted instance serves a
   trusted group and shared editing is worth more than the risk. **Destructive/
-  owner-scoped actions stay owner-only**: deleting a model (`deleteModel`,
+  owner-scoped actions stay owner-gated**: deleting a model (`deleteModel`,
   a soft delete into the owner's trash — see the versioning bullet below) or
   collection (`deleteCollection`); deleting a generated variant is owner-or-
   its-generator. When adding a mutation, follow this split — open editing to
   any session, gate only deletion/ownership transfer on
-  `record.userId === session.user.id`.
+  `canActAsOwner(session.user, record.userId)` (owner, or a moderator/admin
+  acting owner-equivalent — see the roles bullet).
+- **User roles** (issue #54; tier definitions + pure helpers in
+  `src/lib/roles.ts`): `user.role` is `user | moderator | admin`, exposed as
+  `session.user.role` via BetterAuth `user.additionalFields` (`input: false`,
+  so sign-up payloads can't self-assign a role). **Moderator =
+  owner-equivalent on content**: `canActAsOwner(session.user, ownerId)` is
+  the standard owner gate and passes for moderators/admins — model
+  trash/restore/purge, collection deletion, variant deletion, and the
+  matching UI flags all use it; moderators also see (and their page load
+  sweeps) *everyone's* trash. **Admin = moderator + user management**:
+  Settings → Users (`src/app/settings/users/`) lists all accounts and edits
+  roles (`setUserRole` — the one mutation gated on `isAdmin`; admins cannot
+  change their own role, so someone can always undo a mistake). First-admin
+  bootstrap: `INITIAL_ADMIN_EMAIL` applies only while the DB has **no admin
+  at all** — enforced at user creation (`databaseHooks.user.create.before`
+  in `src/lib/auth.ts`, covers fresh DBs incl. first OIDC login) and lazily
+  on settings-layout load (`ensureInitialAdmin` in `src/lib/admin.ts`,
+  covers accounts predating the feature; same no-scheduler pattern as the
+  trash sweep) — once an admin exists it is inert, doubling as recovery for
+  a zero-admin DB. **OIDC group mapping**: `OIDC_ADMIN_GROUP` /
+  `OIDC_MODERATOR_GROUP` name IdP groups (exact strings from the `groups`
+  claim; Authentik sends it with the `profile` scope) whose membership is
+  authoritative on every SSO login — synced in `mapProfileToUser`
+  (`applyOidcGroupRole`), which must update the row itself because
+  BetterAuth strips `input: false` fields from provider profiles; first
+  logins hand the role to the create hook via the `pendingOidcRoles` map. A
+  missing/malformed claim leaves stored roles untouched (no mass-demotion
+  on IdP misconfig). Deliberately **not** BetterAuth's organization plugin
+  (per-organization membership roles + org/member/invitation tables — the
+  wrong shape for one instance-global role) nor its admin plugin (would add
+  ban/impersonation endpoints and schema columns this app doesn't want).
+  When adding an owner-gated mutation use `canActAsOwner`; gate admin-only
+  surfaces on `isAdmin(session.user.role)`.
 - **Model versioning & trash** (issue #55; `src/lib/model-versions.ts`, pure
   snapshot helpers in `src/lib/version-snapshot.ts`): every completed model
   mutation (create, edit, Onshape sync, revert) appends a `model_versions` row
@@ -116,8 +149,9 @@ Decisions taken and why — guidance for development.
   `deleteModel` just sets `models.deleted_at`; every listing hides trashed
   models (`deleted_at IS NULL` in `list-queries`/`search`/`smart-collections`
   plus the collection member/cover paths — **new model listings must add the
-  same condition**); the owner's `/models/trash` restores (clear
-  `deleted_at`) or purges permanently, and loading it purges models trashed
+  same condition**); `/models/trash` restores (clear `deleted_at`) or purges
+  permanently — scoped to the viewer's own models, except moderators/admins,
+  who see the whole instance's trash — and loading it purges models trashed
   longer than `TRASH_RETENTION_DAYS` (30) — the same lazy no-scheduler
   pattern as the `import_jobs` heartbeat check.
 - **Uploads** stream through `POST /api/upload` to S3 (no browser↔S3 CORS setup needed);

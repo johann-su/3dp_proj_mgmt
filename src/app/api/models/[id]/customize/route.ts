@@ -7,6 +7,7 @@ import { DeleteObjectsCommand } from "@aws-sdk/client-s3";
 import { db } from "@/db";
 import { modelFiles, models } from "@/db/schema";
 import { getSession } from "@/lib/auth";
+import { canActAsOwner } from "@/lib/roles";
 import { s3, S3_BUCKET } from "@/lib/s3";
 import { stageBuffer } from "@/lib/storage";
 import { normalizeThreeMf } from "@/lib/threemf-normalize";
@@ -159,11 +160,12 @@ export async function DELETE(
       { status: 400 },
     );
   }
-  // The model owner can delete any variant; anyone else only the variants they
-  // generated themselves (generatedBy). Legacy variants (null generatedBy) are
-  // owner-only.
+  // The model owner (or a moderator/admin) can delete any variant; anyone
+  // else only the variants they generated themselves (generatedBy). Legacy
+  // variants (null generatedBy) are owner-only.
   const canDelete =
-    model.userId === session.user.id || file.generatedBy === session.user.id;
+    canActAsOwner(session.user, model.userId) ||
+    file.generatedBy === session.user.id;
   if (!canDelete) {
     return NextResponse.json({ error: "Not allowed" }, { status: 403 });
   }

@@ -275,17 +275,19 @@ export async function purgeModel(modelId: string): Promise<void> {
   await db.delete(models).where(eq(models.id, modelId));
 }
 
-// Purges the user's trashed models past the retention window. Called lazily
-// from the trash page (same self-healing pattern import_jobs uses) — this
-// project deliberately has no scheduler container.
-export async function sweepExpiredTrash(userId: string): Promise<void> {
+// Purges trashed models past the retention window. Called lazily from the
+// trash page (same self-healing pattern import_jobs uses) — this project
+// deliberately has no scheduler container. Scoped to one user's trash
+// normally; moderators/admins open the instance-wide trash, so their page
+// load sweeps everyone's (userId undefined).
+export async function sweepExpiredTrash(userId?: string): Promise<void> {
   const cutoff = new Date(Date.now() - TRASH_RETENTION_DAYS * 24 * 60 * 60 * 1000);
   const expired = await db
     .select({ id: models.id })
     .from(models)
     .where(
       and(
-        eq(models.userId, userId),
+        ...(userId ? [eq(models.userId, userId)] : []),
         isNotNull(models.deletedAt),
         lt(models.deletedAt, cutoff),
       ),

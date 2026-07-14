@@ -19,6 +19,7 @@ This project should be a self hostable project management platform for .3mf file
 - **Open in slicer** — open files directly in OrcaSlicer or Bambu Studio as an alternative to downloading
 - **Pagination** — cursor-based endless scroll on the list screens (homepage `/` models grid, `/collections`)
 - **Authentication** — email/password with optional OIDC SSO; all pages require sign-in
+- **User roles** — moderators/admins act owner-equivalent on all models and collections (delete, restore, purge — e.g. to clean up abandoned content); admins additionally manage everyone's role under Settings → Users, with the first admin designated via `INITIAL_ADMIN_EMAIL`
 
 ## Tech stack
 
@@ -92,3 +93,32 @@ email/password account.
 `https://<host>/application/o/<app-slug>/` (shown as "OpenID Configuration Issuer"
 in the provider settings). A wrong issuer is logged at server start with the exact
 discovery URL that failed.
+
+### User roles
+
+Every account starts as a plain **user**: full read access and collaborative
+editing, with destructive actions (deleting a model or collection) limited to
+what they own. Two elevated roles exist for cleanup and administration:
+
+- **Moderator** — owner-equivalent on all content: may delete, restore, or
+  permanently purge any model, delete any collection, remove any generated
+  variant, and sees every user's trash under `/models/trash`.
+- **Admin** — everything a moderator can do, plus user management: the
+  **Settings → Users** page lists all accounts and changes their roles.
+
+Bootstrap the first admin by setting `INITIAL_ADMIN_EMAIL` to an account's
+email: while the database has no admin at all, that account is promoted at
+sign-up or on its next visit to any settings page. Once an admin exists the
+variable does nothing (roles are managed in the UI), but it also recovers an
+instance whose last admin account is gone. With OIDC, the IdP still decides
+who may *sign in* — roles only govern permissions inside the app.
+
+**Roles from IdP groups (optional):** set `OIDC_ADMIN_GROUP` (and/or
+`OIDC_MODERATOR_GROUP`) to the exact group names your IdP sends in the OIDC
+`groups` claim — e.g. `OIDC_ADMIN_GROUP=homelab-admins` with an Authentik
+group of that name (Authentik includes the claim with the standard `profile`
+scope). While configured, group membership is authoritative on every SSO
+login: members of the group get the role, and a user in neither mapped group
+is (re)set to a plain user — so manage SSO users' roles in the IdP rather
+than on Settings → Users. If the IdP stops sending the `groups` claim
+entirely, stored roles are left untouched.

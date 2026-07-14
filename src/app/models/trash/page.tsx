@@ -5,6 +5,7 @@ import { Trash2 } from "lucide-react";
 import { db } from "@/db";
 import { models } from "@/db/schema";
 import { getSession } from "@/lib/auth";
+import { isModerator } from "@/lib/roles";
 import { fileSrc } from "@/lib/file-token";
 import { formatDate } from "@/lib/format";
 import { sweepExpiredTrash, TRASH_RETENTION_DAYS } from "@/lib/model-versions";
@@ -20,20 +21,27 @@ function daysUntilPurge(deletedAt: Date): number {
 }
 
 // The owner's trash: soft-deleted models, restorable until the retention
-// window runs out. Owner-only like deletion itself — other users never see
-// trashed models anywhere.
+// window runs out. Scoped like deletion itself — plain users only ever see
+// their own trashed models, while moderators/admins (owner-equivalent on all
+// content, issue #54) see the whole instance's trash so they can clean up
+// after anyone.
 export default async function TrashPage() {
   const session = await getSession();
   if (!session) redirect("/sign-in");
 
+  const moderator = isModerator(session.user.role);
+
   // Lazy purge instead of a scheduler (same pattern as the import-job
   // heartbeat check): expired models are destroyed when the trash is opened.
-  await sweepExpiredTrash(session.user.id);
+  await sweepExpiredTrash(moderator ? undefined : session.user.id);
 
   const trashed = await db.query.models.findMany({
-    where: and(eq(models.userId, session.user.id), isNotNull(models.deletedAt)),
+    where: moderator
+      ? isNotNull(models.deletedAt)
+      : and(eq(models.userId, session.user.id), isNotNull(models.deletedAt)),
     orderBy: desc(models.deletedAt),
     with: {
+      user: { columns: { name: true } },
       files: {
         where: (f, { eq: eqOp }) => eqOp(f.kind, "image"),
         orderBy: (f, { asc }) => asc(f.position),
@@ -82,6 +90,8 @@ export default async function TrashPage() {
                 <div className="min-w-0 flex-1">
                   <div className="truncate font-medium">{model.title}</div>
                   <div className="text-sm text-muted-foreground">
+                    {/* Moderators see everyone's trash — say whose model it is. */}
+                    {moderator && <>by {model.user.name} · </>}
                     Deleted {formatDate(deletedAt)} · purged in {daysLeft} day
                     {daysLeft === 1 ? "" : "s"}
                   </div>

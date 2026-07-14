@@ -14,6 +14,7 @@ import {
 import { relations } from "drizzle-orm";
 import type { RuleGroup } from "@/lib/collection-rules";
 import type { BomItemInput } from "@/lib/bom";
+import type { UserRole } from "@/lib/roles";
 
 // --- BetterAuth tables ---
 
@@ -23,6 +24,10 @@ export const user = pgTable("user", {
   email: text("email").notNull().unique(),
   emailVerified: boolean("email_verified").notNull().default(false),
   image: text("image"),
+  // Instance-wide role (issue #54): moderators/admins pass the owner-only
+  // gates on all models/collections, admins additionally manage users under
+  // Settings → Users. See src/lib/roles.ts; first admin via src/lib/admin.ts.
+  role: text("role").$type<UserRole>().notNull().default("user"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
