@@ -40,6 +40,7 @@ import {
 import { BomSection } from "./bom-section";
 import { AddToCollection, type CollectionOption } from "./[id]/add-to-collection";
 import { DeleteModelButton } from "./[id]/delete-model-button";
+import { HistoryPanel, type ModelHistoryEntry } from "./[id]/history-panel";
 import { OnshapeSyncButton } from "./[id]/onshape-sync-button";
 import { FileDownloadMenu } from "./[id]/file-download-menu";
 
@@ -100,6 +101,8 @@ export type ModelViewData = {
   isLoggedIn: boolean;
   collectionOptions: CollectionOption[];
   slicerConfigured: boolean;
+  // Edit history, newest first (absent in the create-wizard preview).
+  history?: ModelHistoryEntry[];
 };
 
 // Delete for a generated .3mf variant — shown to the model owner (any variant)
@@ -320,6 +323,7 @@ export function ModelView({ data }: { data: ModelViewData }) {
     isLoggedIn,
     collectionOptions,
     slicerConfigured,
+    history,
   } = data;
 
   return (
@@ -575,6 +579,10 @@ export function ModelView({ data }: { data: ModelViewData }) {
               ))}
             </CardContent>
           </Card>
+        )}
+
+        {isLoggedIn && modelId && history && history.length > 0 && (
+          <HistoryPanel modelId={modelId} entries={history} />
         )}
 
         {isLoggedIn && modelId && (

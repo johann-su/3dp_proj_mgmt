@@ -1,11 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { revalidatePath } from "next/cache";
 import { eq, inArray } from "drizzle-orm";
-import { DeleteObjectsCommand } from "@aws-sdk/client-s3";
 import { db } from "@/db";
 import { modelFiles, models } from "@/db/schema";
 import { getSession } from "@/lib/auth";
-import { s3, S3_BUCKET } from "@/lib/s3";
+import {
+  deleteS3Keys,
+  ensureBaselineVersion,
+  recordVersion,
+} from "@/lib/model-versions";
 import { stageBuffer } from "@/lib/storage";
 import { normalizeThreeMf } from "@/lib/threemf-normalize";
 import { sliceEligible } from "@/lib/slicer";
@@ -39,7 +42,7 @@ export async function POST(
     where: eq(models.id, id),
     with: { files: true },
   });
-  if (!model) {
+  if (!model || model.deletedAt) {
     return NextResponse.json({ error: "Model not found" }, { status: 404 });
   }
   // Syncing re-exports the model's files, so it counts as editing — open to any
@@ -121,7 +124,10 @@ export async function POST(
     }
 
     const replaced = model.files.filter((f) => f.onshapeElementId !== null);
-    await db.transaction(async (tx) => {
+    const s3KeysToDelete = await db.transaction(async (tx) => {
+      // A bad sync used to destroy the last good export — now the pre-sync
+      // state becomes a version first, so it stays revertable (issue #55).
+      await ensureBaselineVersion(tx, model.id, model.userId);
       if (replaced.length > 0) {
         await tx.delete(modelFiles).where(
           inArray(
@@ -152,16 +158,13 @@ export async function POST(
         .update(models)
         .set({ onshapeMicroversion: microversion, updatedAt: new Date() })
         .where(eq(models.id, model.id));
+
+      // The replaced exports keep their S3 objects — the pre-sync version
+      // still references them. Only keys orphaned by version pruning go.
+      return recordVersion(tx, model.id, session.user.id, "onshape-sync");
     });
 
-    if (replaced.length > 0) {
-      await s3.send(
-        new DeleteObjectsCommand({
-          Bucket: S3_BUCKET,
-          Delete: { Objects: replaced.map((f) => ({ Key: f.s3Key })) },
-        }),
-      );
-    }
+    await deleteS3Keys(s3KeysToDelete);
 
     revalidatePath(`/models/${model.id}`);
     revalidatePath("/");

@@ -34,7 +34,7 @@ export default async function CustomizePage({
     getSession(),
   ]);
   if (!session) redirect("/sign-in");
-  if (!model) notFound();
+  if (!model || model.deletedAt) notFound();
   if (!openscadConfigured()) {
     redirect(`/models/${id}`);
   }

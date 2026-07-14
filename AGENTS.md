@@ -86,11 +86,40 @@ Decisions taken and why — guidance for development.
   (update fields/files, generate customizer variants, run Onshape/MakerWorld
   sync, add/remove collection members), since a self-hosted instance serves a
   trusted group and shared editing is worth more than the risk. **Destructive/
-  owner-scoped actions stay owner-only**: deleting a model (`deleteModel`) or
+  owner-scoped actions stay owner-only**: deleting a model (`deleteModel`,
+  a soft delete into the owner's trash — see the versioning bullet below) or
   collection (`deleteCollection`); deleting a generated variant is owner-or-
   its-generator. When adding a mutation, follow this split — open editing to
   any session, gate only deletion/ownership transfer on
   `record.userId === session.user.id`.
+- **Model versioning & trash** (issue #55; `src/lib/model-versions.ts`, pure
+  snapshot helpers in `src/lib/version-snapshot.ts`): every completed model
+  mutation (create, edit, Onshape sync, revert) appends a `model_versions` row
+  holding a full JSON snapshot of the mutable state — title, description,
+  category, tags, BOM, and the ordered file list including each file's
+  `s3Key`. `model_files` deliberately keeps meaning **"the live files only"**
+  (no query has to filter out historical rows): removing a file deletes its
+  row but *not* its S3 object, because earlier snapshots still reference the
+  key; the model page's History panel reverts to any version (open to every
+  signed-in user, like editing), re-inserting file rows from the snapshot and
+  appending a new version rather than rewriting history. Versions are capped
+  (`VERSION_CAP`, 30/model); pruning deletes only S3 objects no remaining
+  snapshot or live row references. Generated OpenSCAD variants are excluded
+  from snapshots on purpose (additive, individually deletable, cheap to
+  regenerate) — their bytes *are* deleted when their `.scad` source or the
+  variant itself is removed. Models predating the feature get their pre-edit
+  state recorded lazily on the next mutation (`ensureBaselineVersion`) — no
+  data migration. **When adding a model mutation path**: run it in one
+  transaction with `ensureBaselineVersion` first and `recordVersion` last,
+  S3-delete only the keys those helpers return, and never delete a
+  non-variant model file's S3 object directly. Deletion is a trash bin:
+  `deleteModel` just sets `models.deleted_at`; every listing hides trashed
+  models (`deleted_at IS NULL` in `list-queries`/`search`/`smart-collections`
+  plus the collection member/cover paths — **new model listings must add the
+  same condition**); the owner's `/models/trash` restores (clear
+  `deleted_at`) or purges permanently, and loading it purges models trashed
+  longer than `TRASH_RETENTION_DAYS` (30) — the same lazy no-scheduler
+  pattern as the `import_jobs` heartbeat check.
 - **Uploads** stream through `POST /api/upload` to S3 (no browser↔S3 CORS setup needed);
   only signed-in users can upload, and file extensions are validated server-side.
   Stored content types are always derived from the allowlisted extension

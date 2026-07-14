@@ -67,10 +67,13 @@ export default async function CollectionPage({
   const isSmart = collection.smart && collection.rules != null;
 
   // Smart collections evaluate their rule tree live (nothing is stored in
-  // collection_models); manual ones render their hand-picked rows.
+  // collection_models); manual ones render their hand-picked rows. Trashed
+  // members stay linked (restoring brings them back) but are not shown.
   const modelCards: ModelCardData[] = isSmart
     ? await smartCollectionModelCards(collection.rules)
-    : collection.collectionModels.map(({ model }) => ({
+    : collection.collectionModels
+        .filter(({ model }) => model.deletedAt === null)
+        .map(({ model }) => ({
         ...model,
         files: model.files.map((f) => ({
           id: f.id,

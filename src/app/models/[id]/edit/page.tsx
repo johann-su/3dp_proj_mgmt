@@ -34,7 +34,7 @@ export default async function EditModelPage({
   ]);
   // Editing is open to any signed-in user (collaborative library); only
   // deletion is owner-gated. See updateModel / deleteModel in ../../actions.ts.
-  if (!model) notFound();
+  if (!model || model.deletedAt) notFound();
 
   return (
     <div className="mx-auto max-w-6xl px-4 py-8">

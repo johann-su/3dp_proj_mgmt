@@ -39,7 +39,7 @@ export async function prepareScadRender(
     where: eq(models.id, modelId),
     with: { files: true },
   })) as ModelWithFiles | undefined;
-  if (!model) return { error: "Model not found", status: 404 };
+  if (!model || model.deletedAt) return { error: "Model not found", status: 404 };
   // Customizing (preview + generating a stored variant) is open to any
   // signed-in user, not just the owner — generated variants land on the
   // owner's model like a shared render. Deleting variants stays owner-only.
