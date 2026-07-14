@@ -20,7 +20,7 @@ async function matchingModelIds(rules: unknown, limit: number): Promise<string[]
   if ("error" in parsed) return [];
   const result = await db.execute<{ id: string }>(sql`
     SELECT m.id FROM models m
-    WHERE ${ruleTreeToSql(parsed.tree)}
+    WHERE m.deleted_at IS NULL AND ${ruleTreeToSql(parsed.tree)}
     ORDER BY m.created_at DESC, m.id DESC
     LIMIT ${limit}
   `);
@@ -99,7 +99,7 @@ export async function smartCollectionPreviews(
       if ("error" in parsed) return { id: c.id, total: 0, modelIds: [] as string[] };
       const result = await db.execute<{ id: string; total: number }>(sql`
         SELECT m.id, COUNT(*) OVER () AS total FROM models m
-        WHERE ${ruleTreeToSql(parsed.tree)}
+        WHERE m.deleted_at IS NULL AND ${ruleTreeToSql(parsed.tree)}
         ORDER BY m.created_at DESC, m.id DESC
         LIMIT 4
       `);

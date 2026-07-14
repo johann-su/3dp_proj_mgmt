@@ -2,7 +2,8 @@ import { notFound, redirect } from "next/navigation";
 import { after } from "next/server";
 import { and, asc, eq, inArray } from "drizzle-orm";
 import { db } from "@/db";
-import { collectionModels, collections, models } from "@/db/schema";
+import { collectionModels, collections, models, modelVersions } from "@/db/schema";
+import { summarizeVersionChange } from "@/lib/version-snapshot";
 import { getSession } from "@/lib/auth";
 import { fileSrc, fileToken } from "@/lib/file-token";
 import { get3mfSliceInfo } from "@/lib/threemf-remote";
@@ -49,9 +50,33 @@ export default async function ModelPage({
   ]);
   // The whole catalog is private — self-hosted instances store paid models.
   if (!session) redirect("/sign-in");
-  if (!model) notFound();
+  // Trashed models are recoverable from /models/trash, not viewable.
+  if (!model || model.deletedAt) notFound();
 
   after(() => incrementModelViewCount(model.id));
+
+  // Edit history for the History panel: version rows in insertion order (the
+  // identity id — rows written in one transaction share a created_at), each
+  // summarized against its predecessor.
+  const versionRows = await db.query.modelVersions.findMany({
+    where: eq(modelVersions.modelId, model.id),
+    orderBy: asc(modelVersions.id),
+    with: { editor: { columns: { name: true } } },
+  });
+  const history = versionRows
+    .map((v, i) => ({
+      versionId: v.id,
+      number: i + 1,
+      createdAt: v.createdAt,
+      editorName: v.editor?.name ?? null,
+      reason: v.reason,
+      summary: summarizeVersionChange(
+        versionRows[i - 1]?.snapshot ?? null,
+        v.snapshot,
+      ),
+      current: i === versionRows.length - 1,
+    }))
+    .reverse();
 
   const images = model.files.filter((f) => f.kind === "image");
   const printFiles = model.files.filter((f) => f.kind === "model");
@@ -226,6 +251,7 @@ export default async function ModelPage({
     isLoggedIn: !!session,
     collectionOptions,
     slicerConfigured,
+    history,
   };
 
   return (

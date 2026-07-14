@@ -138,9 +138,9 @@ export async function toggleModelInCollection(input: {
 
   const model = await db.query.models.findFirst({
     where: eq(models.id, input.modelId),
-    columns: { id: true },
+    columns: { id: true, deletedAt: true },
   });
-  if (!model) return { error: "Model not found" };
+  if (!model || model.deletedAt) return { error: "Model not found" };
 
   if (input.inCollection) {
     await db

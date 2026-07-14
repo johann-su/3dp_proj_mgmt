@@ -167,7 +167,12 @@ export async function search(
 
   const parts: SQL[] = [];
   if (includeModels) {
-    const conds = [...textConditions("m", f), ...modelFileConditions(f)];
+    // Trashed models are hidden everywhere but the owner's trash page.
+    const conds = [
+      sql`m.deleted_at IS NULL`,
+      ...textConditions("m", f),
+      ...modelFileConditions(f),
+    ];
     parts.push(
       sql`SELECT m.id AS id, 'model' AS kind, m.created_at AS created_at, ${scoreExpr("m", f)} AS score, ${metricExpr("m", sort)} AS metric FROM models m ${whereClause(conds)}`,
     );
@@ -259,7 +264,7 @@ export async function searchFacets(): Promise<SearchFacets> {
   const [users, printers, filaments, nozzles] = await Promise.all([
     db.execute<{ id: string; name: string }>(sql`
       SELECT u.id, u.name FROM "user" u
-      WHERE EXISTS (SELECT 1 FROM models m WHERE m.user_id = u.id)
+      WHERE EXISTS (SELECT 1 FROM models m WHERE m.user_id = u.id AND m.deleted_at IS NULL)
          OR EXISTS (SELECT 1 FROM collections c WHERE c.user_id = u.id)
       ORDER BY u.name ASC
     `),

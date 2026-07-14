@@ -53,7 +53,8 @@ export async function listFeed(opts: {
   const sort = opts.sort ?? "newest";
   const includeCollections = !opts.categoryId && !feedSortIsModelOnly(sort);
 
-  const modelConds: SQL[] = [];
+  // Trashed models are hidden everywhere but the owner's trash page.
+  const modelConds: SQL[] = [sql`m.deleted_at IS NULL`];
   if (opts.categoryId) modelConds.push(sql`m.category_id = ${opts.categoryId}`);
 
   const parts: SQL[] = [

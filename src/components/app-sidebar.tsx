@@ -14,6 +14,7 @@ import {
   Search,
   Settings,
   Shapes,
+  Trash2,
 } from "lucide-react";
 import { signOut } from "@/lib/auth-client";
 import {
@@ -44,6 +45,7 @@ const browseItems = [
   { href: "/", label: "Home", icon: Home, exact: true },
   { href: "/search", label: "Search", icon: Search },
   { href: "/models/mine", label: "My Models", icon: Box, auth: true },
+  { href: "/models/trash", label: "Trash", icon: Trash2, auth: true },
 ];
 
 const createItems = [

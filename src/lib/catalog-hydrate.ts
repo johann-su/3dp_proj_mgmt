@@ -48,7 +48,7 @@ export async function hydrateCatalogRows(
             collectionModels: {
               with: {
                 model: {
-                  columns: { id: true },
+                  columns: { id: true, deletedAt: true },
                   with: {
                     files: {
                       where: (fl, { eq }) => eq(fl.kind, "image"),
@@ -102,16 +102,19 @@ export async function hydrateCatalogRows(
           totalModels: preview?.totalModels,
           collectionModels:
             preview?.collectionModels ??
-            c.collectionModels.map((cm) => ({
-              model: {
-                id: cm.model.id,
-                files: cm.model.files.map((f) => ({
-                  id: f.id,
-                  src: fileSrc(f.id),
-                  animated: f.animated,
-                })),
-              },
-            })),
+            c.collectionModels
+              // Trashed members stay linked but must not surface as covers.
+              .filter((cm) => cm.model.deletedAt === null)
+              .map((cm) => ({
+                model: {
+                  id: cm.model.id,
+                  files: cm.model.files.map((f) => ({
+                    id: f.id,
+                    src: fileSrc(f.id),
+                    animated: f.animated,
+                  })),
+                },
+              })),
         },
       ];
     }),
