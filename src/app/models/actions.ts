@@ -14,6 +14,7 @@ import {
   type FileKind,
 } from "@/db/schema";
 import { getSession } from "@/lib/auth";
+import { canActAsOwner } from "@/lib/roles";
 import { otherCategoryId } from "@/lib/categories";
 import { linkTags, normalizeTagNames } from "@/lib/tags";
 import { sanitizeBomItems, type BomItemInput } from "@/lib/bom";
@@ -445,9 +446,12 @@ export async function deleteModel(
     columns: { userId: true, deletedAt: true },
   });
   if (!model || model.deletedAt) return { error: "Model not found" };
-  // Deletion stays owner-only even though editing is open to everyone —
+  // Deletion stays owner-gated even though editing is open to everyone —
   // trashing removes the model from the shared library, unlike an edit.
-  if (model.userId !== session.user.id) return { error: "Not your model" };
+  // Moderators/admins pass as owner-equivalent (issue #54).
+  if (!canActAsOwner(session.user, model.userId)) {
+    return { error: "Not your model" };
+  }
 
   await db
     .update(models)
@@ -460,7 +464,8 @@ export async function deleteModel(
 }
 
 // Takes a model back out of the trash — deletion is just deleted_at, so
-// restoring is clearing it. Owner-only like the deletion it undoes.
+// restoring is clearing it. Gated like the deletion it undoes: the owner, or
+// a moderator/admin.
 export async function restoreModel(
   modelId: string,
 ): Promise<{ error: string } | Record<string, never>> {
@@ -472,7 +477,9 @@ export async function restoreModel(
     columns: { userId: true, deletedAt: true },
   });
   if (!model || !model.deletedAt) return { error: "Model not found in trash" };
-  if (model.userId !== session.user.id) return { error: "Not your model" };
+  if (!canActAsOwner(session.user, model.userId)) {
+    return { error: "Not your model" };
+  }
 
   await db
     .update(models)
@@ -499,7 +506,9 @@ export async function deleteModelPermanently(
   // Only trashed models can be purged — the trash is the single doorway to
   // destroying data.
   if (!model || !model.deletedAt) return { error: "Model not found in trash" };
-  if (model.userId !== session.user.id) return { error: "Not your model" };
+  if (!canActAsOwner(session.user, model.userId)) {
+    return { error: "Not your model" };
+  }
 
   await purgeModel(modelId);
 

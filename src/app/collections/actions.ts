@@ -6,6 +6,7 @@ import { and, eq } from "drizzle-orm";
 import { db } from "@/db";
 import { collectionModels, collections, models } from "@/db/schema";
 import { getSession } from "@/lib/auth";
+import { canActAsOwner } from "@/lib/roles";
 import { parseRuleTree, type RuleGroup } from "@/lib/collection-rules";
 
 // Validates the smart/rules pair of a create/update input. Smart collections
@@ -107,9 +108,12 @@ export async function deleteCollection(
     where: eq(collections.id, collectionId),
   });
   if (!collection) return { error: "Collection not found" };
-  // Deletion stays owner-only even though editing is open to everyone — losing
+  // Deletion stays owner-gated even though editing is open to everyone — losing
   // a collection is destructive and non-recoverable, unlike an edit.
-  if (collection.userId !== session.user.id) return { error: "Not your collection" };
+  // Moderators/admins pass as owner-equivalent (issue #54).
+  if (!canActAsOwner(session.user, collection.userId)) {
+    return { error: "Not your collection" };
+  }
 
   await db.delete(collections).where(eq(collections.id, collectionId));
 

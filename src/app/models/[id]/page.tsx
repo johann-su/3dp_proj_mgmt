@@ -5,6 +5,7 @@ import { db } from "@/db";
 import { collectionModels, collections, models, modelVersions } from "@/db/schema";
 import { summarizeVersionChange } from "@/lib/version-snapshot";
 import { getSession } from "@/lib/auth";
+import { canActAsOwner } from "@/lib/roles";
 import { fileSrc, fileToken } from "@/lib/file-token";
 import { get3mfSliceInfo } from "@/lib/threemf-remote";
 import { processPendingSlices } from "@/lib/slicer";
@@ -81,7 +82,9 @@ export default async function ModelPage({
   const images = model.files.filter((f) => f.kind === "image");
   const printFiles = model.files.filter((f) => f.kind === "model");
   const pdfFiles = model.files.filter((f) => f.kind === "pdf");
-  const isOwner = session?.user.id === model.userId;
+  // Owner-equivalent for the destructive bits (delete the model, delete any
+  // variant): the owner themselves or a moderator/admin.
+  const canManage = canActAsOwner(session.user, model.userId);
   const platform = platformFromSourceUrl(model.sourceUrl);
   const makerworldUrl = model.sourceUrl?.includes("makerworld")
     ? model.sourceUrl
@@ -223,10 +226,11 @@ export default async function ModelPage({
                 .map(([key, value]) => `${key} = ${value}`)
                 .join(", ") || "default parameters"
             : null,
-          // The owner may delete any variant; anyone else only the ones they
-          // generated (generatedBy). Matches the DELETE route's check.
+          // Owner and moderators/admins may delete any variant; anyone else
+          // only the ones they generated (generatedBy). Matches the DELETE
+          // route's check.
           deletableByViewer:
-            isOwner || (!!session && file.generatedBy === session.user.id),
+            canManage || file.generatedBy === session.user.id,
         };
       };
       // Generated .3mf variants render nested under their .scad source
@@ -247,7 +251,7 @@ export default async function ModelPage({
       size: file.size,
     })),
     modelId: model.id,
-    isOwner,
+    canManage,
     isLoggedIn: !!session,
     collectionOptions,
     slicerConfigured,

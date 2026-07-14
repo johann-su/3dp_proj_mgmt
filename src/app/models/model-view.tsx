@@ -97,7 +97,9 @@ export type ModelViewData = {
     size: number;
   }>;
   modelId: string | null;
-  isOwner: boolean;
+  // Viewer may delete the model and any variant: the owner or a
+  // moderator/admin (see canActAsOwner).
+  canManage: boolean;
   isLoggedIn: boolean;
   collectionOptions: CollectionOption[];
   slicerConfigured: boolean;
@@ -319,7 +321,7 @@ export function ModelView({ data }: { data: ModelViewData }) {
     printFiles,
     pdfFiles,
     modelId,
-    isOwner,
+    canManage,
     isLoggedIn,
     collectionOptions,
     slicerConfigured,
@@ -595,8 +597,9 @@ export function ModelView({ data }: { data: ModelViewData }) {
                   Edit model
                 </Link>
               </Button>
-              {/* Editing is open to all; deleting stays owner-only. */}
-              {isOwner && <DeleteModelButton modelId={modelId} />}
+              {/* Editing is open to all; deleting stays with the owner and
+                  moderators/admins (canManage). */}
+              {canManage && <DeleteModelButton modelId={modelId} />}
             </div>
           </>
         )}
