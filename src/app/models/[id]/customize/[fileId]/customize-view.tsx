@@ -402,7 +402,7 @@ export function CustomizeView({
           onPointerDown={startResize}
           className="group absolute inset-y-0 -right-1 z-10 hidden w-2 cursor-col-resize touch-none lg:block"
         >
-          <div className="mx-auto h-full w-1 rounded-full bg-transparent transition-colors group-hover:bg-primary/40" />
+          <div className="mx-auto h-full w-1 rounded-full bg-transparent transition-colors group-hover:bg-primary/80" />
         </div>
       </aside>
 

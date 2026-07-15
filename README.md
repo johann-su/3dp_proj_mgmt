@@ -44,32 +44,22 @@ npm run db:migrate         # apply SQL migrations from ./drizzle + seed categori
 
 ### Day to day
 
-`compose.yml`'s `postgres`, `slicer` and `openscad` services are the only things
-Docker runs in dev — `npm run dev` runs Next.js directly on the host (not in a
-container) and just connects to them over `localhost`. They aren't started for
-you, so bring them up first each time you come back to the project:
+`compose.yml`'s `postgres`, `slicer` and `openscad` services are the only things Docker runs in dev — `npm run dev` runs Next.js directly on the host (not in a container) and just connects to them over `localhost`. They aren't started for you, so bring them up first each time you come back to the project:
 
 ```sh
 docker compose up -d       # no-op if postgres/slicer/openscad are already running
 npm run dev
 ```
 
-If `npm run dev` immediately throws `ECONNREFUSED` from a Drizzle query (e.g.
-`select … from "categories"`) or Better Auth's session lookup, Postgres isn't up —
-run `docker compose up -d` (or `docker compose ps` to check what's running) and
-restart the dev server. `docker compose down` stops both containers again.
+If `npm run dev` immediately throws `ECONNREFUSED` from a Drizzle query (e.g. `select … from "categories"`) or Better Auth's session lookup, Postgres isn't up — run `docker compose up -d` (or `docker compose ps` to check what's running) and restart the dev server. `docker compose down` stops both containers again.
 
-Note for [Garage](https://garagehq.deuxfleurs.fr/) users: `S3_REGION` must match the
-`s3_api.s3_region` value of your Garage config (default `garage`), and the access key
-needs `garage bucket allow --read --write <bucket> --key <key>`.
+Note for [Garage](https://garagehq.deuxfleurs.fr/) users: `S3_REGION` must match the `s3_api.s3_region` value of your Garage config (default `garage`), and the access key needs `garage bucket allow --read --write <bucket> --key <key>`.
 
-Schema changes: edit `src/db/schema.ts`, then `npm run db:generate` to create a new
-migration (or `npm run db:push` to sync directly during development).
+Schema changes: edit `src/db/schema.ts`, then `npm run db:generate` to create a new migration (or `npm run db:push` to sync directly during development).
 
 ## Self-hosting
 
-The `app` service in `compose.yml` builds a production image (Next.js standalone
-output) that applies migrations and seeds categories on boot:
+The `app` service in `compose.yml` builds a production image (Next.js standalone output) that applies migrations and seeds categories on boot:
 
 ```sh
 export BETTER_AUTH_SECRET=$(openssl rand -base64 32)
@@ -81,44 +71,17 @@ docker compose --profile app up -d --build
 
 ### OIDC single sign-on (optional)
 
-Set `OIDC_ISSUER`, `OIDC_CLIENT_ID` and `OIDC_CLIENT_SECRET` to show an SSO button
-below the email/password form on the sign-in page (`OIDC_PROVIDER_NAME` customizes
-the button label). The issuer must serve `/.well-known/openid-configuration`
-(a full discovery URL is also accepted), and the client must be registered with the
-redirect URI `{BETTER_AUTH_URL}/api/auth/oauth2/callback/oidc`. Users are created on
-first SSO login, and an SSO login with the same email links to an existing
-email/password account.
+Set `OIDC_ISSUER`, `OIDC_CLIENT_ID` and `OIDC_CLIENT_SECRET` to show an SSO button below the email/password form on the sign-in page (`OIDC_PROVIDER_NAME` customizes the button label). The issuer must serve `/.well-known/openid-configuration` (a full discovery URL is also accepted), and the client must be registered with the redirect URI `{BETTER_AUTH_URL}/api/auth/oauth2/callback/oidc`. Users are created on first SSO login, and an SSO login with the same email links to an existing email/password account.
 
-**Authentik:** the issuer is per application, not the domain root — use
-`https://<host>/application/o/<app-slug>/` (shown as "OpenID Configuration Issuer"
-in the provider settings). A wrong issuer is logged at server start with the exact
-discovery URL that failed.
+**Authentik:** the issuer is per application, not the domain root — use `https://<host>/application/o/<app-slug>/` (shown as "OpenID Configuration Issuer" in the provider settings). A wrong issuer is logged at server start with the exact discovery URL that failed.
 
 ### User roles
 
-Every account starts as a plain **user**: full read access and collaborative
-editing, with destructive actions (deleting a model or collection) limited to
-what they own. Two elevated roles exist for cleanup and administration:
+Every account starts as a plain **user**: full read access and collaborative editing, with destructive actions (deleting a model or collection) limited to what they own. Two elevated roles exist for cleanup and administration:
 
-- **Moderator** — owner-equivalent on all content: may delete, restore, or
-  permanently purge any model, delete any collection, remove any generated
-  variant, and sees every user's trash under `/models/trash`.
-- **Admin** — everything a moderator can do, plus user management: the
-  **Settings → Users** page lists all accounts and changes their roles.
+- **Moderator** — owner-equivalent on all content: may delete, restore, or permanently purge any model, delete any collection, remove any generated variant, and sees every user's trash under `/models/trash`.
+- **Admin** — everything a moderator can do, plus user management: the **Settings → Users** page lists all accounts and changes their roles.
 
-Bootstrap the first admin by setting `INITIAL_ADMIN_EMAIL` to an account's
-email: while the database has no admin at all, that account is promoted at
-sign-up or on its next visit to any settings page. Once an admin exists the
-variable does nothing (roles are managed in the UI), but it also recovers an
-instance whose last admin account is gone. With OIDC, the IdP still decides
-who may *sign in* — roles only govern permissions inside the app.
+Bootstrap the first admin by setting `INITIAL_ADMIN_EMAIL` to an account's email: while the database has no admin at all, that account is promoted at sign-up or on its next visit to any settings page. Once an admin exists the variable does nothing (roles are managed in the UI), but it also recovers an instance whose last admin account is gone. With OIDC, the IdP still decides who may *sign in* — roles only govern permissions inside the app.
 
-**Roles from IdP groups (optional):** set `OIDC_ADMIN_GROUP` (and/or
-`OIDC_MODERATOR_GROUP`) to the exact group names your IdP sends in the OIDC
-`groups` claim — e.g. `OIDC_ADMIN_GROUP=homelab-admins` with an Authentik
-group of that name (Authentik includes the claim with the standard `profile`
-scope). While configured, group membership is authoritative on every SSO
-login: members of the group get the role, and a user in neither mapped group
-is (re)set to a plain user — so manage SSO users' roles in the IdP rather
-than on Settings → Users. If the IdP stops sending the `groups` claim
-entirely, stored roles are left untouched.
+**Roles from IdP groups (optional):** set `OIDC_ADMIN_GROUP` (and/or `OIDC_MODERATOR_GROUP`) to the exact group names your IdP sends in the OIDC `groups` claim — e.g. `OIDC_ADMIN_GROUP=homelab-admins` with an Authentik group of that name (Authentik includes the claim with the standard `profile` scope). While configured, group membership is authoritative on every SSO login: members of the group get the role, and a user in neither mapped group is (re)set to a plain user — so manage SSO users' roles in the IdP rather than on Settings → Users. If the IdP stops sending the `groups` claim entirely, stored roles are left untouched.
