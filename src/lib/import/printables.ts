@@ -7,8 +7,11 @@ import { ImportError, IMPORT_USER_AGENT, type ImportedProject } from "./types";
 
 const GRAPHQL_URL = "https://api.printables.com/graphql/";
 const MEDIA_BASE = "https://media.printables.com/";
-const MAX_FILES = 10;
-const MAX_IMAGES = 8;
+// No hard cap on model files: everything under a Printables design belongs to
+// that design's creator (unlike MakerWorld's community print profiles), so the
+// creator is the natural limit. We only warn past this many so the user can
+// review the file list before saving.
+const MANY_FILES_WARNING = 12;
 
 export function parsePrintablesUrl(url: URL): string | null {
   if (!/(^|\.)printables\.com$/.test(url.hostname)) return null;
@@ -123,7 +126,7 @@ export async function importFromPrintables(
     warnings: [],
   };
 
-  for (const image of (print.images ?? []).slice(0, MAX_IMAGES)) {
+  for (const image of print.images ?? []) {
     const filename = image.filePath.split("/").pop() ?? "image.jpg";
     project.assets.push({
       url: new URL(image.filePath, MEDIA_BASE).toString(),
@@ -140,7 +143,6 @@ export async function importFromPrintables(
   let fileCount = 0;
   for (const [files, fileType] of fileGroups) {
     for (const file of files ?? []) {
-      if (fileCount >= MAX_FILES) break;
       if (!MODEL_EXTENSIONS.includes(fileExtension(file.name))) continue;
       const link = await downloadLink(printId, file.id, fileType);
       if (!link) {
@@ -155,6 +157,10 @@ export async function importFromPrintables(
   if (fileCount === 0) {
     project.warnings.push(
       "No downloadable model files (.3mf / .scad / .step) found — add them manually.",
+    );
+  } else if (fileCount >= MANY_FILES_WARNING) {
+    project.warnings.push(
+      `This model contains a lot of files (${fileCount} model files were downloaded) — review the file list before saving, or discard the draft to cancel.`,
     );
   }
 
