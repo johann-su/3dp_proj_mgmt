@@ -3,15 +3,21 @@
 
 import { htmlishToMarkdown } from "@/lib/html";
 import { MODEL_EXTENSIONS, fileExtension } from "@/lib/s3";
-import { ImportError, IMPORT_USER_AGENT, type ImportedProject } from "./types";
+import {
+  ImportError,
+  IMPORT_CONFIRM_FILE_THRESHOLD,
+  IMPORT_USER_AGENT,
+  type ImportedProject,
+} from "./types";
 
 const GRAPHQL_URL = "https://api.printables.com/graphql/";
 const MEDIA_BASE = "https://media.printables.com/";
-// No hard cap on model files: everything under a Printables design belongs to
-// that design's creator (unlike MakerWorld's community print profiles), so the
-// creator is the natural limit. We only warn past this many so the user can
-// review the file list before saving.
-const MANY_FILES_WARNING = 12;
+
+export type PrintablesOptions = {
+  // Skip the "a lot of files" confirmation and download every model file. Set
+  // by the route once the user has agreed to import them all.
+  confirmManyFiles?: boolean;
+};
 
 export function parsePrintablesUrl(url: URL): string | null {
   if (!/(^|\.)printables\.com$/.test(url.hostname)) return null;
@@ -103,6 +109,7 @@ async function downloadLink(
 export async function importFromPrintables(
   url: URL,
   printId: string,
+  options: PrintablesOptions = {},
 ): Promise<ImportedProject> {
   const data = await graphql<{ print: PrintablesPrint | null }>(PRINT_QUERY, {
     id: printId,
@@ -140,27 +147,32 @@ export async function importFromPrintables(
     [print.slas, "sla"],
     [print.otherFiles, "other_file"],
   ];
+  const modelFiles = fileGroups.flatMap(([files, fileType]) =>
+    (files ?? [])
+      .filter((f) => MODEL_EXTENSIONS.includes(fileExtension(f.name)))
+      .map((f) => ({ file: f, fileType })),
+  );
+
+  // Stop before resolving any download link when there are a lot of files, so
+  // the user can confirm (or cancel) first.
+  if (!options.confirmManyFiles && modelFiles.length >= IMPORT_CONFIRM_FILE_THRESHOLD) {
+    return { ...project, needsConfirmation: true, fileCount: modelFiles.length };
+  }
+
   let fileCount = 0;
-  for (const [files, fileType] of fileGroups) {
-    for (const file of files ?? []) {
-      if (!MODEL_EXTENSIONS.includes(fileExtension(file.name))) continue;
-      const link = await downloadLink(printId, file.id, fileType);
-      if (!link) {
-        project.warnings.push(`Could not get a download link for ${file.name}`);
-        continue;
-      }
-      project.assets.push({ url: link, filename: file.name, kind: "model" });
-      fileCount++;
+  for (const { file, fileType } of modelFiles) {
+    const link = await downloadLink(printId, file.id, fileType);
+    if (!link) {
+      project.warnings.push(`Could not get a download link for ${file.name}`);
+      continue;
     }
+    project.assets.push({ url: link, filename: file.name, kind: "model" });
+    fileCount++;
   }
 
   if (fileCount === 0) {
     project.warnings.push(
       "No downloadable model files (.3mf / .scad / .step) found — add them manually.",
-    );
-  } else if (fileCount >= MANY_FILES_WARNING) {
-    project.warnings.push(
-      `This model contains a lot of files (${fileCount} model files were downloaded) — review the file list before saving, or discard the draft to cancel.`,
     );
   }
 

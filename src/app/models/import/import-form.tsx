@@ -11,6 +11,16 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent } from "@/components/ui/card";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 // MakerWorld collection URLs get a whole-collection background import instead
 // of the single-model draft flow. Mirrors parseMakerworldCollectionUrl.
@@ -29,6 +39,13 @@ function isMakerworldCollectionUrl(raw: string): boolean {
 export function ImportForm() {
   const router = useRouter();
   const [fetching, setFetching] = useState(false);
+  // Set when the importer reports a model has a lot of files — drives the
+  // Continue/Cancel confirmation dialog before we download them all.
+  const [pendingConfirm, setPendingConfirm] = useState<{
+    url: string;
+    fileCount: number;
+    title: string;
+  } | null>(null);
 
   async function importCollection(url: string) {
     const res = await fetch("/api/import/collection", {
@@ -47,18 +64,43 @@ export function ImportForm() {
     router.push(`/collections/${body.collectionId}`);
   }
 
-  async function importModel(url: string) {
+  async function importModel(url: string, confirm = false) {
     const res = await fetch("/api/import", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ url }),
+      body: JSON.stringify({ url, confirm }),
     });
     const body = await res.json().catch(() => null);
     if (!res.ok) {
       throw new Error(body?.error ?? `Import failed (${res.status})`);
     }
+    // The model has a lot of files — pause and open the Continue/Cancel dialog
+    // before downloading them all. The dialog is modal, so drop the fetching
+    // state; it resumes when the user confirms.
+    if (body?.needsConfirmation) {
+      setFetching(false);
+      setPendingConfirm({
+        url,
+        fileCount: body.fileCount ?? 0,
+        title: body.title ?? "",
+      });
+      return;
+    }
     sessionStorage.setItem(IMPORT_DRAFT_KEY, JSON.stringify(body));
     router.push("/models/new");
+  }
+
+  async function confirmImport() {
+    if (!pendingConfirm) return;
+    const { url } = pendingConfirm;
+    setPendingConfirm(null);
+    setFetching(true);
+    try {
+      await importModel(url, true);
+    } catch (err) {
+      setFetching(false);
+      toast.error(err instanceof Error ? err.message : "Import failed");
+    }
   }
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
@@ -78,6 +120,7 @@ export function ImportForm() {
   }
 
   return (
+    <>
     <Card>
       <CardContent>
         <form onSubmit={handleSubmit} className="grid gap-4">
@@ -117,5 +160,32 @@ export function ImportForm() {
         </form>
       </CardContent>
     </Card>
+
+      <AlertDialog
+        open={pendingConfirm !== null}
+        onOpenChange={(open) => {
+          if (!open) setPendingConfirm(null);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Import all files?</AlertDialogTitle>
+            <AlertDialogDescription>
+              {pendingConfirm ? (
+                <>
+                  “{pendingConfirm.title}” contains a lot of files (
+                  {pendingConfirm.fileCount} model files). Downloading them all
+                  can take a while. Continue?
+                </>
+              ) : null}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={confirmImport}>Continue</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
   );
 }

@@ -15,13 +15,13 @@ import {
   fetchRawModelDownload,
   type BambuRegion,
 } from "@/lib/bambu/cloud";
-import { ImportError, IMPORT_USER_AGENT, type ImportedProject, type RemoteAsset } from "./types";
-
-// No hard cap on print profiles: the "designer's own profiles only" filter in
-// resolveDownloads is the real limit (a designer rarely uploads more than a
-// handful). We only warn past this many .3mf files so the user can review the
-// list before saving, or bail out of the create form entirely.
-const MANY_FILES_WARNING = 12;
+import {
+  ImportError,
+  IMPORT_CONFIRM_FILE_THRESHOLD,
+  IMPORT_USER_AGENT,
+  type ImportedProject,
+  type RemoteAsset,
+} from "./types";
 
 // Exact warning pushed when the stored Bambu token stops working. The
 // collection import job matches on it to abort early (every following
@@ -133,7 +133,37 @@ type MakerworldDesign = {
 export type MakerworldOptions = {
   token?: string;
   region?: BambuRegion;
+  // Skip the "a lot of files" confirmation and download every profile. Set by
+  // the route once the user has agreed, and always by the bulk collection job.
+  confirmManyFiles?: boolean;
 };
+
+// Restricts a design's print-profile instances to the designer's own — an
+// instance whose author matches the design's author. This author filter (not
+// an arbitrary file count) is the primary limit on how much a single import
+// downloads: a popular model can carry dozens of community-uploaded remix
+// profiles we don't want. `restrictedToCreator` is false when we can't apply
+// it (missing author, or the designer published none of their own), in which
+// case every profile is kept rather than importing zero.
+function selectDesignerInstances(design: MakerworldDesign): {
+  instances: (DesignInstance & { profileId: number })[];
+  restrictedToCreator: boolean;
+} {
+  let instances = (design.instances ?? []).filter(
+    (i): i is DesignInstance & { profileId: number } =>
+      typeof i.profileId === "number",
+  );
+  const creatorUid = design.designCreator?.uid;
+  let restrictedToCreator = false;
+  if (typeof creatorUid === "number") {
+    const own = instances.filter((i) => i.instanceCreator?.uid === creatorUid);
+    if (own.length > 0) {
+      instances = own;
+      restrictedToCreator = true;
+    }
+  }
+  return { instances, restrictedToCreator };
+}
 
 // MakerWorld's API returns each text field twice: the author's original plus a
 // single pre-computed English machine-translation (`*Translated`). That English
@@ -248,26 +278,7 @@ async function resolveDownloads(
   const warnings: string[] = [];
 
   const modelId = design.modelId;
-  let instances = (design.instances ?? []).filter(
-    (i): i is DesignInstance & { profileId: number } =>
-      typeof i.profileId === "number",
-  );
-  // A popular model can carry dozens of community-uploaded print profiles
-  // (the ones without the green "Designer" tag on MakerWorld). We only want
-  // the designer's own — an instance whose author is the design's author —
-  // and that filter, not an arbitrary file count, is the primary limit on how
-  // much gets downloaded. Fall back to all profiles when we can't tell (missing
-  // author, or the designer published none of their own) rather than importing
-  // zero files, and warn in that case since the count is then unbounded.
-  const creatorUid = design.designCreator?.uid;
-  let restrictedToCreator = false;
-  if (typeof creatorUid === "number") {
-    const own = instances.filter((i) => i.instanceCreator?.uid === creatorUid);
-    if (own.length > 0) {
-      instances = own;
-      restrictedToCreator = true;
-    }
-  }
+  const { instances, restrictedToCreator } = selectDesignerInstances(design);
   if (!modelId || instances.length === 0) {
     warnings.push("No downloadable print profiles were found for this model.");
   } else if (!restrictedToCreator) {
@@ -308,10 +319,6 @@ async function resolveDownloads(
 
   if (assets.length === 0 && warnings.length === 0) {
     warnings.push("No .3mf files could be downloaded for this model.");
-  } else if (assets.length >= MANY_FILES_WARNING) {
-    warnings.push(
-      `This model contains a lot of files (${assets.length} .3mf files were downloaded) — review the file list before saving, or discard the draft to cancel.`,
-    );
   }
 
   // Parametric designs also carry their OpenSCAD source as a raw model file —
@@ -399,18 +406,7 @@ export async function importFromMakerworld(
   // Attached PDFs (assembly guide / BOM sheet) import as document files.
   assets.push(...selectDocs(design));
 
-  const warnings: string[] = [];
-  if (options.token) {
-    const downloads = await resolveDownloads(design, options.token, region);
-    assets.push(...downloads.assets);
-    warnings.push(...downloads.warnings);
-  } else {
-    warnings.push(
-      "Connect your Bambu account (Settings → Bambu Cloud) to download the .3mf automatically — metadata and images were imported; add the .3mf manually for now.",
-    );
-  }
-
-  return {
+  const base: ImportedProject = {
     source: "makerworld",
     sourceUrl: url.toString(),
     title: preferEnglish(design.titleTranslated, design.title),
@@ -421,6 +417,26 @@ export async function importFromMakerworld(
       .filter(Boolean),
     assets,
     bom: selectBomItems(design),
-    warnings,
+    warnings: [],
   };
+
+  if (!options.token) {
+    base.warnings.push(
+      "Connect your Bambu account (Settings → Bambu Cloud) to download the .3mf automatically — metadata and images were imported; add the .3mf manually for now.",
+    );
+    return base;
+  }
+
+  // A popular parametric model can carry ~100 of the designer's own print
+  // profiles. Downloading them all is slow and rarely wanted, so stop before
+  // resolving any download and let the user confirm (or cancel) first.
+  const projected = selectDesignerInstances(design).instances.length;
+  if (!options.confirmManyFiles && projected >= IMPORT_CONFIRM_FILE_THRESHOLD) {
+    return { ...base, needsConfirmation: true, fileCount: projected };
+  }
+
+  const downloads = await resolveDownloads(design, options.token, region);
+  base.assets.push(...downloads.assets);
+  base.warnings.push(...downloads.warnings);
+  return base;
 }

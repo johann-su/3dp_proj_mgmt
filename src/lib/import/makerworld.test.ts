@@ -1,4 +1,4 @@
-import { test } from "node:test";
+import { test, type TestContext } from "node:test";
 import assert from "node:assert/strict";
 import {
   collectScadModelFiles,
@@ -143,24 +143,26 @@ test("importFromMakerworld imports only the designer's own print profiles", asyn
 });
 
 // The designer's-own filter is the only limit — there is no cap on how many of
-// their profiles import. A designer who published 15 of their own profiles gets
-// all 15, and past MANY_FILES_WARNING (12) a warning tells the user to review
-// the list (the create form's "continue or cancel") rather than silently
-// dropping files as the old MAX_FILES=8 cap did.
-test("importFromMakerworld imports all of the designer's own profiles, no cap", async (t) => {
-  const instances = Array.from({ length: 15 }, (_, i) => ({
-    id: i + 1,
-    profileId: 100 + i,
-    title: `Designer ${i}`,
-    instanceCreator: { uid: 100 },
-  }));
-  const design = {
+// their profiles import. But a model with a lot of them (popular parametric
+// models carry ~100) first stops for a Continue/Cancel confirmation so the user
+// isn't surprised by a slow bulk download: without confirmation the importer
+// resolves NO downloads and reports the projected count; with it, all import.
+function manyProfilesDesign(count: number) {
+  return {
     id: 999,
     modelId: "USdeadbeef",
     title: "Many Profiles",
     designCreator: { uid: 100 },
-    instances,
+    instances: Array.from({ length: count }, (_, i) => ({
+      id: i + 1,
+      profileId: 100 + i,
+      title: `Designer ${i}`,
+      instanceCreator: { uid: 100 },
+    })),
   };
+}
+
+function mockManyProfilesFetch(t: TestContext, design: unknown) {
   t.mock.method(globalThis, "fetch", async (input: URL | RequestInfo) => {
     const url = String(input);
     const profile = url.match(/\/iot-service\/api\/user\/profile\/(\d+)/);
@@ -172,15 +174,31 @@ test("importFromMakerworld imports all of the designer's own profiles, no cap", 
     }
     return new Response("not found", { status: 404 });
   });
+}
+
+test("importFromMakerworld asks to confirm before importing a model with many files", async (t) => {
+  mockManyProfilesFetch(t, manyProfilesDesign(15));
 
   const project = await importFromMakerworld(
     new URL("https://makerworld.com/en/models/999-many"),
     { token: "token" },
   );
-  const modelNames = project.assets.filter((a) => a.kind === "model").map((a) => a.filename);
-  assert.equal(modelNames.length, 15);
-  // the high count triggers the review-before-saving warning
-  assert.ok(project.warnings.some((w) => /a lot of files/i.test(w)));
+  // Stopped before resolving any download; reports the projected file count.
+  assert.equal(project.needsConfirmation, true);
+  assert.equal(project.fileCount, 15);
+  assert.equal(project.assets.filter((a) => a.kind === "model").length, 0);
+});
+
+test("importFromMakerworld imports all of the designer's own profiles once confirmed, no cap", async (t) => {
+  mockManyProfilesFetch(t, manyProfilesDesign(15));
+
+  const project = await importFromMakerworld(
+    new URL("https://makerworld.com/en/models/999-many"),
+    { token: "token", confirmManyFiles: true },
+  );
+  assert.ok(!project.needsConfirmation);
+  // No cap: all 15 of the designer's own profiles import.
+  assert.equal(project.assets.filter((a) => a.kind === "model").length, 15);
 });
 
 test("importFromMakerworld surfaces the design's category names leaf-first", async (t) => {
