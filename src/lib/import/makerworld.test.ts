@@ -90,8 +90,9 @@ test("collectScadModelFiles finds .scad entries nested under folders", () => {
 
 // A popular design accumulates community-uploaded print profiles (no green
 // "Designer" tag). We import only the designer's own — an instance whose
-// author matches the design author — so a handful of MAX_FILES slots aren't
-// spent on other people's remixes. The .scad source imports regardless.
+// author matches the design author — so other people's remixes aren't pulled
+// in. That author filter, not a file count, is the primary limit. The .scad
+// source imports regardless.
 test("importFromMakerworld imports only the designer's own print profiles", async (t) => {
   const design = {
     id: 47599,
@@ -139,6 +140,47 @@ test("importFromMakerworld imports only the designer's own print profiles", asyn
   assert.ok(!modelNames.includes("p11.3mf"));
   // and the nested .scad source still imports
   assert.ok(project.assets.some((a) => a.extractScad));
+});
+
+// The designer's-own filter is the only limit — there is no cap on how many of
+// their profiles import. A designer who published 15 of their own profiles gets
+// all 15, and past MANY_FILES_WARNING (12) a warning tells the user to review
+// the list (the create form's "continue or cancel") rather than silently
+// dropping files as the old MAX_FILES=8 cap did.
+test("importFromMakerworld imports all of the designer's own profiles, no cap", async (t) => {
+  const instances = Array.from({ length: 15 }, (_, i) => ({
+    id: i + 1,
+    profileId: 100 + i,
+    title: `Designer ${i}`,
+    instanceCreator: { uid: 100 },
+  }));
+  const design = {
+    id: 999,
+    modelId: "USdeadbeef",
+    title: "Many Profiles",
+    designCreator: { uid: 100 },
+    instances,
+  };
+  t.mock.method(globalThis, "fetch", async (input: URL | RequestInfo) => {
+    const url = String(input);
+    const profile = url.match(/\/iot-service\/api\/user\/profile\/(\d+)/);
+    if (profile) {
+      return Response.json({ name: `p${profile[1]}.3mf`, url: `https://cdn.example/${profile[1]}.3mf` });
+    }
+    if (url.includes("/design-service/design/999")) {
+      return Response.json(design);
+    }
+    return new Response("not found", { status: 404 });
+  });
+
+  const project = await importFromMakerworld(
+    new URL("https://makerworld.com/en/models/999-many"),
+    { token: "token" },
+  );
+  const modelNames = project.assets.filter((a) => a.kind === "model").map((a) => a.filename);
+  assert.equal(modelNames.length, 15);
+  // the high count triggers the review-before-saving warning
+  assert.ok(project.warnings.some((w) => /a lot of files/i.test(w)));
 });
 
 test("importFromMakerworld surfaces the design's category names leaf-first", async (t) => {

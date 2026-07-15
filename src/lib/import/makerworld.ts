@@ -17,9 +17,11 @@ import {
 } from "@/lib/bambu/cloud";
 import { ImportError, IMPORT_USER_AGENT, type ImportedProject, type RemoteAsset } from "./types";
 
-const MAX_IMAGES = 8;
-const MAX_FILES = 8;
-const MAX_DOCS = 8;
+// No hard cap on print profiles: the "designer's own profiles only" filter in
+// resolveDownloads is the real limit (a designer rarely uploads more than a
+// handful). We only warn past this many .3mf files so the user can review the
+// list before saving, or bail out of the create form entirely.
+const MANY_FILES_WARNING = 12;
 
 // Exact warning pushed when the stored Bambu token stops working. The
 // collection import job matches on it to abort early (every following
@@ -151,18 +153,18 @@ export function preferEnglish(
 // an animated GIF) lives in `coverUrl`, separate from the `design_pictures`
 // gallery — it is the model's first piece of media on the site, so it leads the
 // list rather than only being a fallback when the gallery is empty.
-export function selectImageUrls(design: MakerworldDesign, max = MAX_IMAGES): string[] {
+export function selectImageUrls(design: MakerworldDesign): string[] {
   const pictures = design.designExtension?.design_pictures ?? [];
   const urls = [design.coverUrl, ...pictures.map((p) => p.url)].filter(
     (u): u is string => typeof u === "string" && u.startsWith("http"),
   );
-  return [...new Set(urls)].slice(0, max);
+  return [...new Set(urls)];
 }
 
 // Picks the design's attached documents (assembly guide + BOM sheet) as PDF
 // assets. Both live under `designExtension` as {name, url} download links; the
 // staging step drops anything that isn't actually a .pdf.
-export function selectDocs(design: MakerworldDesign, max = MAX_DOCS): RemoteAsset[] {
+export function selectDocs(design: MakerworldDesign): RemoteAsset[] {
   const ext = design.designExtension;
   const docs = [...(ext?.design_guide ?? []), ...(ext?.design_bom ?? [])];
   const seen = new Set<string>();
@@ -177,7 +179,6 @@ export function selectDocs(design: MakerworldDesign, max = MAX_DOCS): RemoteAsse
       filename: (doc.name?.trim() || fallback),
       kind: "pdf",
     });
-    if (assets.length >= max) break;
   }
   return assets;
 }
@@ -254,25 +255,30 @@ async function resolveDownloads(
   // A popular model can carry dozens of community-uploaded print profiles
   // (the ones without the green "Designer" tag on MakerWorld). We only want
   // the designer's own — an instance whose author is the design's author —
-  // so the MAX_FILES budget isn't spent on other people's remixes. Fall back
-  // to all profiles when we can't tell (missing author, or the designer
-  // published none of their own) rather than importing zero files.
+  // and that filter, not an arbitrary file count, is the primary limit on how
+  // much gets downloaded. Fall back to all profiles when we can't tell (missing
+  // author, or the designer published none of their own) rather than importing
+  // zero files, and warn in that case since the count is then unbounded.
   const creatorUid = design.designCreator?.uid;
+  let restrictedToCreator = false;
   if (typeof creatorUid === "number") {
     const own = instances.filter((i) => i.instanceCreator?.uid === creatorUid);
-    if (own.length > 0) instances = own;
+    if (own.length > 0) {
+      instances = own;
+      restrictedToCreator = true;
+    }
   }
   if (!modelId || instances.length === 0) {
     warnings.push("No downloadable print profiles were found for this model.");
+  } else if (!restrictedToCreator) {
+    warnings.push(
+      "Could not tell which print profiles are the designer's own, so all of them were imported — review the files before saving.",
+    );
   }
 
   const seen = new Set<number>();
   if (modelId) {
     for (const instance of instances) {
-      if (assets.length >= MAX_FILES) {
-        warnings.push(`Only the first ${MAX_FILES} print profiles were imported.`);
-        break;
-      }
       if (seen.has(instance.profileId)) continue;
       seen.add(instance.profileId);
 
@@ -302,6 +308,10 @@ async function resolveDownloads(
 
   if (assets.length === 0 && warnings.length === 0) {
     warnings.push("No .3mf files could be downloaded for this model.");
+  } else if (assets.length >= MANY_FILES_WARNING) {
+    warnings.push(
+      `This model contains a lot of files (${assets.length} .3mf files were downloaded) — review the file list before saving, or discard the draft to cancel.`,
+    );
   }
 
   // Parametric designs also carry their OpenSCAD source as a raw model file —
