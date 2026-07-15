@@ -7,6 +7,7 @@ import { ChevronDown, History, Loader2, RotateCcw } from "lucide-react";
 import type { ModelVersionReason } from "@/db/schema";
 import { revertModelVersion } from "@/app/models/actions";
 import { formatDate } from "@/lib/format";
+import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -75,11 +76,14 @@ export function HistoryPanel({
           <button className="w-full text-left" type="button">
             <CardHeader>
               <CardTitle className="flex items-center gap-2 text-base">
+                <ChevronDown
+                  className={cn(
+                    "size-4 text-muted-foreground transition-transform",
+                    !open && "-rotate-90",
+                  )}
+                />
                 <History className="size-4 text-muted-foreground" />
                 History ({entries.length})
-                <ChevronDown
-                  className={`ml-auto size-4 text-muted-foreground transition-transform ${open ? "rotate-180" : ""}`}
-                />
               </CardTitle>
             </CardHeader>
           </button>

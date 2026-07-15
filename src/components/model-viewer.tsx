@@ -40,6 +40,18 @@ const GRID_COLOR = 0x8b8f96;
 // Guard against a giant project hanging the tab.
 const MAX_BYTES = 50 * 1024 * 1024;
 
+// Plate-name rail width (px). Draggable like the OpenSCAD customizer's parameter
+// panel, clamped so a long plate name stays readable without swallowing the
+// preview. Persisted so the choice sticks across files and page loads.
+const RAIL_DEFAULT_WIDTH = 112; // matches the previous fixed w-28 (7rem)
+const RAIL_MIN_WIDTH = 80;
+const RAIL_MAX_WIDTH = 320;
+const RAIL_WIDTH_KEY = "model-viewer-plate-rail-width";
+
+function clampRailWidth(width: number) {
+  return Math.min(RAIL_MAX_WIDTH, Math.max(RAIL_MIN_WIDTH, width));
+}
+
 // Frees GPU resources for any renderable (Mesh, GridHelper/LineSegments, …).
 function disposeObject(object: THREE.Object3D) {
   object.traverse((child) => {
@@ -75,6 +87,10 @@ export function ModelViewer({
   // Expand the viewport to a full-screen overlay, like the image lightbox. The
   // renderer follows the container via the existing ResizeObserver.
   const [fullscreen, setFullscreen] = useState(false);
+  // Drag-resizable plate-name rail (mirrors the customizer's parameter panel).
+  const railRef = useRef<HTMLDivElement>(null);
+  const [railWidth, setRailWidth] = useState(RAIL_DEFAULT_WIDTH);
+  const resizingRail = useRef(false);
 
   // Reveal one plate, size the bed to it, and frame the camera. Kept on a ref
   // so the plate buttons can call it without re-running the load effect.
@@ -301,6 +317,40 @@ export function ModelViewer({
     return () => window.removeEventListener("keydown", onKey);
   }, [fullscreen]);
 
+  // Restore the last dragged rail width once mounted (avoids SSR/localStorage skew).
+  useEffect(() => {
+    const stored = Number(window.localStorage.getItem(RAIL_WIDTH_KEY));
+    if (Number.isFinite(stored) && stored > 0) setRailWidth(clampRailWidth(stored));
+  }, []);
+
+  const startRailResize = useCallback((e: React.PointerEvent) => {
+    e.preventDefault();
+    resizingRail.current = true;
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
+  }, []);
+
+  useEffect(() => {
+    function onMove(e: PointerEvent) {
+      if (!resizingRail.current || !railRef.current) return;
+      const left = railRef.current.getBoundingClientRect().left;
+      setRailWidth(clampRailWidth(e.clientX - left));
+    }
+    function onUp() {
+      if (!resizingRail.current) return;
+      resizingRail.current = false;
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+      window.localStorage.setItem(RAIL_WIDTH_KEY, String(railWidth));
+    }
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+    return () => {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+    };
+  }, [railWidth]);
+
   const multiFile = files.length > 1;
   const multiPlate = plateNames.length > 1;
 
@@ -343,31 +393,48 @@ export function ModelViewer({
         </button>
       </div>
 
-      {/* Plate selector, mirroring MakerWorld's per-plate rail. */}
+      {/* Plate selector, mirroring MakerWorld's per-plate rail. Drag its right
+          edge to widen it for long plate names (like the customizer panel). */}
       {multiPlate && !loading && !error && (
-        <div className="absolute bottom-2 left-2 top-12 z-10 flex w-28 flex-col gap-1 overflow-y-auto rounded-lg bg-background/70 p-1 shadow-sm backdrop-blur">
-          <div className="sticky top-0 z-10 rounded-t-md bg-background/80 px-2 pt-1 pb-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground backdrop-blur">
-            Plates
+        <div
+          ref={railRef}
+          style={{ "--rail-width": `${railWidth}px` } as React.CSSProperties}
+          className="absolute bottom-2 left-2 top-12 z-10 flex w-[var(--rail-width)] flex-col rounded-lg bg-background/70 shadow-sm backdrop-blur"
+        >
+          <div className="flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto p-1">
+            <div className="sticky top-0 z-10 rounded-t-md bg-background/80 px-2 pt-1 pb-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground backdrop-blur">
+              Plates
+            </div>
+            {plateNames.map((name, i) => (
+              <button
+                key={i}
+                type="button"
+                onClick={() => {
+                  setPlateIndex(i);
+                  showPlate(i);
+                }}
+                className={cn(
+                  "shrink-0 truncate rounded-md px-2 py-1.5 text-left text-xs font-medium transition-colors",
+                  i === plateIndex
+                    ? "bg-primary text-primary-foreground"
+                    : "text-muted-foreground hover:bg-muted",
+                )}
+                title={name}
+              >
+                {name}
+              </button>
+            ))}
           </div>
-          {plateNames.map((name, i) => (
-            <button
-              key={i}
-              type="button"
-              onClick={() => {
-                setPlateIndex(i);
-                showPlate(i);
-              }}
-              className={cn(
-                "shrink-0 truncate rounded-md px-2 py-1.5 text-left text-xs font-medium transition-colors",
-                i === plateIndex
-                  ? "bg-primary text-primary-foreground"
-                  : "text-muted-foreground hover:bg-muted",
-              )}
-              title={name}
-            >
-              {name}
-            </button>
-          ))}
+
+          {/* Drag to resize the rail width. */}
+          <div
+            role="separator"
+            aria-orientation="vertical"
+            onPointerDown={startRailResize}
+            className="group/rail absolute inset-y-0 -right-1 z-10 w-2 cursor-col-resize touch-none"
+          >
+            <div className="mx-auto h-full w-1 rounded-full bg-transparent transition-colors group-hover/rail:bg-primary/80" />
+          </div>
         </div>
       )}
 

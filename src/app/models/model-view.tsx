@@ -5,6 +5,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import {
+  ChevronDown,
   Clock,
   Download,
   ExternalLink,
@@ -29,7 +30,13 @@ import type { BomItemInput } from "@/lib/bom";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
 import { Separator } from "@/components/ui/separator";
+import { cn } from "@/lib/utils";
 import { ImageGallery } from "@/components/image-gallery";
 import { Markdown } from "@/components/markdown";
 import {
@@ -42,6 +49,7 @@ import { AddToCollection, type CollectionOption } from "./[id]/add-to-collection
 import { DeleteModelButton } from "./[id]/delete-model-button";
 import { HistoryPanel, type ModelHistoryEntry } from "./[id]/history-panel";
 import { OnshapeSyncButton } from "./[id]/onshape-sync-button";
+import { ShareButton } from "./[id]/share-button";
 import { FileDownloadMenu } from "./[id]/file-download-menu";
 
 export type { CollectionOption };
@@ -328,6 +336,8 @@ export function ModelView({ data }: { data: ModelViewData }) {
     history,
   } = data;
 
+  const [documentsOpen, setDocumentsOpen] = useState(true);
+
   return (
     <div className="grid gap-8 lg:grid-cols-[1fr_400px]">
       <div className="min-w-0">
@@ -522,14 +532,29 @@ export function ModelView({ data }: { data: ModelViewData }) {
         </Card>
 
         {pdfFiles.length > 0 && (
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base">
-                Documents ({pdfFiles.length})
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="grid gap-2">
-              {pdfFiles.map((file, index) => (
+          <Collapsible
+            open={documentsOpen}
+            onOpenChange={setDocumentsOpen}
+            asChild
+          >
+            <Card>
+              <CardHeader>
+                <CollapsibleTrigger className="group -m-2 flex w-full items-center gap-2 rounded-md p-2 text-left outline-hidden focus-visible:ring-2 focus-visible:ring-ring">
+                  <ChevronDown
+                    className={cn(
+                      "size-4 text-muted-foreground transition-transform",
+                      !documentsOpen && "-rotate-90",
+                    )}
+                  />
+                  <FileText className="size-4 text-muted-foreground" />
+                  <CardTitle className="text-base">
+                    Documents ({pdfFiles.length})
+                  </CardTitle>
+                </CollapsibleTrigger>
+              </CardHeader>
+              <CollapsibleContent>
+                <CardContent className="grid gap-2">
+                  {pdfFiles.map((file, index) => (
                 <div
                   key={file.id ?? `${file.filename}-${index}`}
                   className="flex min-w-0 items-center gap-3 border rounded-md px-3 py-2"
@@ -579,8 +604,10 @@ export function ModelView({ data }: { data: ModelViewData }) {
                   )}
                 </div>
               ))}
-            </CardContent>
-          </Card>
+                </CardContent>
+              </CollapsibleContent>
+            </Card>
+          </Collapsible>
         )}
 
         {isLoggedIn && modelId && history && history.length > 0 && (
@@ -591,6 +618,7 @@ export function ModelView({ data }: { data: ModelViewData }) {
           <>
             <Separator />
             <div className="flex items-center gap-2">
+              <ShareButton />
               <Button asChild variant="outline" size="sm">
                 <Link href={`/models/${modelId}/edit`}>
                   <Pencil className="size-4" />
