@@ -60,3 +60,51 @@ test("importFromPrintables imports .scad from otherFiles and skips unknown types
     ["horn.3mf", "horn.scad"],
   );
 });
+
+test("importFromPrintables asks to confirm before importing a model with many files", async (t) => {
+  // A model with a lot of files stops for a Continue/Cancel confirmation before
+  // any download link is resolved; it reports the projected count and, once the
+  // caller confirms, imports them all (no cap).
+  const print = {
+    name: "Big Set",
+    description: "d",
+    summary: null,
+    tags: [],
+    images: [],
+    stls: Array.from({ length: 15 }, (_, i) => ({ id: String(i), name: `part${i}.3mf`, fileSize: 10 })),
+    slas: null,
+    otherFiles: null,
+  };
+  let downloadCalls = 0;
+  t.mock.method(globalThis, "fetch", async (_url: unknown, init?: RequestInit) => {
+    const body = JSON.parse(String(init?.body));
+    if (body.query.startsWith("query Print")) {
+      return new Response(JSON.stringify({ data: { print } }), { status: 200 });
+    }
+    downloadCalls++;
+    return new Response(
+      JSON.stringify({
+        data: { getDownloadLink: { ok: true, output: { link: `https://files/${body.variables.id}` } } },
+      }),
+      { status: 200 },
+    );
+  });
+
+  const unconfirmed = await importFromPrintables(
+    new URL("https://www.printables.com/model/678-big"),
+    "678",
+  );
+  assert.equal(unconfirmed.needsConfirmation, true);
+  assert.equal(unconfirmed.fileCount, 15);
+  // No download links were resolved while waiting for confirmation.
+  assert.equal(downloadCalls, 0);
+  assert.equal(unconfirmed.assets.filter((a) => a.kind === "model").length, 0);
+
+  const confirmed = await importFromPrintables(
+    new URL("https://www.printables.com/model/678-big"),
+    "678",
+    { confirmManyFiles: true },
+  );
+  assert.ok(!confirmed.needsConfirmation);
+  assert.equal(confirmed.assets.filter((a) => a.kind === "model").length, 15);
+});

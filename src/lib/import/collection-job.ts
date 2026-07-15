@@ -365,6 +365,8 @@ async function importDesign(
   const project = await importFromMakerworld(new URL(sourceUrl), {
     token: cred.token,
     region: cred.region,
+    // Bulk import: never stop for the per-model "a lot of files" prompt.
+    confirmManyFiles: true,
   });
   if (project.warnings.includes(BAMBU_EXPIRED_WARNING)) {
     throw new ImportError(BAMBU_EXPIRED_WARNING);

@@ -36,7 +36,19 @@ export type ImportedProject = {
   // Workspace microversion at export time (Onshape only, workspace pins only);
   // stored on the model so sync can tell whether the document changed.
   onshapeMicroversion?: string | null;
+  // Single-model import only: set when the projected number of downloadable
+  // model files is large enough to warrant a Continue/Cancel prompt and the
+  // caller hasn't confirmed yet. No download links were resolved and nothing
+  // was staged — the route returns `fileCount` to the client and re-imports
+  // with confirmation once the user agrees.
+  needsConfirmation?: boolean;
+  fileCount?: number;
 };
+
+// Above this many downloadable model files, the single-model import asks the
+// user to confirm before pulling them all (MakerWorld's popular parametric
+// models carry ~100 print profiles). Bulk/collection imports bypass the prompt.
+export const IMPORT_CONFIRM_FILE_THRESHOLD = 12;
 
 export class ImportError extends Error {}
 

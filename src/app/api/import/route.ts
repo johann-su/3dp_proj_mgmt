@@ -36,7 +36,13 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const body = (await req.json().catch(() => null)) as { url?: string } | null;
+  const body = (await req.json().catch(() => null)) as {
+    url?: string;
+    // Set once the user has agreed to import a model with a lot of files
+    // (the Continue/Cancel prompt in import-form.tsx).
+    confirm?: boolean;
+  } | null;
+  const confirmManyFiles = body?.confirm === true;
   let url: URL;
   try {
     url = new URL(body?.url ?? "");
@@ -56,7 +62,9 @@ export async function POST(req: NextRequest) {
       const cred = await getBambuCredential(session.user.id);
       project = await importFromMakerworld(
         url,
-        cred ? { token: cred.token, region: cred.region } : {},
+        cred
+          ? { token: cred.token, region: cred.region, confirmManyFiles }
+          : { confirmManyFiles },
       );
     } else if (parseMakerworldCollectionUrl(url)) {
       // Whole collections import in the background — see /api/import/collection.
@@ -71,7 +79,7 @@ export async function POST(req: NextRequest) {
       const printablesId = parsePrintablesUrl(url);
       const onshapePin = printablesId ? null : parseOnshapeUrl(url);
       if (printablesId) {
-        project = await importFromPrintables(url, printablesId);
+        project = await importFromPrintables(url, printablesId, { confirmManyFiles });
       } else if (onshapePin) {
         const accessToken = await getOnshapeAccessToken(session.user.id);
         project = await importFromOnshape(
@@ -87,6 +95,16 @@ export async function POST(req: NextRequest) {
           { status: 400 },
         );
       }
+    }
+
+    // The importer stopped before resolving downloads because the model has a
+    // lot of files — ask the client to confirm, then it re-POSTs with confirm.
+    if (project.needsConfirmation) {
+      return NextResponse.json({
+        needsConfirmation: true,
+        fileCount: project.fileCount ?? 0,
+        title: project.title,
+      });
     }
 
     const staged = await stageImportedAssets(project);

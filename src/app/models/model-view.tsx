@@ -336,6 +336,7 @@ export function ModelView({ data }: { data: ModelViewData }) {
     history,
   } = data;
 
+  const [filesOpen, setFilesOpen] = useState(true);
   const [documentsOpen, setDocumentsOpen] = useState(true);
 
   return (
@@ -477,16 +478,30 @@ export function ModelView({ data }: { data: ModelViewData }) {
           <AddToCollection modelId={modelId} collections={collectionOptions} />
         )}
 
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">
-              Files (
-              {printFiles.reduce((n, f) => n + 1 + (f.variants?.length ?? 0), 0)}
-              )
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="grid gap-2">
-            {printFiles.map((file, index) => (
+        <Collapsible open={filesOpen} onOpenChange={setFilesOpen} asChild>
+          <Card>
+            <CardHeader>
+              <CollapsibleTrigger className="group -m-2 flex w-full items-center gap-2 rounded-md p-2 text-left outline-hidden focus-visible:ring-2 focus-visible:ring-ring">
+                <ChevronDown
+                  className={cn(
+                    "size-4 text-muted-foreground transition-transform",
+                    !filesOpen && "-rotate-90",
+                  )}
+                />
+                <FileBox className="size-4 text-muted-foreground" />
+                <CardTitle className="text-base">
+                  Files (
+                  {printFiles.reduce(
+                    (n, f) => n + 1 + (f.variants?.length ?? 0),
+                    0,
+                  )}
+                  )
+                </CardTitle>
+              </CollapsibleTrigger>
+            </CardHeader>
+            <CollapsibleContent>
+              <CardContent className="grid gap-2">
+                {printFiles.map((file, index) => (
               <div key={file.id ?? `${file.filename}-${index}`} className="grid gap-2">
                 <PrintFileRow
                   file={file}
@@ -528,8 +543,10 @@ export function ModelView({ data }: { data: ModelViewData }) {
                 )}
               </div>
             ))}
-          </CardContent>
-        </Card>
+              </CardContent>
+            </CollapsibleContent>
+          </Card>
+        </Collapsible>
 
         {pdfFiles.length > 0 && (
           <Collapsible
