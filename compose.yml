@@ -69,6 +69,10 @@ services:
       S3_SECRET_ACCESS_KEY: ${S3_SECRET_ACCESS_KEY:?}
       S3_BUCKET: ${S3_BUCKET:-models}
       S3_FORCE_PATH_STYLE: ${S3_FORCE_PATH_STYLE:-true}
+      # Optional OpenTelemetry OTLP trace export (see .env.example). Unset
+      # (the default) disables telemetry entirely.
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
+      OTEL_SERVICE_NAME: ${OTEL_SERVICE_NAME:-}
       # Headless slicer service for print time / filament estimates
       SLICER_URL: http://slicer:8000
       # Headless OpenSCAD service for parametric .scad models (customizer)

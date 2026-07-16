@@ -5,6 +5,7 @@ import { collections } from "@/db/schema";
 import { getSession } from "@/lib/auth";
 import { ImportError } from "@/lib/import/types";
 import { startCollectionImport } from "@/lib/import/collection-job";
+import { reportError } from "@/lib/telemetry";
 
 export const runtime = "nodejs";
 
@@ -55,7 +56,7 @@ export async function POST(
     if (err instanceof ImportError) {
       return NextResponse.json({ error: err.message }, { status: 502 });
     }
-    console.error("Collection sync failed to start", err);
+    reportError("Collection sync failed to start", err);
     return NextResponse.json({ error: "Sync failed — try again" }, { status: 500 });
   }
 }

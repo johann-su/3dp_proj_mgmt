@@ -28,6 +28,7 @@ import { pickCategoryId } from "@/lib/categories";
 import { sanitizeBomItems } from "@/lib/bom";
 import { linkTags, normalizeTagNames } from "@/lib/tags";
 import { sliceEligible, processPendingSlices } from "@/lib/slicer";
+import { reportError } from "@/lib/telemetry";
 import { BAMBU_EXPIRED_WARNING, importFromMakerworld } from "./makerworld";
 import {
   fetchMakerworldCollection,
@@ -242,7 +243,7 @@ export async function runCollectionImportJob(jobId: string) {
   try {
     await runJob(jobId);
   } catch (err) {
-    console.error(`collection import ${jobId} failed:`, err);
+    reportError(`collection import ${jobId} failed`, err);
     await updateJob(jobId, {
       status: "failed",
       currentItem: null,
@@ -315,7 +316,7 @@ async function runJob(jobId: string) {
         `${design.title}: ${err instanceof ImportError ? err.message : "import failed"}`,
       );
       if (!(err instanceof ImportError)) {
-        console.error(`collection import ${jobId}: design ${design.id} failed:`, err);
+        reportError(`collection import ${jobId}: design ${design.id} failed`, err);
       }
     }
 
