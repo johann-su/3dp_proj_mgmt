@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
 import { ImportError } from "@/lib/import/types";
 import { startCollectionImport } from "@/lib/import/collection-job";
+import { reportError } from "@/lib/telemetry";
 
 export const runtime = "nodejs";
 
@@ -38,7 +39,7 @@ export async function POST(req: NextRequest) {
     if (err instanceof ImportError) {
       return NextResponse.json({ error: err.message }, { status: 502 });
     }
-    console.error("Collection import failed to start", err);
+    reportError("Collection import failed to start", err);
     return NextResponse.json(
       { error: "Import failed — check the URL and try again" },
       { status: 500 },

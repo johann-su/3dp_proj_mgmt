@@ -5,6 +5,8 @@
 // the error right away. Without OPENSCAD_URL the customizer UI is hidden and
 // .scad files are plain downloads.
 
+import { reportError } from "@/lib/telemetry";
+
 // Keep in sync with MAX_BODY_BYTES in openscad/server.mjs.
 export const MAX_SCAD_SOURCE_BYTES = 2 * 1024 * 1024;
 // Covers the service's 2 min render timeout plus queueing behind another job.
@@ -41,7 +43,7 @@ export async function renderScad(
       signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
     });
   } catch (err) {
-    console.error("openscad service unreachable:", err);
+    reportError("openscad service unreachable", err);
     return { ok: false, status: 502, error: "OpenSCAD service is unreachable" };
   }
 

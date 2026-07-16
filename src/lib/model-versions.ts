@@ -23,6 +23,7 @@ import {
 } from "@/db/schema";
 import { s3, S3_BUCKET } from "@/lib/s3";
 import { linkTags, normalizeTagNames } from "@/lib/tags";
+import { reportError } from "@/lib/telemetry";
 import { buildSnapshot, snapshotsEqual } from "@/lib/version-snapshot";
 
 type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
@@ -268,7 +269,7 @@ export async function sweepExpiredTrash(userId?: string): Promise<void> {
     } catch (err) {
       // Never break the trash page over a purge hiccup (e.g. S3 down) — the
       // model stays listed and the next load retries.
-      console.error(`Failed to purge trashed model ${model.id}`, err);
+      reportError(`Failed to purge trashed model ${model.id}`, err);
     }
   }
 }
