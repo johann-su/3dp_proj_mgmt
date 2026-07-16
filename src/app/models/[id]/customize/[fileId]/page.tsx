@@ -2,7 +2,7 @@ import { notFound, redirect } from "next/navigation";
 import { eq } from "drizzle-orm";
 import { db } from "@/db";
 import { models } from "@/db/schema";
-import { getSession } from "@/lib/auth";
+import { getSession, signInRedirect } from "@/lib/auth";
 import { fileExtension } from "@/lib/file-kind";
 import { readTextFile } from "@/lib/storage";
 import { MAX_SCAD_SOURCE_BYTES, openscadConfigured } from "@/lib/openscad";
@@ -33,7 +33,7 @@ export default async function CustomizePage({
     }),
     getSession(),
   ]);
-  if (!session) redirect("/sign-in");
+  if (!session) redirect(await signInRedirect());
   if (!model || model.deletedAt) notFound();
   if (!openscadConfigured()) {
     redirect(`/models/${id}`);

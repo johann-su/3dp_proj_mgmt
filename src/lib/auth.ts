@@ -5,7 +5,9 @@ import { headers } from "next/headers";
 import { and, ne, sql } from "drizzle-orm";
 import { db } from "@/db";
 import * as schema from "@/db/schema";
+import { logger } from "@/lib/logger";
 import { roleFromOidcGroups, type UserRole } from "@/lib/roles";
+import { CALLBACK_PATH_HEADER, signInPath } from "@/lib/callback-url";
 
 // Optional OIDC single sign-on, enabled when all three env vars are set.
 // The provider must allow the redirect URI:
@@ -59,19 +61,17 @@ if (oidcEnabled && process.env.NEXT_PHASE !== "phase-production-build") {
     .then(async (res) => {
       const doc = res.ok ? await res.json().catch(() => null) : null;
       if (!res.ok || !doc?.authorization_endpoint) {
-        console.error(
+        logger.error(
           `[oidc] discovery failed at ${discoveryUrl} (status ${res.status}). ` +
             "Check OIDC_ISSUER — for Authentik it must be the application issuer, " +
             "e.g. https://<host>/application/o/<app-slug>/",
         );
       } else {
-        console.log(`[oidc] SSO enabled, issuer ${doc.issuer ?? discoveryUrl}`);
+        logger.info(`[oidc] SSO enabled, issuer ${doc.issuer ?? discoveryUrl}`);
       }
     })
     .catch((err: unknown) => {
-      console.error(
-        `[oidc] could not reach ${discoveryUrl}: ${err instanceof Error ? err.message : err}`,
-      );
+      logger.error({ err }, `[oidc] could not reach ${discoveryUrl}`);
     });
 }
 
@@ -213,4 +213,11 @@ export const auth = betterAuth({
 
 export async function getSession() {
   return auth.api.getSession({ headers: await headers() });
+}
+
+// Where a page should send a signed-out visitor: /sign-in, carrying the
+// page's own path (proxy-set header, validated) so login returns them here.
+// For use in `if (!session) redirect(await signInRedirect())` guards.
+export async function signInRedirect() {
+  return signInPath((await headers()).get(CALLBACK_PATH_HEADER));
 }

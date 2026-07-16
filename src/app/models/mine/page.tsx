@@ -4,7 +4,7 @@ import { and, desc, eq, isNull } from "drizzle-orm";
 import { Box } from "lucide-react";
 import { db } from "@/db";
 import { models } from "@/db/schema";
-import { getSession } from "@/lib/auth";
+import { getSession, signInRedirect } from "@/lib/auth";
 import { fileSrc } from "@/lib/file-token";
 import { parametricExtra } from "@/lib/parametric";
 import { ModelCard } from "@/components/model-card";
@@ -13,7 +13,7 @@ export const dynamic = "force-dynamic";
 
 export default async function MyModelsPage() {
   const session = await getSession();
-  if (!session) redirect("/sign-in");
+  if (!session) redirect(await signInRedirect());
 
   const results = await db.query.models.findMany({
     // Trashed models live on /models/trash instead.

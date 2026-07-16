@@ -2,7 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { Box, Search } from "lucide-react";
 import { db } from "@/db";
-import { getSession } from "@/lib/auth";
+import { getSession, signInRedirect } from "@/lib/auth";
 import { parseFeedSort } from "@/lib/feed-params";
 import { listFeed } from "@/lib/list-queries";
 import { FeedGrid } from "@/components/feed-grid";
@@ -20,7 +20,7 @@ export default async function HomePage({
 }) {
   // The whole catalog is private — self-hosted instances store paid models.
   const session = await getSession();
-  if (!session) redirect("/sign-in");
+  if (!session) redirect(await signInRedirect());
 
   const { category, sort: rawSort } = await searchParams;
   const sort = parseFeedSort(rawSort);

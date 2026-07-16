@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { getSession } from "@/lib/auth";
+import { getSession, signInRedirect } from "@/lib/auth";
 import { getBambuStatus } from "@/lib/bambu/credentials";
 import { BambuConnection } from "./bambu-connection";
 
@@ -7,7 +7,7 @@ export const dynamic = "force-dynamic";
 
 export default async function BambuSettingsPage() {
   const session = await getSession();
-  if (!session) redirect("/sign-in");
+  if (!session) redirect(await signInRedirect());
 
   const status = await getBambuStatus(session.user.id);
 

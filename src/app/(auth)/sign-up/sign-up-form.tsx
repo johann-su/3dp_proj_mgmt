@@ -16,7 +16,12 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 
-export function SignUpForm() {
+export function SignUpForm({
+  callbackPath,
+}: {
+  // Server-validated in-app path to land on after signing up (null → home).
+  callbackPath: string | null;
+}) {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
 
@@ -34,7 +39,7 @@ export function SignUpForm() {
       toast.error(error.message ?? "Sign up failed");
       return;
     }
-    router.push("/");
+    router.push(callbackPath ?? "/");
     router.refresh();
   }
 
@@ -73,7 +78,14 @@ export function SignUpForm() {
             </Button>
             <p className="text-sm text-muted-foreground text-center">
               Already have an account?{" "}
-              <Link href="/sign-in" className="underline">
+              <Link
+                href={
+                  callbackPath
+                    ? `/sign-in?callbackUrl=${encodeURIComponent(callbackPath)}`
+                    : "/sign-in"
+                }
+                className="underline"
+              >
                 Sign in
               </Link>
             </p>

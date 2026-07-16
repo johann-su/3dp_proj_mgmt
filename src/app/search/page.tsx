@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { SearchFilters } from "@/components/search-filters";
 import { SearchResults } from "@/components/search-results";
-import { getSession } from "@/lib/auth";
+import { getSession, signInRedirect } from "@/lib/auth";
 import { search, searchFacets } from "@/lib/search";
 import { parseSearchParams, searchFiltersToParams } from "@/lib/search-params";
 
@@ -18,7 +18,7 @@ export default async function SearchPage({
 }) {
   // The whole catalog is private — self-hosted instances store paid models.
   const session = await getSession();
-  if (!session) redirect("/sign-in");
+  if (!session) redirect(await signInRedirect());
 
   const params = await searchParams;
   const filters = parseSearchParams(params);

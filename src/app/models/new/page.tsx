@@ -1,13 +1,13 @@
 import { redirect } from "next/navigation";
 import { db } from "@/db";
-import { getSession } from "@/lib/auth";
+import { getSession, signInRedirect } from "@/lib/auth";
 import { ModelForm } from "../model-form";
 
 export const dynamic = "force-dynamic";
 
 export default async function NewModelPage() {
   const session = await getSession();
-  if (!session) redirect("/sign-in");
+  if (!session) redirect(await signInRedirect());
 
   const categories = await db.query.categories.findMany({
     orderBy: (c, { asc }) => asc(c.name),

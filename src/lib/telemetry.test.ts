@@ -1,6 +1,12 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { otlpConfigured, reportError } from "@/lib/telemetry";
+import {
+  otlpConfigured,
+  recordImportedDesign,
+  recordOpenscadRender,
+  recordSliceEstimate,
+  reportError,
+} from "@/lib/telemetry";
 
 // Telemetry is opt-in: a deploy without a collector must get zero telemetry,
 // not failing exports to @vercel/otel's localhost default.
@@ -29,4 +35,15 @@ test("reportError is safe without a registered OTel SDK", () => {
   reportError("plain message");
   reportError("with an Error", new Error("boom"));
   reportError("with a non-Error throw", "string reason");
+});
+
+// Same contract for the metric helpers: they sit on hot operational paths
+// (slice estimates, renders, import jobs) and must be free no-ops on deploys
+// without a collector, not a source of new failures.
+test("metric record helpers are safe without a registered OTel SDK", () => {
+  recordSliceEstimate("embedded");
+  recordSliceEstimate("sliced", 12.5);
+  recordOpenscadRender("stl", "ok", 0.8);
+  recordOpenscadRender("3mf", "unreachable", 300);
+  recordImportedDesign("created");
 });

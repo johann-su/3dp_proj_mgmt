@@ -1,12 +1,12 @@
 import { redirect } from "next/navigation";
-import { getSession } from "@/lib/auth";
+import { getSession, signInRedirect } from "@/lib/auth";
 import { ImportForm } from "./import-form";
 
 export const dynamic = "force-dynamic";
 
 export default async function ImportModelPage() {
   const session = await getSession();
-  if (!session) redirect("/sign-in");
+  if (!session) redirect(await signInRedirect());
 
   return (
     <div className="mx-auto max-w-2xl px-4 py-8">

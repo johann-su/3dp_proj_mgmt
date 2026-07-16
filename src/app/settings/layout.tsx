@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { getSession } from "@/lib/auth";
+import { getSession, signInRedirect } from "@/lib/auth";
 import { ensureInitialAdmin } from "@/lib/admin";
 import { isAdmin } from "@/lib/roles";
 import { SettingsNav } from "./settings-nav";
@@ -15,7 +15,7 @@ export default async function SettingsLayout({
   await ensureInitialAdmin();
 
   const session = await getSession();
-  if (!session) redirect("/sign-in");
+  if (!session) redirect(await signInRedirect());
 
   return (
     <div className="mx-auto max-w-5xl px-4 py-8">
