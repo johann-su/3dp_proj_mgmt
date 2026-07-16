@@ -12,6 +12,7 @@ import {
 import { stageBuffer } from "@/lib/storage";
 import { normalizeThreeMf } from "@/lib/threemf-normalize";
 import { sliceEligible } from "@/lib/slicer";
+import { reportError } from "@/lib/telemetry";
 import { getOnshapeAccessToken } from "@/lib/onshape/credentials";
 import {
   exportPinnedModels,
@@ -177,7 +178,7 @@ export async function POST(
     if (err instanceof OnshapeError) {
       return NextResponse.json({ error: err.message }, { status: 502 });
     }
-    console.error("Onshape sync failed", err);
+    reportError("Onshape sync failed", err);
     return NextResponse.json(
       { error: "Sync failed — try again in a moment" },
       { status: 500 },

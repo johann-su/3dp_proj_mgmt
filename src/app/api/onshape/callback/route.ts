@@ -8,6 +8,7 @@ import {
   onshapeOAuthEnabled,
 } from "@/lib/onshape/oauth";
 import { saveOnshapeCredential } from "@/lib/onshape/credentials";
+import { reportError } from "@/lib/telemetry";
 
 export const runtime = "nodejs";
 
@@ -52,7 +53,7 @@ export async function GET(req: NextRequest) {
     await saveOnshapeCredential(session.user.id, account, tokens);
     return settings();
   } catch (err) {
-    console.error("Onshape OAuth callback failed", err);
+    reportError("Onshape OAuth callback failed", err);
     return settings("connect-failed");
   }
 }

@@ -10,6 +10,7 @@ import { importFromOnshape } from "@/lib/import/onshape";
 import { parseOnshapeUrl } from "@/lib/onshape/api";
 import { getBambuCredential } from "@/lib/bambu/credentials";
 import { getOnshapeAccessToken } from "@/lib/onshape/credentials";
+import { reportError } from "@/lib/telemetry";
 
 export const runtime = "nodejs";
 // Downloading large model files from the source platform can take a while.
@@ -126,7 +127,7 @@ export async function POST(req: NextRequest) {
     if (err instanceof ImportError) {
       return NextResponse.json({ error: err.message }, { status: 502 });
     }
-    console.error("Import failed", err);
+    reportError("Import failed", err);
     return NextResponse.json(
       { error: "Import failed — check the URL and try again" },
       { status: 500 },

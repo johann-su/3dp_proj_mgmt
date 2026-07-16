@@ -18,6 +18,7 @@ import { and, eq } from "drizzle-orm";
 import { db } from "@/db";
 import { modelFiles } from "@/db/schema";
 import { s3, S3_BUCKET, fileExtension } from "@/lib/s3";
+import { reportError } from "@/lib/telemetry";
 import { get3mfPrinterInfo, get3mfSliceInfo } from "@/lib/threemf-remote";
 
 // Keep in sync with MAX_BODY_BYTES in slicer/server.mjs.
@@ -105,7 +106,7 @@ async function estimateFile(file: FileRow, slicerUrl: string | undefined) {
       duplex: "half",
     } as RequestInit & { duplex: "half" });
   } catch (err) {
-    console.error(`slicer unreachable for ${file.filename}:`, err);
+    reportError(`slicer unreachable for ${file.filename}`, err);
     return; // leave pending; a later upload cycle may retry
   }
 
@@ -120,7 +121,7 @@ async function estimateFile(file: FileRow, slicerUrl: string | undefined) {
   } else if (res.status >= 400 && res.status < 500) {
     await markFailed(file, result?.error ?? `slicer rejected the file (${res.status})`);
   } else {
-    console.error(`slicer error ${res.status} for ${file.filename}`);
+    reportError(`slicer error ${res.status} for ${file.filename}`);
   }
 }
 
@@ -146,7 +147,7 @@ export async function processPendingSlices(modelId: string) {
       try {
         await estimateFile(file, slicerUrl);
       } catch (err) {
-        console.error(`slice estimation failed for ${file.filename}:`, err);
+        reportError(`slice estimation failed for ${file.filename}`, err);
       }
     }
   } finally {
