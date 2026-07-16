@@ -23,7 +23,7 @@ import {
 } from "@/db/schema";
 import { s3, S3_BUCKET } from "@/lib/s3";
 import { linkTags, normalizeTagNames } from "@/lib/tags";
-import { snapshotsEqual } from "@/lib/version-snapshot";
+import { buildSnapshot, snapshotsEqual } from "@/lib/version-snapshot";
 
 type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
 
@@ -36,10 +36,9 @@ export const VERSION_CAP = 30;
 // load) purges it for good.
 export const TRASH_RETENTION_DAYS = 30;
 
-// The model's current mutable state as a snapshot. Built with a fixed key
-// order so snapshotsEqual can compare via JSON. Generated OpenSCAD variants
-// are excluded (additive, individually deletable, cheap to regenerate); tag
-// names are sorted because the join table has no order.
+// The model's current mutable state as a snapshot: fetch the model with its
+// relations, then map via the pure buildSnapshot (fixed key order for
+// snapshotsEqual, variants excluded, tags sorted — see version-snapshot.ts).
 export async function captureSnapshot(
   tx: Tx,
   modelId: string,
@@ -53,36 +52,7 @@ export async function captureSnapshot(
     },
   });
   if (!model) throw new Error(`Model ${modelId} not found`);
-  return {
-    title: model.title,
-    description: model.description,
-    categoryId: model.categoryId,
-    tags: model.modelTags.map(({ tag }) => tag.name).sort(),
-    bom: model.bomItems.map((item) => ({
-      name: item.name,
-      quantity: item.quantity,
-      link: item.link,
-      imageUrl: item.imageUrl,
-      section: item.section,
-    })),
-    files: model.files
-      .filter((f) => f.generatedFromId === null)
-      .map((f) => ({
-        kind: f.kind,
-        filename: f.filename,
-        s3Key: f.s3Key,
-        size: f.size,
-        contentType: f.contentType,
-        animated: f.animated,
-        onshapeElementId: f.onshapeElementId,
-        sliceStatus: f.sliceStatus,
-        sliceSource: f.sliceSource,
-        printTimeSeconds: f.printTimeSeconds,
-        filamentGrams: f.filamentGrams,
-        sliceError: f.sliceError,
-        printerInfo: f.printerInfo,
-      })),
-  };
+  return buildSnapshot(model);
 }
 
 // Models created before versioning shipped have no version rows. Call this at

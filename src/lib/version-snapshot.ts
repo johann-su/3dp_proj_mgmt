@@ -3,9 +3,64 @@
 // summary shown in the model page's History panel. DB-free on purpose —
 // src/lib/model-versions.ts does the reading/writing.
 
-import type { ModelVersionSnapshot } from "@/db/schema";
+import type {
+  ModelVersionSnapshot,
+  VersionFileSnapshot,
+} from "@/db/schema";
+import type { BomItemInput } from "@/lib/bom";
 
-// Snapshots are built by captureSnapshot with a fixed key order, so JSON
+// The loaded model shape buildSnapshot maps from — the fields captureSnapshot
+// reads (src/lib/model-versions.ts) and the same relations the model page
+// already loads, so both can share the pure mapping.
+export type SnapshotSource = {
+  title: string;
+  description: string;
+  categoryId: string | null;
+  modelTags: { tag: { name: string } }[];
+  bomItems: BomItemInput[];
+  files: (VersionFileSnapshot & { generatedFromId: string | null })[];
+};
+
+// Maps a loaded model into a ModelVersionSnapshot. Pure so both the DB-side
+// captureSnapshot and the model page (synthesizing a display-only v1 for
+// pre-versioning models) share one definition. The key order is fixed because
+// snapshotsEqual compares via JSON; generated OpenSCAD variants are excluded
+// (additive, individually deletable) and tag names sorted (the join has no
+// order).
+export function buildSnapshot(model: SnapshotSource): ModelVersionSnapshot {
+  return {
+    title: model.title,
+    description: model.description,
+    categoryId: model.categoryId,
+    tags: model.modelTags.map(({ tag }) => tag.name).sort(),
+    bom: model.bomItems.map((item) => ({
+      name: item.name,
+      quantity: item.quantity,
+      link: item.link,
+      imageUrl: item.imageUrl,
+      section: item.section,
+    })),
+    files: model.files
+      .filter((f) => f.generatedFromId === null)
+      .map((f) => ({
+        kind: f.kind,
+        filename: f.filename,
+        s3Key: f.s3Key,
+        size: f.size,
+        contentType: f.contentType,
+        animated: f.animated,
+        onshapeElementId: f.onshapeElementId,
+        sliceStatus: f.sliceStatus,
+        sliceSource: f.sliceSource,
+        printTimeSeconds: f.printTimeSeconds,
+        filamentGrams: f.filamentGrams,
+        sliceError: f.sliceError,
+        printerInfo: f.printerInfo,
+      })),
+  };
+}
+
+// Snapshots are built by buildSnapshot with a fixed key order, so JSON
 // equality is a faithful deep-equality check.
 export function snapshotsEqual(
   a: ModelVersionSnapshot,

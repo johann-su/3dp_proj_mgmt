@@ -1,7 +1,11 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import type { ModelVersionSnapshot, VersionFileSnapshot } from "@/db/schema";
-import { snapshotsEqual, summarizeVersionChange } from "@/lib/version-snapshot";
+import {
+  buildSnapshot,
+  snapshotsEqual,
+  summarizeVersionChange,
+} from "@/lib/version-snapshot";
 
 function file(overrides: Partial<VersionFileSnapshot> = {}): VersionFileSnapshot {
   return {
@@ -33,6 +37,28 @@ function snapshot(overrides: Partial<ModelVersionSnapshot> = {}): ModelVersionSn
     ...overrides,
   };
 }
+
+test("buildSnapshot excludes generated variants and sorts tag names", () => {
+  // The snapshot is the model's live, non-variant state; variants are additive
+  // and individually regenerable, and tags have no join order.
+  const snap = buildSnapshot({
+    title: "Talon 1400",
+    description: "A glider",
+    categoryId: "cat-1",
+    modelTags: [{ tag: { name: "rc" } }, { tag: { name: "glider" } }],
+    bomItems: [
+      { name: "M3 screw", quantity: "4", link: null, imageUrl: null, section: null },
+    ],
+    files: [
+      { ...file({ filename: "wing.3mf" }), generatedFromId: null },
+      // A generated .3mf variant — must not appear in the snapshot.
+      { ...file({ s3Key: "uploads/v/variant.3mf" }), generatedFromId: "src-1" },
+    ],
+  });
+  assert.deepEqual(snap.tags, ["glider", "rc"]);
+  assert.equal(snap.files.length, 1);
+  assert.equal(snap.files[0].filename, "wing.3mf");
+});
 
 test("snapshotsEqual detects identical state so no-op saves write no version", () => {
   assert.equal(snapshotsEqual(snapshot(), snapshot()), true);
