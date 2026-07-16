@@ -5,7 +5,7 @@
 // the error right away. Without OPENSCAD_URL the customizer UI is hidden and
 // .scad files are plain downloads.
 
-import { reportError } from "@/lib/telemetry";
+import { recordOpenscadRender, reportError } from "@/lib/telemetry";
 
 // Keep in sync with MAX_BODY_BYTES in openscad/server.mjs.
 export const MAX_SCAD_SOURCE_BYTES = 2 * 1024 * 1024;
@@ -34,6 +34,8 @@ export async function renderScad(
     return { ok: false, status: 503, error: "OpenSCAD service is not configured" };
   }
 
+  const startedAt = performance.now();
+  const elapsedSeconds = () => (performance.now() - startedAt) / 1000;
   let res: Response;
   try {
     res = await fetch(new URL("/render", url), {
@@ -44,16 +46,20 @@ export async function renderScad(
     });
   } catch (err) {
     reportError("openscad service unreachable", err);
+    recordOpenscadRender(format, "unreachable", elapsedSeconds());
     return { ok: false, status: 502, error: "OpenSCAD service is unreachable" };
   }
 
   if (!res.ok) {
     const body = (await res.json().catch(() => null)) as { error?: string } | null;
+    recordOpenscadRender(format, res.status < 500 ? "rejected" : "error", elapsedSeconds());
     return {
       ok: false,
       status: res.status,
       error: body?.error ?? `OpenSCAD service responded with ${res.status}`,
     };
   }
-  return { ok: true, data: new Uint8Array(await res.arrayBuffer()) };
+  const data = new Uint8Array(await res.arrayBuffer());
+  recordOpenscadRender(format, "ok", elapsedSeconds());
+  return { ok: true, data };
 }

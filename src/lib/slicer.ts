@@ -18,7 +18,7 @@ import { and, eq } from "drizzle-orm";
 import { db } from "@/db";
 import { modelFiles } from "@/db/schema";
 import { s3, S3_BUCKET, fileExtension } from "@/lib/s3";
-import { reportError } from "@/lib/telemetry";
+import { recordSliceEstimate, reportError } from "@/lib/telemetry";
 import { get3mfPrinterInfo, get3mfSliceInfo } from "@/lib/threemf-remote";
 
 // Keep in sync with MAX_BODY_BYTES in slicer/server.mjs.
@@ -81,12 +81,14 @@ async function estimateFile(file: FileRow, slicerUrl: string | undefined) {
   const embedded = await get3mfSliceInfo(file.s3Key, file.size);
   if (embedded?.printTimeSeconds != null) {
     await markOk(file, "embedded", embedded.printTimeSeconds, embedded.filamentGrams);
+    recordSliceEstimate("embedded");
     return;
   }
 
   if (!slicerUrl) return; // no service configured — leave pending
   if (file.size > MAX_SLICE_BYTES) {
     await markFailed(file, "file too large to slice");
+    recordSliceEstimate("failed");
     return;
   }
 
@@ -95,6 +97,8 @@ async function estimateFile(file: FileRow, slicerUrl: string | undefined) {
   );
   if (!object.Body) return;
 
+  const startedAt = performance.now();
+  const elapsedSeconds = () => (performance.now() - startedAt) / 1000;
   let res: Response;
   try {
     res = await fetch(new URL("/estimate", slicerUrl), {
@@ -107,6 +111,7 @@ async function estimateFile(file: FileRow, slicerUrl: string | undefined) {
     } as RequestInit & { duplex: "half" });
   } catch (err) {
     reportError(`slicer unreachable for ${file.filename}`, err);
+    recordSliceEstimate("unreachable", elapsedSeconds());
     return; // leave pending; a later upload cycle may retry
   }
 
@@ -118,10 +123,13 @@ async function estimateFile(file: FileRow, slicerUrl: string | undefined) {
       result.printTimeSeconds ?? null,
       result.filamentGrams ?? null,
     );
+    recordSliceEstimate("sliced", elapsedSeconds());
   } else if (res.status >= 400 && res.status < 500) {
     await markFailed(file, result?.error ?? `slicer rejected the file (${res.status})`);
+    recordSliceEstimate("failed", elapsedSeconds());
   } else {
     reportError(`slicer error ${res.status} for ${file.filename}`);
+    recordSliceEstimate("error", elapsedSeconds());
   }
 }
 

@@ -28,7 +28,7 @@ import { pickCategoryId } from "@/lib/categories";
 import { sanitizeBomItems } from "@/lib/bom";
 import { linkTags, normalizeTagNames } from "@/lib/tags";
 import { sliceEligible, processPendingSlices } from "@/lib/slicer";
-import { reportError } from "@/lib/telemetry";
+import { recordImportedDesign, reportError } from "@/lib/telemetry";
 import { BAMBU_EXPIRED_WARNING, importFromMakerworld } from "./makerworld";
 import {
   fetchMakerworldCollection,
@@ -299,6 +299,7 @@ async function runJob(jobId: string) {
 
     try {
       const outcome = await importDesign(job, design, cred);
+      recordImportedDesign(outcome.kind);
       if (outcome.kind === "created") createdModelIds.push(outcome.modelId);
       if (outcome.kind === "skipped") skipped++;
       if (outcome.kind === "failed") {
@@ -312,6 +313,7 @@ async function runJob(jobId: string) {
         throw err;
       }
       failed++;
+      recordImportedDesign("failed");
       warn(
         `${design.title}: ${err instanceof ImportError ? err.message : "import failed"}`,
       );
