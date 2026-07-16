@@ -3,7 +3,7 @@ import { after } from "next/server";
 import { and, asc, eq, inArray } from "drizzle-orm";
 import { db } from "@/db";
 import { collectionModels, collections, models, modelVersions } from "@/db/schema";
-import { summarizeVersionChange } from "@/lib/version-snapshot";
+import { buildSnapshot, summarizeVersionChange } from "@/lib/version-snapshot";
 import { getSession } from "@/lib/auth";
 import { canActAsOwner } from "@/lib/roles";
 import { fileSrc, fileToken } from "@/lib/file-token";
@@ -22,6 +22,7 @@ import {
   type CollectionOption,
   type PrintFileData,
 } from "../model-view";
+import type { ModelHistoryEntry } from "./history-panel";
 
 export const dynamic = "force-dynamic";
 
@@ -64,20 +65,37 @@ export default async function ModelPage({
     orderBy: asc(modelVersions.id),
     with: { editor: { columns: { name: true } } },
   });
-  const history = versionRows
-    .map((v, i) => ({
-      versionId: v.id,
-      number: i + 1,
-      createdAt: v.createdAt,
-      editorName: v.editor?.name ?? null,
-      reason: v.reason,
-      summary: summarizeVersionChange(
-        versionRows[i - 1]?.snapshot ?? null,
-        v.snapshot,
-      ),
-      current: i === versionRows.length - 1,
-    }))
-    .reverse();
+  // Models predating versioning have no rows until their first mutation
+  // backfills one (ensureBaselineVersion). Until then, synthesize a display-
+  // only v1 from the current state so History always shows the original
+  // version — current, so no revert button, and nothing is written on GET.
+  const history: ModelHistoryEntry[] =
+    versionRows.length === 0
+      ? [
+          {
+            versionId: 0,
+            number: 1,
+            createdAt: model.createdAt,
+            editorName: model.user?.name ?? null,
+            reason: "create",
+            summary: summarizeVersionChange(null, buildSnapshot(model)),
+            current: true,
+          },
+        ]
+      : versionRows
+          .map((v, i) => ({
+            versionId: v.id,
+            number: i + 1,
+            createdAt: v.createdAt,
+            editorName: v.editor?.name ?? null,
+            reason: v.reason,
+            summary: summarizeVersionChange(
+              versionRows[i - 1]?.snapshot ?? null,
+              v.snapshot,
+            ),
+            current: i === versionRows.length - 1,
+          }))
+          .reverse();
 
   const images = model.files.filter((f) => f.kind === "image");
   const printFiles = model.files.filter((f) => f.kind === "model");
