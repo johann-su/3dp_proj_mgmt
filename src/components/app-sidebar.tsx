@@ -7,6 +7,7 @@ import {
   ChevronsUpDown,
   Cloud,
   CloudDownload,
+  FolderOpen,
   FolderPlus,
   Home,
   LogOut,
@@ -45,6 +46,7 @@ const browseItems = [
   { href: "/", label: "Home", icon: Home, exact: true },
   { href: "/search", label: "Search", icon: Search },
   { href: "/models/mine", label: "My Models", icon: Box, auth: true },
+  { href: "/collections/mine", label: "My Collections", icon: FolderOpen, auth: true },
   { href: "/models/trash", label: "Trash", icon: Trash2, auth: true },
 ];
 
