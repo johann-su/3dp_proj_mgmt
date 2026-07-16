@@ -54,7 +54,6 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-  AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { Card, CardContent } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
@@ -839,23 +838,88 @@ export function ModelForm({
 
   const [sourceUrl, setSourceUrl] = useState<string | null>(null);
   const [onshapeMicroversion, setOnshapeMicroversion] = useState<string | null>(null);
-  const [showBackConfirm, setShowBackConfirm] = useState(false);
+  const [showDiscardConfirm, setShowDiscardConfirm] = useState(false);
 
   const hasModelFile = modelFileEntries.length > 0;
 
+  // Whether the form differs from what was loaded. In create mode there is no
+  // baseline, so any exit is treated as a discard (unchanged behaviour); in
+  // edit mode we compare every editable field/file list against `model` so a
+  // pristine edit view leaves without a prompt.
+  const dirty = (() => {
+    if (!model) return true;
+    if (title !== model.title) return true;
+    if (description !== model.description) return true;
+    if (categoryId !== (model.categoryId ?? "")) return true;
+
+    const currentTags = tags
+      .split(",")
+      .map((t) => t.trim())
+      .filter(Boolean);
+    if (
+      currentTags.length !== model.tags.length ||
+      currentTags.some((t, i) => t !== model.tags[i])
+    )
+      return true;
+
+    if (JSON.stringify(bom) !== JSON.stringify(model.bom)) return true;
+
+    // Model files: a "\0new" marker for freshly added entries, otherwise the
+    // id + filename, so adds, removes, reorders and renames all read as dirty.
+    const curModel = modelFileEntries.map((e) =>
+      e.type === "existing" ? `${e.id}:${e.filename}` : " new",
+    );
+    const initModel = model.files
+      .filter((f) => f.kind === "model")
+      .map((f) => `${f.id}:${f.filename}`);
+    if (
+      curModel.length !== initModel.length ||
+      curModel.some((v, i) => v !== initModel[i])
+    )
+      return true;
+
+    // Images have no rename; order matters (first image is the cover).
+    const curImg = images.map((im) => (im.type === "existing" ? im.id : " new"));
+    const initImg = model.files.filter((f) => f.kind === "image").map((f) => f.id);
+    if (
+      curImg.length !== initImg.length ||
+      curImg.some((v, i) => v !== initImg[i])
+    )
+      return true;
+
+    // PDFs: any freshly picked file, or a removed existing one.
+    if (pdfFiles.length > 0) return true;
+    const initPdf = model.files.filter((f) => f.kind === "pdf");
+    if (existingPdfFiles.length !== initPdf.length) return true;
+
+    return false;
+  })();
+
+  // The popstate listener below is installed once, so it reads `dirty` through
+  // a ref to always see the current value.
+  const dirtyRef = useRef(dirty);
+  useEffect(() => {
+    dirtyRef.current = dirty;
+  }, [dirty]);
+
   // Trap the browser back button behind the same discard-changes prompt as
-  // the Cancel button: push a same-URL history entry so a back press is a
-  // popstate we can intercept, then re-push it to neutralize the back and
-  // show the confirm dialog instead of actually navigating away.
+  // the Cancel button — but only when there are unsaved changes. Push a
+  // same-URL history entry so a back press is a popstate we can intercept:
+  // when dirty, re-push it to neutralize the back and show the confirm dialog;
+  // when clean, let the exit proceed to the cancel target.
   useEffect(() => {
     window.history.pushState(null, "", window.location.href);
     const handlePopState = () => {
+      if (!dirtyRef.current) {
+        router.push(cancelHref);
+        return;
+      }
       window.history.pushState(null, "", window.location.href);
-      setShowBackConfirm(true);
+      setShowDiscardConfirm(true);
     };
     window.addEventListener("popstate", handlePopState);
     return () => window.removeEventListener("popstate", handlePopState);
-  }, []);
+  }, [router, cancelHref]);
 
   // Hydrate from an import draft handed over by /models/import. Create mode
   // only; runs once after hydration (sessionStorage is client-only).
@@ -1417,32 +1481,24 @@ export function ModelForm({
 
           <Separator className="col-span-2 my-1" />
 
-          <AlertDialog>
-            <AlertDialogTrigger asChild>
-              <Button
-                type="button"
-                variant="ghost"
-                className="w-full"
-                disabled={status !== null}
-              >
-                Cancel
-              </Button>
-            </AlertDialogTrigger>
-            <AlertDialogContent>
-              <AlertDialogHeader>
-                <AlertDialogTitle>Discard changes?</AlertDialogTitle>
-                <AlertDialogDescription>{discardMessage}</AlertDialogDescription>
-              </AlertDialogHeader>
-              <AlertDialogFooter>
-                <AlertDialogCancel>Keep editing</AlertDialogCancel>
-                <AlertDialogAction onClick={() => router.push(cancelHref)}>
-                  Discard
-                </AlertDialogAction>
-              </AlertDialogFooter>
-            </AlertDialogContent>
-          </AlertDialog>
+          <Button
+            type="button"
+            variant="ghost"
+            className="w-full"
+            disabled={status !== null}
+            onClick={() => {
+              // Nothing changed → leave straight away, no prompt.
+              if (!dirty) router.push(cancelHref);
+              else setShowDiscardConfirm(true);
+            }}
+          >
+            Cancel
+          </Button>
 
-          <AlertDialog open={showBackConfirm} onOpenChange={setShowBackConfirm}>
+          <AlertDialog
+            open={showDiscardConfirm}
+            onOpenChange={setShowDiscardConfirm}
+          >
             <AlertDialogContent>
               <AlertDialogHeader>
                 <AlertDialogTitle>Discard changes?</AlertDialogTitle>

@@ -20,13 +20,17 @@ import {
 export function SignInForm({
   oidcProvider,
   signupEnabled,
+  callbackPath,
 }: {
   oidcProvider: string | null;
   signupEnabled: boolean;
+  // Server-validated in-app path to land on after login (null → homepage).
+  callbackPath: string | null;
 }) {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [ssoLoading, setSsoLoading] = useState(false);
+  const destination = callbackPath ?? "/";
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -41,7 +45,7 @@ export function SignInForm({
       toast.error(error.message ?? "Sign in failed");
       return;
     }
-    router.push("/");
+    router.push(destination);
     router.refresh();
   }
 
@@ -49,7 +53,7 @@ export function SignInForm({
     setSsoLoading(true);
     const { error } = await authClient.signIn.oauth2({
       providerId: "oidc",
-      callbackURL: "/",
+      callbackURL: destination,
     });
     // On success the browser is redirected to the identity provider.
     if (error) {
@@ -87,7 +91,14 @@ export function SignInForm({
             {signupEnabled && (
               <p className="text-sm text-muted-foreground text-center">
                 No account?{" "}
-                <Link href="/sign-up" className="underline">
+                <Link
+                  href={
+                    callbackPath
+                      ? `/sign-up?callbackUrl=${encodeURIComponent(callbackPath)}`
+                      : "/sign-up"
+                  }
+                  className="underline"
+                >
                   Sign up
                 </Link>
               </p>

@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { getSession } from "@/lib/auth";
+import { getSession, signInRedirect } from "@/lib/auth";
 import { getOnshapeStatus } from "@/lib/onshape/credentials";
 import { onshapeOAuthEnabled, onshapeRedirectUri } from "@/lib/onshape/oauth";
 import { OnshapeConnection } from "./onshape-connection";
@@ -22,7 +22,7 @@ export default async function OnshapeSettingsPage({
   searchParams: Promise<{ error?: string }>;
 }) {
   const session = await getSession();
-  if (!session) redirect("/sign-in");
+  if (!session) redirect(await signInRedirect());
 
   const [status, { error }] = await Promise.all([
     getOnshapeStatus(session.user.id),

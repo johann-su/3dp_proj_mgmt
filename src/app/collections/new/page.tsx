@@ -1,12 +1,12 @@
 import { redirect } from "next/navigation";
-import { getSession } from "@/lib/auth";
+import { getSession, signInRedirect } from "@/lib/auth";
 import { ruleBuilderFacets } from "@/lib/search";
 import { CollectionForm } from "../collection-form";
 
 export default async function NewCollectionPage() {
   // The whole catalog is private — self-hosted instances store paid models.
   const session = await getSession();
-  if (!session) redirect("/sign-in");
+  if (!session) redirect(await signInRedirect());
 
   const facets = await ruleBuilderFacets();
 

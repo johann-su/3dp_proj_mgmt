@@ -4,7 +4,7 @@ import { and, desc, eq, isNotNull } from "drizzle-orm";
 import { Trash2 } from "lucide-react";
 import { db } from "@/db";
 import { models } from "@/db/schema";
-import { getSession } from "@/lib/auth";
+import { getSession, signInRedirect } from "@/lib/auth";
 import { isModerator } from "@/lib/roles";
 import { fileSrc } from "@/lib/file-token";
 import { formatDate } from "@/lib/format";
@@ -27,7 +27,7 @@ function daysUntilPurge(deletedAt: Date): number {
 // after anyone.
 export default async function TrashPage() {
   const session = await getSession();
-  if (!session) redirect("/sign-in");
+  if (!session) redirect(await signInRedirect());
 
   const moderator = isModerator(session.user.role);
 

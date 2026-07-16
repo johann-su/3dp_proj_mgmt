@@ -4,7 +4,7 @@ import { and, asc, eq, inArray } from "drizzle-orm";
 import { db } from "@/db";
 import { collectionModels, collections, models, modelVersions } from "@/db/schema";
 import { buildSnapshot, summarizeVersionChange } from "@/lib/version-snapshot";
-import { getSession } from "@/lib/auth";
+import { getSession, signInRedirect } from "@/lib/auth";
 import { canActAsOwner } from "@/lib/roles";
 import { fileSrc, fileToken } from "@/lib/file-token";
 import { get3mfSliceInfo } from "@/lib/threemf-remote";
@@ -51,7 +51,7 @@ export default async function ModelPage({
     getSession(),
   ]);
   // The whole catalog is private — self-hosted instances store paid models.
-  if (!session) redirect("/sign-in");
+  if (!session) redirect(await signInRedirect());
   // Trashed models are recoverable from /models/trash, not viewable.
   if (!model || model.deletedAt) notFound();
 

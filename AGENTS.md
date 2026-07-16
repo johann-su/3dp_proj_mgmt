@@ -80,7 +80,19 @@ Decisions taken and why — guidance for development.
   hand-set cookie defeats and its matcher skips `/api` — so every page also
   verifies the session server-side (`getSession()` + redirect), and every API
   route and server action checks it too (list-type actions return an empty
-  page instead). Keep both checks when adding a page. There is no
+  page instead). Keep both checks when adding a page. Both layers preserve
+  the requested page across login (shared links land where they pointed):
+  the proxy redirects to `/sign-in?callbackUrl=<path>` and also forwards the
+  original path as the `x-callback-path` request header, which the page-level
+  guard reads — so write the guard as
+  `if (!session) redirect(await signInRedirect())` (from `@/lib/auth`), not a
+  bare `redirect("/sign-in")`. The callback value is attacker-controlled
+  (URL bar); `safeCallbackPath` (`src/lib/callback-url.ts`, unit-tested)
+  validates it down to an in-app path — reject-listing absolute/protocol-
+  relative URLs, control chars, and `/api`/auth paths — before anything
+  redirects to it, and the sign-in/sign-up pages re-validate server-side
+  before handing it to the client forms (email `router.push` and the OIDC
+  `callbackURL`). There is no
   finer-grained RBAC on purpose: signed in = full read access, and **editing
   is collaborative — any signed-in user can edit a model or collection**
   (update fields/files, generate customizer variants, run Onshape/MakerWorld
@@ -102,9 +114,15 @@ Decisions taken and why — guidance for development.
   trash/restore/purge, collection deletion, variant deletion, and the
   matching UI flags all use it; moderators also see (and their page load
   sweeps) *everyone's* trash. **Admin = moderator + user management**:
-  Settings → Users (`src/app/settings/users/`) lists all accounts and edits
-  roles (`setUserRole` — the one mutation gated on `isAdmin`; admins cannot
-  change their own role, so someone can always undo a mistake). First-admin
+  Settings → Users (`src/app/settings/users/`) lists all accounts, edits
+  roles (`setUserRole`) and deletes accounts (`deleteUser`) — the two
+  mutations gated on `isAdmin`; admins cannot change their own role or
+  delete their own account, so someone can always undo a mistake. Deleting
+  a user purges their models up front via `purgeModel` (the user-row FK
+  cascade would leak the S3 objects) and then lets the cascades take
+  sessions, collections and credentials; their version edits and generated
+  variants on other users' models survive with the reference nulled.
+  First-admin
   bootstrap: `INITIAL_ADMIN_EMAIL` applies only while the DB has **no admin
   at all** — enforced at user creation (`databaseHooks.user.create.before`
   in `src/lib/auth.ts`, covers fresh DBs incl. first OIDC login) and lazily

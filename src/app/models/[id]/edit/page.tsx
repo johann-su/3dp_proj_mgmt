@@ -2,7 +2,7 @@ import { notFound, redirect } from "next/navigation";
 import { eq } from "drizzle-orm";
 import { db } from "@/db";
 import { models } from "@/db/schema";
-import { getSession } from "@/lib/auth";
+import { getSession, signInRedirect } from "@/lib/auth";
 import { ModelForm } from "../../model-form";
 
 export const dynamic = "force-dynamic";
@@ -19,7 +19,7 @@ export default async function EditModelPage({
   if (!UUID_RE.test(id)) notFound();
 
   const session = await getSession();
-  if (!session) redirect("/sign-in");
+  if (!session) redirect(await signInRedirect());
 
   const [model, categories] = await Promise.all([
     db.query.models.findFirst({

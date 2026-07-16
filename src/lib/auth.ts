@@ -6,6 +6,7 @@ import { and, ne, sql } from "drizzle-orm";
 import { db } from "@/db";
 import * as schema from "@/db/schema";
 import { roleFromOidcGroups, type UserRole } from "@/lib/roles";
+import { CALLBACK_PATH_HEADER, signInPath } from "@/lib/callback-url";
 
 // Optional OIDC single sign-on, enabled when all three env vars are set.
 // The provider must allow the redirect URI:
@@ -213,4 +214,11 @@ export const auth = betterAuth({
 
 export async function getSession() {
   return auth.api.getSession({ headers: await headers() });
+}
+
+// Where a page should send a signed-out visitor: /sign-in, carrying the
+// page's own path (proxy-set header, validated) so login returns them here.
+// For use in `if (!session) redirect(await signInRedirect())` guards.
+export async function signInRedirect() {
+  return signInPath((await headers()).get(CALLBACK_PATH_HEADER));
 }

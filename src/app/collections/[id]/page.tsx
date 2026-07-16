@@ -5,7 +5,7 @@ import { eq } from "drizzle-orm";
 import { ExternalLink, FolderOpen, Sparkles, SquarePen } from "lucide-react";
 import { db } from "@/db";
 import { collections } from "@/db/schema";
-import { getSession } from "@/lib/auth";
+import { getSession, signInRedirect } from "@/lib/auth";
 import { canActAsOwner } from "@/lib/roles";
 import { fileSrc } from "@/lib/file-token";
 import { formatDate } from "@/lib/format";
@@ -58,7 +58,7 @@ export default async function CollectionPage({
     getSession(),
   ]);
   // The whole catalog is private — self-hosted instances store paid models.
-  if (!session) redirect("/sign-in");
+  if (!session) redirect(await signInRedirect());
   if (!collection) notFound();
 
   after(() => incrementCollectionViewCount(collection.id));

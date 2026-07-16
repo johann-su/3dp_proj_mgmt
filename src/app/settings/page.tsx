@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { ChevronRight, Cloud, Shapes } from "lucide-react";
-import { getSession } from "@/lib/auth";
+import { getSession, signInRedirect } from "@/lib/auth";
 import { getOnshapeStatus } from "@/lib/onshape/credentials";
 import { getBambuStatus } from "@/lib/bambu/credentials";
 import { Badge } from "@/components/ui/badge";
@@ -11,7 +11,7 @@ export const dynamic = "force-dynamic";
 
 export default async function SettingsPage() {
   const session = await getSession();
-  if (!session) redirect("/sign-in");
+  if (!session) redirect(await signInRedirect());
 
   const [onshape, bambu] = await Promise.all([
     getOnshapeStatus(session.user.id),
