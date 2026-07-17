@@ -153,7 +153,18 @@ Decisions taken and why — guidance for development.
   row but *not* its S3 object, because earlier snapshots still reference the
   key; the model page's History panel reverts to any version (open to every
   signed-in user, like editing), re-inserting file rows from the snapshot and
-  appending a new version rather than rewriting history. Versions are capped
+  appending a new version rather than rewriting history. Each history entry
+  also links to a read-only **version preview**
+  (`/models/{id}/versions/{versionId}`): the same ModelView as the model
+  page, fed from the snapshot (files, images, PDFs, title/description, tags,
+  category, BOM), with every mutating affordance disabled via `modelId:
+  null` and just Restore/Back actions. Historical files have no
+  `model_files` row, so their bytes are served by
+  `/api/files/versions/[versionId]/[index]` — addressed by version row +
+  snapshot index (both immutable), authenticated like `/api/files/[id]`
+  (session or signed token; `versionFileSrc` in `src/lib/file-token.ts`
+  mints the tokened URLs next/image needs) and deliberately under
+  `/api/files/**` so `images.localPatterns` keeps covering it. Versions are capped
   (`VERSION_CAP`, 30/model); pruning deletes only S3 objects no remaining
   snapshot or live row references. Generated OpenSCAD variants are excluded
   from snapshots on purpose (additive, individually deletable, cheap to
@@ -215,6 +226,41 @@ Decisions taken and why — guidance for development.
   by `BAMBU_TOKEN_SECRET`/`BETTER_AUTH_SECRET`). At import time the token
   exchanges each print profile for a short-lived presigned URL that streams to
   S3 like any other asset. Without a connection, only metadata + images import.
+  **Per-file import provenance**: every file staged by an importer (all three
+  platforms, single-model and collection jobs, Onshape sync inserts) is flagged
+  `model_files.imported`, so files added manually to an imported model later
+  stay distinguishable — the model page and edit form badge imported files
+  with a cloud icon. The flag is carried through version snapshots and scopes
+  the source sync below; Onshape sync keeps selecting the files it replaces
+  via `onshape_element_id`, never via `imported`. Migration 0019 backfilled it
+  (Onshape by element id; other platforms by files sharing their model's
+  `created_at` — same insert transaction — on models with a `source_url`).
+- **Source sync** (MakerWorld/Printables; `POST /api/models/{id}/source-sync`,
+  pure planner in `src/lib/import/sync-diff.ts`): the model page's "Sync from
+  MakerWorld/Printables" button diffs the model's *imported* files against
+  the platform's current file list and shows a preview dialog (concrete
+  filenames) before applying. The contract: **imported files mirror
+  upstream, everything else is local** — manual uploads, generated variants,
+  images, title/description/tags/BOM are never touched, and files removed
+  upstream are removed locally (safe because the pre-sync state becomes a
+  version; reason `source-sync`). Matching uses `model_files.source_file_id`
+  (`profile:<id>` / `scad:<name>` / `doc:<name>` on MakerWorld, `file:<id>`
+  on Printables — stamped by the importers and required to stay in lockstep
+  with `listMakerworldUpstreamFiles`/`listPrintablesUpstreamFiles`), so
+  local renames survive; change detection compares
+  `model_files.source_modified_at`, an opaque per-file token (Printables
+  per-file `modified`; MakerWorld per-profile `publishTime` and raw-file
+  `modelUpdateTime` — **never the design/instance `updateTime`**, which
+  MakerWorld touches on counter activity: an untouched 2024 design reports
+  today's date, verified live). An unchanged token skips the download
+  entirely; all `.scad` files share one group token because they arrive as
+  a single raw-files zip (any change re-stages them all). Neither platform
+  exposes revision history, so `model_versions` doubles as the record of
+  upstream changes. Imports predating the feature carry no ids — the first
+  sync adopts them by filename, treats "upstream modified after the local
+  row's created_at" as stale, and re-stamps ids/tokens. MakerWorld
+  profile/scad downloads need the user's Bambu connection, like the
+  importer; Printables sync is fully anonymous.
 - **Onshape auth & import flow** (`src/lib/onshape/`, `src/lib/import/onshape.ts`)
   authenticates with OAuth2 ("Sign in with Onshape", the flow behind
   [passport-onshape](https://github.com/onshape/passport-onshape), implemented

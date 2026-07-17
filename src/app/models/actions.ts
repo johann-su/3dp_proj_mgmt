@@ -42,6 +42,16 @@ export type UploadedFile = {
   kind: FileKind;
   // Set on files exported by the Onshape importer; lets sync replace them.
   onshapeElementId?: string;
+  // Set on files staged by the URL importer (the create form passes draft
+  // files through unchanged). Only honored when the model actually has a
+  // sourceUrl to attribute the provenance to.
+  imported?: boolean;
+  // Upstream identity + last-modified token stamped by the MakerWorld/
+  // Printables importers (see src/lib/import/sync-diff.ts); lets the source
+  // sync match this file against the platform's current file list. Honored
+  // under the same sourceUrl gate as `imported`.
+  sourceFileId?: string;
+  sourceModifiedAt?: string;
 };
 
 export type CreateModelInput = {
@@ -204,23 +214,36 @@ export async function createModel(
 
     let position = 0;
     await tx.insert(modelFiles).values(
-      uploads.map((file) => ({
-        modelId: model.id,
-        kind: file.kind,
-        filename: file.filename,
-        s3Key: file.key,
-        size: file.size,
-        // Never store the client-claimed type; derive from the validated
-        // extension (an inline-served text/html "image" would be stored XSS).
-        contentType: contentTypeForFilename(file.filename),
-        animated: animatedKeys.has(file.key),
-        position: position++,
-        onshapeElementId:
-          file.kind === "model" ? onshapeId(file.onshapeElementId) : null,
-        sliceStatus: sliceEligible(file.kind, file.filename)
-          ? ("pending" as const)
-          : null,
-      })),
+      uploads.map((file) => {
+        const elementId =
+          file.kind === "model" ? onshapeId(file.onshapeElementId) : null;
+        // Like `imported`, upstream sync ids are only meaningful with a
+        // source to sync against; length-capped since they travel through
+        // the client draft.
+        const sourceString = (value: string | undefined, max: number) =>
+          sourceUrl && typeof value === "string" && value.length <= max
+            ? value
+            : null;
+        return {
+          modelId: model.id,
+          kind: file.kind,
+          filename: file.filename,
+          s3Key: file.key,
+          size: file.size,
+          // Never store the client-claimed type; derive from the validated
+          // extension (an inline-served text/html "image" would be stored XSS).
+          contentType: contentTypeForFilename(file.filename),
+          animated: animatedKeys.has(file.key),
+          position: position++,
+          onshapeElementId: elementId,
+          imported: (!!sourceUrl && file.imported === true) || elementId !== null,
+          sourceFileId: sourceString(file.sourceFileId, 300),
+          sourceModifiedAt: sourceString(file.sourceModifiedAt, 64),
+          sliceStatus: sliceEligible(file.kind, file.filename)
+            ? ("pending" as const)
+            : null,
+        };
+      }),
     );
 
     if (bom.length > 0) {

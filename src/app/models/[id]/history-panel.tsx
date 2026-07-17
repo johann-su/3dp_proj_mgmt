@@ -1,9 +1,10 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { ChevronDown, History, Loader2, RotateCcw } from "lucide-react";
+import { ChevronDown, Eye, History, Loader2, RotateCcw } from "lucide-react";
 import type { ModelVersionReason } from "@/db/schema";
 import { revertModelVersion } from "@/app/models/actions";
 import { formatDate } from "@/lib/format";
@@ -37,6 +38,7 @@ const reasonLabels: Record<ModelVersionReason, string> = {
   create: "Created",
   edit: "Edited",
   "onshape-sync": "Onshape sync",
+  "source-sync": "Source sync",
   revert: "Reverted",
 };
 
@@ -111,6 +113,28 @@ export function HistoryPanel({
                     {entry.current ? " · current" : ""}
                   </div>
                 </div>
+                {/* versionId 0 is the synthesized v1 of a pre-versioning
+                    model — no snapshot row exists to preview or revert to. */}
+                {!entry.current && entry.versionId > 0 && (
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        asChild
+                        size="icon"
+                        variant="ghost"
+                        className="shrink-0"
+                        aria-label={`Preview version ${entry.number}`}
+                      >
+                        <Link href={`/models/${modelId}/versions/${entry.versionId}`}>
+                          <Eye className="size-4 text-muted-foreground" />
+                        </Link>
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent side="left">
+                      Preview this version
+                    </TooltipContent>
+                  </Tooltip>
+                )}
                 {!entry.current && (
                   <Tooltip>
                     <TooltipTrigger asChild>

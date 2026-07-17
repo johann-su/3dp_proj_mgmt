@@ -65,6 +65,9 @@ export type ExistingFile = {
   filename: string;
   size: number;
   kind: "model" | "image" | "pdf";
+  // Came with the model's source-platform import (model_files.imported) —
+  // keeps the cloud badge visible in edit mode.
+  imported: boolean;
 };
 
 // Prefilled values when editing; absent when creating a new model.
@@ -124,7 +127,7 @@ type ModelFileEntry = {
   filename: string;
   size: number;
 } & (
-  | { type: "existing"; id: string }
+  | { type: "existing"; id: string; imported: boolean }
   | { type: "staged"; staged: UploadedFile }
   | { type: "new"; file: File }
 );
@@ -340,6 +343,7 @@ function FilePicker({
               key={file.id}
               name={file.filename}
               size={file.size}
+              imported={file.imported}
               onRemove={() => removeExisting?.(file.id)}
               onRename={
                 renameExisting ? (name) => renameExisting(file.id, name) : undefined
@@ -436,7 +440,8 @@ function ModelFileRow({
       >
         <GripVertical className="size-4" />
       </span>
-      {entry.type === "staged" && (
+      {(entry.type === "staged" ||
+        (entry.type === "existing" && entry.imported)) && (
         <CloudDownload className="size-3.5 text-primary shrink-0" />
       )}
       {editing ? (
@@ -803,6 +808,7 @@ export function ModelForm({
           key: f.id,
           type: "existing",
           id: f.id,
+          imported: f.imported,
           filename: f.filename,
           size: f.size,
         })),

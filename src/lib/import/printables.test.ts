@@ -1,6 +1,10 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { importFromPrintables, parsePrintablesUrl } from "@/lib/import/printables";
+import {
+  importFromPrintables,
+  listPrintablesUpstreamFiles,
+  parsePrintablesUrl,
+} from "@/lib/import/printables";
 
 test("parsePrintablesUrl returns the model id for printables hosts", () => {
   assert.equal(
@@ -107,4 +111,31 @@ test("importFromPrintables asks to confirm before importing a model with many fi
   );
   assert.ok(!confirmed.needsConfirmation);
   assert.equal(confirmed.assets.filter((a) => a.kind === "model").length, 15);
+});
+
+test("listPrintablesUpstreamFiles maps files to ids + modified tokens for sync", () => {
+  // The ids must match what importFromPrintables stamps on its assets
+  // ("file:<id>") — the sync planner joins the two worlds on them.
+  const files = listPrintablesUpstreamFiles({
+    name: "Benchy",
+    description: null,
+    summary: null,
+    tags: [],
+    category: null,
+    images: [],
+    stls: [{ id: "49068", name: "benchy.3mf", fileSize: 10, modified: "2020-11-26T12:50:39+00:00" }],
+    slas: null,
+    otherFiles: [
+      { id: "7", name: "box.scad", fileSize: 5, modified: null },
+      // Non-model files (readme, zip sources) never enter the sync domain.
+      { id: "8", name: "readme.txt", fileSize: 1, modified: null },
+    ],
+  });
+  assert.deepEqual(
+    files.map((f) => [f.sourceFileId, f.filename, f.modifiedAt, f.fileType]),
+    [
+      ["file:49068", "benchy.3mf", "2020-11-26T12:50:39+00:00", "stl"],
+      ["file:7", "box.scad", null, "other_file"],
+    ],
+  );
 });

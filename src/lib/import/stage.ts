@@ -48,6 +48,13 @@ async function stageScadDownload(
     staged.push({
       ...(await stageBuffer(name, bytes, CONTENT_TYPES[".scad"])),
       kind: "model" as const,
+      imported: true,
+      // Per-entry id from the extracted name; the whole archive shares one
+      // last-modified token (it downloads as a unit).
+      sourceFileId: `scad:${name}`,
+      ...(asset.sourceModifiedAt
+        ? { sourceModifiedAt: asset.sourceModifiedAt }
+        : {}),
     });
   }
   return staged;
@@ -66,12 +73,21 @@ export type StagedImportFile = {
   contentType: string;
   kind: "model" | "image" | "pdf";
   onshapeElementId?: string;
+  // Upstream identity + last-modified token for the source sync (mirrors
+  // RemoteAsset; scad archive entries derive their id from the entry name).
+  sourceFileId?: string;
+  sourceModifiedAt?: string;
+  // Always true — staging only exists for imports. Carried explicitly so the
+  // create-form draft and the direct-insert paths can record per-file
+  // provenance (model_files.imported) next to manually uploaded files.
+  imported: true;
 };
 
 // Best-effort: assets that fail to download become warnings, not errors, so
-// one broken image doesn't sink an otherwise fine import.
+// one broken image doesn't sink an otherwise fine import. Takes just the
+// asset list so the source-sync route can stage a hand-picked subset.
 export async function stageImportedAssets(
-  project: ImportedProject,
+  project: Pick<ImportedProject, "assets">,
 ): Promise<{ files: StagedImportFile[]; warnings: string[] }> {
   const files: StagedImportFile[] = [];
   const warnings: string[] = [];
@@ -127,8 +143,13 @@ export async function stageImportedAssets(
       files.push({
         ...staged,
         kind: asset.kind,
+        imported: true,
         ...(asset.onshapeElementId
           ? { onshapeElementId: asset.onshapeElementId }
+          : {}),
+        ...(asset.sourceFileId ? { sourceFileId: asset.sourceFileId } : {}),
+        ...(asset.sourceModifiedAt
+          ? { sourceModifiedAt: asset.sourceModifiedAt }
           : {}),
       });
     } catch {

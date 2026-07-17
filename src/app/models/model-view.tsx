@@ -7,6 +7,7 @@ import { toast } from "sonner";
 import {
   ChevronDown,
   Clock,
+  CloudDownload,
   Download,
   ExternalLink,
   FileBox,
@@ -49,6 +50,7 @@ import { AddToCollection, type CollectionOption } from "./[id]/add-to-collection
 import { DeleteModelButton } from "./[id]/delete-model-button";
 import { HistoryPanel, type ModelHistoryEntry } from "./[id]/history-panel";
 import { OnshapeSyncButton } from "./[id]/onshape-sync-button";
+import { SourceSyncButton } from "./[id]/source-sync-button";
 import { ShareButton } from "./[id]/share-button";
 import { FileDownloadMenu } from "./[id]/file-download-menu";
 
@@ -57,9 +59,16 @@ export type { CollectionOption };
 export type PrintFileData = {
   id: string | null;
   filename: string;
+  // The file came with the model's source-platform import (or Onshape sync)
+  // rather than being uploaded by hand — badged with a cloud icon.
+  imported: boolean;
   // Signed /api/files access token for slicer deep links (null in the
   // create-wizard preview, where the file has no id yet either).
   downloadToken: string | null;
+  // Download URL for files without a live model_files row — the version
+  // preview serves historical files via /api/files/versions/… (already
+  // token-authenticated, so extra query params are appended with "&").
+  src?: string | null;
   size: number;
   printTime: number | null;
   grams: number | null;
@@ -103,6 +112,9 @@ export type ModelViewData = {
     id: string | null;
     filename: string;
     size: number;
+    // Like PrintFileData.src: serves the PDF when there is no live row
+    // (version preview).
+    src?: string | null;
   }>;
   modelId: string | null;
   // Viewer may delete the model and any variant: the owner or a
@@ -166,11 +178,14 @@ function DeleteVariantButton({
 
 function PrintFileRow({
   file,
+  sourceName,
   makerworldUrl,
   slicerConfigured,
   deletable,
 }: {
   file: PrintFileData;
+  // Platform label for the imported badge's tooltip ("MakerWorld", …).
+  sourceName: string | null;
   makerworldUrl: string | null;
   slicerConfigured: boolean;
   deletable?: { modelId: string };
@@ -186,7 +201,22 @@ function PrintFileRow({
         <FileBox className="size-5 text-muted-foreground/80" />
       </div>
       <div className="min-w-0 flex-1 space-y-1">
-        <div className="text-sm font-medium truncate">{file.filename}</div>
+        <div className="flex min-w-0 items-center gap-1.5">
+          <span className="text-sm font-medium truncate">{file.filename}</span>
+          {file.imported && (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <CloudDownload
+                  className="size-3.5 shrink-0 text-primary"
+                  aria-label={`Imported from ${sourceName ?? "the source platform"}`}
+                />
+              </TooltipTrigger>
+              <TooltipContent>
+                Imported from {sourceName ?? "the source platform"}
+              </TooltipContent>
+            </Tooltip>
+          )}
+        </div>
         {file.paramsSummary && (
           <div className="text-xs text-muted-foreground truncate">
             {file.paramsSummary}
@@ -283,14 +313,20 @@ function PrintFileRow({
             filename={file.filename}
             makerworldUrl={makerworldUrl ?? undefined}
           />
-        ) : file.id ? (
+        ) : file.id || file.src ? (
           <Button
             asChild
             size="icon"
             variant="outline"
             aria-label={`Download ${file.filename}`}
           >
-            <a href={`/api/files/${file.id}?download=1`}>
+            <a
+              href={
+                file.id
+                  ? `/api/files/${file.id}?download=1`
+                  : `${file.src}&download=1`
+              }
+            >
               <Download className="size-4" />
             </a>
           </Button>
@@ -447,6 +483,15 @@ export function ModelView({ data }: { data: ModelViewData }) {
           </div>
         )}
 
+        {(platform === "makerworld" || platform === "printables") &&
+          isLoggedIn &&
+          modelId &&
+          sourceName && (
+            <div className="flex flex-wrap items-center gap-2">
+              <SourceSyncButton modelId={modelId} sourceName={sourceName} />
+            </div>
+          )}
+
         {(category || tags.length > 0) && (
           <div className="flex flex-wrap gap-1.5">
             {category &&
@@ -505,6 +550,7 @@ export function ModelView({ data }: { data: ModelViewData }) {
               <div key={file.id ?? `${file.filename}-${index}`} className="grid gap-2">
                 <PrintFileRow
                   file={file}
+                  sourceName={sourceName}
                   makerworldUrl={makerworldUrl}
                   slicerConfigured={slicerConfigured}
                 />
@@ -530,6 +576,7 @@ export function ModelView({ data }: { data: ModelViewData }) {
                       <PrintFileRow
                         key={variant.id ?? variant.filename}
                         file={variant}
+                        sourceName={sourceName}
                         makerworldUrl={makerworldUrl}
                         slicerConfigured={slicerConfigured}
                         deletable={
@@ -571,16 +618,25 @@ export function ModelView({ data }: { data: ModelViewData }) {
               </CardHeader>
               <CollapsibleContent>
                 <CardContent className="grid gap-2">
-                  {pdfFiles.map((file, index) => (
+                  {pdfFiles.map((file, index) => {
+                const viewHref = file.id
+                  ? `/api/files/${file.id}`
+                  : (file.src ?? null);
+                const downloadHref = file.id
+                  ? `/api/files/${file.id}?download=1`
+                  : file.src
+                    ? `${file.src}&download=1`
+                    : null;
+                return (
                 <div
                   key={file.id ?? `${file.filename}-${index}`}
                   className="flex min-w-0 items-center gap-3 border rounded-md px-3 py-2"
                 >
                   <FileText className="size-4 text-muted-foreground shrink-0" />
                   <div className="min-w-0">
-                    {file.id ? (
+                    {viewHref ? (
                       <a
-                        href={`/api/files/${file.id}`}
+                        href={viewHref}
                         target="_blank"
                         rel="noopener noreferrer"
                         className="block text-sm font-medium truncate hover:underline"
@@ -596,7 +652,7 @@ export function ModelView({ data }: { data: ModelViewData }) {
                       {formatBytes(file.size)}
                     </div>
                   </div>
-                  {file.id ? (
+                  {downloadHref ? (
                     <Button
                       asChild
                       size="icon"
@@ -604,7 +660,7 @@ export function ModelView({ data }: { data: ModelViewData }) {
                       className="ml-auto shrink-0"
                       aria-label={`Download ${file.filename}`}
                     >
-                      <a href={`/api/files/${file.id}?download=1`}>
+                      <a href={downloadHref}>
                         <Download className="size-4" />
                       </a>
                     </Button>
@@ -620,7 +676,8 @@ export function ModelView({ data }: { data: ModelViewData }) {
                     </Button>
                   )}
                 </div>
-              ))}
+                );
+              })}
                 </CardContent>
               </CollapsibleContent>
             </Card>

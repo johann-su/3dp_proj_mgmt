@@ -16,6 +16,9 @@ function file(overrides: Partial<VersionFileSnapshot> = {}): VersionFileSnapshot
     contentType: "model/3mf",
     animated: false,
     onshapeElementId: null,
+    imported: false,
+    sourceFileId: null,
+    sourceModifiedAt: null,
     sliceStatus: null,
     sliceSource: null,
     printTimeSeconds: null,
@@ -50,7 +53,9 @@ test("buildSnapshot excludes generated variants and sorts tag names", () => {
       { name: "M3 screw", quantity: "4", link: null, imageUrl: null, section: null },
     ],
     files: [
-      { ...file({ filename: "wing.3mf" }), generatedFromId: null },
+      // Import provenance must survive the snapshot so a revert restores the
+      // "imported" badge along with the file row.
+      { ...file({ filename: "wing.3mf", imported: true }), generatedFromId: null },
       // A generated .3mf variant — must not appear in the snapshot.
       { ...file({ s3Key: "uploads/v/variant.3mf" }), generatedFromId: "src-1" },
     ],
@@ -58,6 +63,7 @@ test("buildSnapshot excludes generated variants and sorts tag names", () => {
   assert.deepEqual(snap.tags, ["glider", "rc"]);
   assert.equal(snap.files.length, 1);
   assert.equal(snap.files[0].filename, "wing.3mf");
+  assert.equal(snap.files[0].imported, true);
 });
 
 test("snapshotsEqual detects identical state so no-op saves write no version", () => {

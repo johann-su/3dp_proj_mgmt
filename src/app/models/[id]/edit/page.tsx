@@ -60,6 +60,7 @@ export default async function EditModelPage({
             filename: file.filename,
             size: file.size,
             kind: file.kind,
+            imported: file.imported,
           })),
           createdAt: model.createdAt,
         }}

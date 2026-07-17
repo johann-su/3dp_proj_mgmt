@@ -204,6 +204,9 @@ async function createImportedModel(
         contentType: file.contentType,
         animated: animatedKeys.has(file.key),
         position: position++,
+        imported: file.imported,
+        sourceFileId: file.sourceFileId ?? null,
+        sourceModifiedAt: file.sourceModifiedAt ?? null,
         sliceStatus: sliceEligible(file.kind, file.filename)
           ? ("pending" as const)
           : null,

@@ -9,6 +9,7 @@ import {
   IMPORT_USER_AGENT,
   type ImportedProject,
 } from "./types";
+import type { UpstreamFile } from "./sync-diff";
 
 const GRAPHQL_URL = "https://api.printables.com/graphql/";
 const MEDIA_BASE = "https://media.printables.com/";
@@ -29,9 +30,13 @@ type PrintablesFile = {
   id: string;
   name: string;
   fileSize: number;
+  // Per-file last-modified timestamp — the change signal for source sync
+  // (verified live; introspection is disabled but the field exists on all
+  // three file groups).
+  modified: string | null;
 };
 
-type PrintablesPrint = {
+export type PrintablesPrint = {
   name: string;
   description: string | null;
   summary: string | null;
@@ -73,9 +78,9 @@ const PRINT_QUERY = `query Print($id: ID!) {
     tags { name }
     category { path { name } }
     images { filePath }
-    stls { id name fileSize }
-    slas { id name fileSize }
-    otherFiles { id name fileSize }
+    stls { id name fileSize modified }
+    slas { id name fileSize modified }
+    otherFiles { id name fileSize modified }
   }
 }`;
 
@@ -86,10 +91,12 @@ const DOWNLOAD_MUTATION = `mutation GetDownloadLink($id: ID!, $printId: ID!, $fi
   }
 }`;
 
-async function downloadLink(
+export type PrintablesFileType = "stl" | "sla" | "other_file";
+
+export async function downloadLink(
   printId: string,
   fileId: string,
-  fileType: "stl" | "sla" | "other_file",
+  fileType: PrintablesFileType,
 ): Promise<string | null> {
   try {
     const data = await graphql<{
@@ -106,16 +113,54 @@ async function downloadLink(
   }
 }
 
+// Fetches + validates the anonymous print metadata. Shared by the importer
+// and the source-sync route.
+export async function fetchPrintablesPrint(printId: string): Promise<PrintablesPrint> {
+  const data = await graphql<{ print: PrintablesPrint | null }>(PRINT_QUERY, {
+    id: printId,
+  });
+  if (!data.print) throw new ImportError("Printables model not found");
+  return data.print;
+}
+
+// One entry of the print's current downloadable model files, with what the
+// download mutation needs to resolve it.
+export type PrintablesUpstreamFile = UpstreamFile & {
+  fileId: string;
+  fileType: PrintablesFileType;
+};
+
+// Pure listing of the print's downloadable model files with the ids/tokens
+// the sync planner diffs against model_files. Must stay in lockstep with the
+// ids importFromPrintables stamps on its assets.
+export function listPrintablesUpstreamFiles(
+  print: PrintablesPrint,
+): PrintablesUpstreamFile[] {
+  const fileGroups: [PrintablesFile[] | null, PrintablesFileType][] = [
+    [print.stls, "stl"],
+    [print.slas, "sla"],
+    [print.otherFiles, "other_file"],
+  ];
+  return fileGroups.flatMap(([files, fileType]) =>
+    (files ?? [])
+      .filter((f) => MODEL_EXTENSIONS.includes(fileExtension(f.name)))
+      .map((f) => ({
+        fileId: f.id,
+        fileType,
+        sourceFileId: `file:${f.id}`,
+        filename: f.name,
+        kind: "model" as const,
+        modifiedAt: f.modified ?? null,
+      })),
+  );
+}
+
 export async function importFromPrintables(
   url: URL,
   printId: string,
   options: PrintablesOptions = {},
 ): Promise<ImportedProject> {
-  const data = await graphql<{ print: PrintablesPrint | null }>(PRINT_QUERY, {
-    id: printId,
-  });
-  if (!data.print) throw new ImportError("Printables model not found");
-  const print = data.print;
+  const print = await fetchPrintablesPrint(printId);
 
   const project: ImportedProject = {
     source: "printables",
@@ -166,7 +211,13 @@ export async function importFromPrintables(
       project.warnings.push(`Could not get a download link for ${file.name}`);
       continue;
     }
-    project.assets.push({ url: link, filename: file.name, kind: "model" });
+    project.assets.push({
+      url: link,
+      filename: file.name,
+      kind: "model",
+      sourceFileId: `file:${file.id}`,
+      ...(file.modified ? { sourceModifiedAt: file.modified } : {}),
+    });
     fileCount++;
   }
 

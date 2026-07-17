@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   collectScadModelFiles,
   importFromMakerworld,
+  listMakerworldUpstreamFiles,
   parseMakerworldUrl,
   preferEnglish,
   selectBomItems,
@@ -285,10 +286,26 @@ test("selectDocs collects guide + BOM documents as pdf assets", () => {
       design_bom: [{ name: "BOM.pdf", url: "https://cdn/bom.pdf" }],
     },
   });
+  // The doc:<name> id doubles as the sync identity (docs carry no timestamp).
   assert.deepEqual(docs, [
-    { url: "https://cdn/guide.pdf", filename: "Assembly instructions.pdf", kind: "pdf" },
-    { url: "https://cdn/61de923d.pdf", filename: "61de923d.pdf", kind: "pdf" },
-    { url: "https://cdn/bom.pdf", filename: "BOM.pdf", kind: "pdf" },
+    {
+      url: "https://cdn/guide.pdf",
+      filename: "Assembly instructions.pdf",
+      kind: "pdf",
+      sourceFileId: "doc:Assembly instructions.pdf",
+    },
+    {
+      url: "https://cdn/61de923d.pdf",
+      filename: "61de923d.pdf",
+      kind: "pdf",
+      sourceFileId: "doc:61de923d.pdf",
+    },
+    {
+      url: "https://cdn/bom.pdf",
+      filename: "BOM.pdf",
+      kind: "pdf",
+      sourceFileId: "doc:BOM.pdf",
+    },
   ]);
 
   // no documents / non-http links → nothing imported
@@ -355,4 +372,93 @@ test("parseMakerworldUrl rejects non-makerworld or non-model URLs", () => {
   assert.equal(parseMakerworldUrl(new URL("https://makerworld.com/en/search")), null);
   // guards against a look-alike host
   assert.equal(parseMakerworldUrl(new URL("https://notmakerworld.com/models/1")), null);
+});
+
+test("listMakerworldUpstreamFiles ids profiles, scads and docs for sync", () => {
+  // Ids must match what the import path stamps (profile:<id> from
+  // resolveDownloads, scad:<basename> from staging, doc:<name> from
+  // selectDocs) — the sync planner joins on them. The profile token is
+  // publishTime, NOT the design/instance updateTime, which MakerWorld
+  // touches on counter activity (an untouched design shows today's date).
+  const files = listMakerworldUpstreamFiles({
+    id: 777516,
+    modelId: "US31d64271d31f2",
+    title: "Servo Horn",
+    designCreator: { uid: 1 },
+    instances: [
+      {
+        id: 1,
+        profileId: 42,
+        title: "Default",
+        instanceCreator: { uid: 1 },
+        publishTime: "2025-06-24T05:17:29Z",
+        createTime: "2024-11-11T09:57:31Z",
+      },
+    ],
+    designExtension: {
+      model_files: [
+        { modelName: "Standard Sizes.3mf", modelType: "3mf" },
+        {
+          modelName: "SCAD Folder/Servo Horn.scad",
+          modelType: "scad",
+          modelUpdateTime: "2024-11-13T15:35:47.222Z",
+        },
+      ],
+      design_guide: [{ name: "Guide.pdf", url: "https://cdn.example/g.pdf" }],
+    },
+  });
+  assert.deepEqual(
+    files.map((f) => [f.sourceFileId, f.kind, f.modifiedAt]),
+    [
+      ["profile:42", "model", "2025-06-24T05:17:29Z"],
+      // Basename, matching how staging names extracted zip entries.
+      ["scad:Servo Horn.scad", "model", "2024-11-13T15:35:47.222Z"],
+      // Docs have no upstream timestamp — matched docs count as unchanged.
+      ["doc:Guide.pdf", "pdf", null],
+    ],
+  );
+});
+
+test("makerworld import stamps the same sync ids on its staged assets", async (t) => {
+  // The contract behind the sync planner: listMakerworldUpstreamFiles and the
+  // import path must produce identical ids, or every sync would re-import
+  // everything as new.
+  const design = {
+    id: 777516,
+    modelId: "US31d64271d31f2",
+    title: "Servo Horn",
+    designCreator: { uid: 1 },
+    instances: [
+      {
+        id: 1,
+        profileId: 42,
+        title: "Default",
+        instanceCreator: { uid: 1 },
+        publishTime: "2025-06-24T05:17:29Z",
+      },
+    ],
+    designExtension: {
+      design_guide: [{ name: "Guide.pdf", url: "https://cdn.example/g.pdf" }],
+    },
+  };
+  t.mock.method(globalThis, "fetch", async (input: URL | RequestInfo) => {
+    const url = String(input);
+    if (url.includes("/iot-service/api/user/profile/42")) {
+      return Response.json({ name: "Default.3mf", url: "https://cdn.example/p.3mf" });
+    }
+    if (url.includes("/design-service/design/777516")) {
+      return Response.json(design);
+    }
+    return new Response("not found", { status: 404 });
+  });
+
+  const project = await importFromMakerworld(
+    new URL("https://makerworld.com/en/models/777516-servo-horn"),
+    { token: "token" },
+  );
+  const profile = project.assets.find((a) => a.filename === "Default.3mf");
+  assert.equal(profile?.sourceFileId, "profile:42");
+  assert.equal(profile?.sourceModifiedAt, "2025-06-24T05:17:29Z");
+  const doc = project.assets.find((a) => a.kind === "pdf");
+  assert.equal(doc?.sourceFileId, "doc:Guide.pdf");
 });

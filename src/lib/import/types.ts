@@ -10,6 +10,14 @@ export type RemoteAsset = {
   // Onshape element the asset was exported from; stored on the model file so
   // sync can replace exactly these files.
   onshapeElementId?: string;
+  // Upstream identity + last-modified token for the MakerWorld/Printables
+  // source sync (see src/lib/import/sync-diff.ts for the id scheme). Stored
+  // on the model file so sync can match it against the platform's current
+  // file list. For extractScad archives the id is derived per extracted
+  // entry ("scad:<name>") instead; sourceModifiedAt then holds the shared
+  // group token (the zip downloads as one unit, so any change re-stages all).
+  sourceFileId?: string;
+  sourceModifiedAt?: string;
   // MakerWorld raw-model downloads: the URL may serve either a single .scad
   // file or a zip of several. Staging buffers the download and extracts the
   // .scad entries when it's a zip.

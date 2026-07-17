@@ -73,3 +73,19 @@ export function fileToken(fileId: string, nowMs = Date.now()): string {
 export function fileSrc(fileId: string): string {
   return `/api/files/${fileId}?token=${fileToken(fileId)}`;
 }
+
+// Token subject for one file of a version snapshot (the version-preview page,
+// /api/files/versions/[versionId]/[index]): historical files have no
+// model_files row, so the token pins the version row id plus the index into
+// its immutable snapshot file list instead.
+export function versionFileTokenId(versionId: number, index: number): string {
+  return `version:${versionId}:${index}`;
+}
+
+// URL for a snapshot file, valid without a session (next/image can't send
+// cookies). Lives under /api/files/** so next.config's images.localPatterns
+// keeps covering it.
+export function versionFileSrc(versionId: number, index: number): string {
+  const token = fileToken(versionFileTokenId(versionId, index));
+  return `/api/files/versions/${versionId}/${index}?token=${token}`;
+}
