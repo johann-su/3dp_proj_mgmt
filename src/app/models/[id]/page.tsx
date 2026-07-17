@@ -222,6 +222,7 @@ export default async function ModelPage({
         return {
           id: file.id,
           filename: file.filename,
+          imported: file.imported,
           // Signed access token for the slicer deep links, which download the
           // file without the session cookie (see file-download-menu.tsx).
           downloadToken: fileToken(file.id),

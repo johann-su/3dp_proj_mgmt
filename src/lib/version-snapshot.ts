@@ -50,6 +50,7 @@ export function buildSnapshot(model: SnapshotSource): ModelVersionSnapshot {
         contentType: f.contentType,
         animated: f.animated,
         onshapeElementId: f.onshapeElementId,
+        imported: f.imported,
         sliceStatus: f.sliceStatus,
         sliceSource: f.sliceSource,
         printTimeSeconds: f.printTimeSeconds,

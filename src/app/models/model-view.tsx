@@ -7,6 +7,7 @@ import { toast } from "sonner";
 import {
   ChevronDown,
   Clock,
+  CloudDownload,
   Download,
   ExternalLink,
   FileBox,
@@ -57,6 +58,9 @@ export type { CollectionOption };
 export type PrintFileData = {
   id: string | null;
   filename: string;
+  // The file came with the model's source-platform import (or Onshape sync)
+  // rather than being uploaded by hand — badged with a cloud icon.
+  imported: boolean;
   // Signed /api/files access token for slicer deep links (null in the
   // create-wizard preview, where the file has no id yet either).
   downloadToken: string | null;
@@ -166,11 +170,14 @@ function DeleteVariantButton({
 
 function PrintFileRow({
   file,
+  sourceName,
   makerworldUrl,
   slicerConfigured,
   deletable,
 }: {
   file: PrintFileData;
+  // Platform label for the imported badge's tooltip ("MakerWorld", …).
+  sourceName: string | null;
   makerworldUrl: string | null;
   slicerConfigured: boolean;
   deletable?: { modelId: string };
@@ -186,7 +193,22 @@ function PrintFileRow({
         <FileBox className="size-5 text-muted-foreground/80" />
       </div>
       <div className="min-w-0 flex-1 space-y-1">
-        <div className="text-sm font-medium truncate">{file.filename}</div>
+        <div className="flex min-w-0 items-center gap-1.5">
+          <span className="text-sm font-medium truncate">{file.filename}</span>
+          {file.imported && (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <CloudDownload
+                  className="size-3.5 shrink-0 text-primary"
+                  aria-label={`Imported from ${sourceName ?? "the source platform"}`}
+                />
+              </TooltipTrigger>
+              <TooltipContent>
+                Imported from {sourceName ?? "the source platform"}
+              </TooltipContent>
+            </Tooltip>
+          )}
+        </div>
         {file.paramsSummary && (
           <div className="text-xs text-muted-foreground truncate">
             {file.paramsSummary}
@@ -505,6 +527,7 @@ export function ModelView({ data }: { data: ModelViewData }) {
               <div key={file.id ?? `${file.filename}-${index}`} className="grid gap-2">
                 <PrintFileRow
                   file={file}
+                  sourceName={sourceName}
                   makerworldUrl={makerworldUrl}
                   slicerConfigured={slicerConfigured}
                 />
@@ -530,6 +553,7 @@ export function ModelView({ data }: { data: ModelViewData }) {
                       <PrintFileRow
                         key={variant.id ?? variant.filename}
                         file={variant}
+                        sourceName={sourceName}
                         makerworldUrl={makerworldUrl}
                         slicerConfigured={slicerConfigured}
                         deletable={

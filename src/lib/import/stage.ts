@@ -48,6 +48,7 @@ async function stageScadDownload(
     staged.push({
       ...(await stageBuffer(name, bytes, CONTENT_TYPES[".scad"])),
       kind: "model" as const,
+      imported: true,
     });
   }
   return staged;
@@ -66,6 +67,10 @@ export type StagedImportFile = {
   contentType: string;
   kind: "model" | "image" | "pdf";
   onshapeElementId?: string;
+  // Always true — staging only exists for imports. Carried explicitly so the
+  // create-form draft and the direct-insert paths can record per-file
+  // provenance (model_files.imported) next to manually uploaded files.
+  imported: true;
 };
 
 // Best-effort: assets that fail to download become warnings, not errors, so
@@ -127,6 +132,7 @@ export async function stageImportedAssets(
       files.push({
         ...staged,
         kind: asset.kind,
+        imported: true,
         ...(asset.onshapeElementId
           ? { onshapeElementId: asset.onshapeElementId }
           : {}),

@@ -215,6 +215,15 @@ Decisions taken and why — guidance for development.
   by `BAMBU_TOKEN_SECRET`/`BETTER_AUTH_SECRET`). At import time the token
   exchanges each print profile for a short-lived presigned URL that streams to
   S3 like any other asset. Without a connection, only metadata + images import.
+  **Per-file import provenance**: every file staged by an importer (all three
+  platforms, single-model and collection jobs, Onshape sync inserts) is flagged
+  `model_files.imported`, so files added manually to an imported model later
+  stay distinguishable — the model page and edit form badge imported files
+  with a cloud icon. The flag is display-only and carried through version
+  snapshots; Onshape sync keeps selecting the files it replaces via
+  `onshape_element_id`, never via `imported`. Migration 0019 backfilled it
+  (Onshape by element id; other platforms by files sharing their model's
+  `created_at` — same insert transaction — on models with a `source_url`).
 - **Onshape auth & import flow** (`src/lib/onshape/`, `src/lib/import/onshape.ts`)
   authenticates with OAuth2 ("Sign in with Onshape", the flow behind
   [passport-onshape](https://github.com/onshape/passport-onshape), implemented

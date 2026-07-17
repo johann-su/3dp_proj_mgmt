@@ -42,6 +42,10 @@ export type UploadedFile = {
   kind: FileKind;
   // Set on files exported by the Onshape importer; lets sync replace them.
   onshapeElementId?: string;
+  // Set on files staged by the URL importer (the create form passes draft
+  // files through unchanged). Only honored when the model actually has a
+  // sourceUrl to attribute the provenance to.
+  imported?: boolean;
 };
 
 export type CreateModelInput = {
@@ -204,23 +208,27 @@ export async function createModel(
 
     let position = 0;
     await tx.insert(modelFiles).values(
-      uploads.map((file) => ({
-        modelId: model.id,
-        kind: file.kind,
-        filename: file.filename,
-        s3Key: file.key,
-        size: file.size,
-        // Never store the client-claimed type; derive from the validated
-        // extension (an inline-served text/html "image" would be stored XSS).
-        contentType: contentTypeForFilename(file.filename),
-        animated: animatedKeys.has(file.key),
-        position: position++,
-        onshapeElementId:
-          file.kind === "model" ? onshapeId(file.onshapeElementId) : null,
-        sliceStatus: sliceEligible(file.kind, file.filename)
-          ? ("pending" as const)
-          : null,
-      })),
+      uploads.map((file) => {
+        const elementId =
+          file.kind === "model" ? onshapeId(file.onshapeElementId) : null;
+        return {
+          modelId: model.id,
+          kind: file.kind,
+          filename: file.filename,
+          s3Key: file.key,
+          size: file.size,
+          // Never store the client-claimed type; derive from the validated
+          // extension (an inline-served text/html "image" would be stored XSS).
+          contentType: contentTypeForFilename(file.filename),
+          animated: animatedKeys.has(file.key),
+          position: position++,
+          onshapeElementId: elementId,
+          imported: (!!sourceUrl && file.imported === true) || elementId !== null,
+          sliceStatus: sliceEligible(file.kind, file.filename)
+            ? ("pending" as const)
+            : null,
+        };
+      }),
     );
 
     if (bom.length > 0) {

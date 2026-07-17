@@ -186,6 +186,11 @@ export const modelFiles = pgTable("model_files", {
   position: integer("position").notNull().default(0),
   // Onshape element this file was exported from; sync replaces these files.
   onshapeElementId: text("onshape_element_id"),
+  // Provenance: the file's bytes came from the model's source platform (URL
+  // import, Onshape export, collection import) rather than a manual upload.
+  // Display-only — shown as a badge on the model page and edit form; Onshape
+  // sync keeps selecting its replaceable files via onshapeElementId.
+  imported: boolean("imported").notNull().default(false),
   sliceStatus: text("slice_status").$type<SliceStatus>(),
   sliceSource: text("slice_source").$type<SliceSource>(),
   printTimeSeconds: integer("print_time_seconds"),
@@ -245,6 +250,7 @@ export type VersionFileSnapshot = {
   contentType: string;
   animated: boolean;
   onshapeElementId: string | null;
+  imported: boolean;
   sliceStatus: SliceStatus | null;
   sliceSource: SliceSource | null;
   printTimeSeconds: number | null;

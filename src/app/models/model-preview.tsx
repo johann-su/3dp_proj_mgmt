@@ -41,6 +41,7 @@ export function ModelPreview({ data }: { data: ModelPreviewData }) {
       id: null,
       downloadToken: null,
       filename: f.filename,
+      imported: false,
       size: f.size,
       printTime: null,
       grams: null,

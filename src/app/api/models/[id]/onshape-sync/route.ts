@@ -148,6 +148,7 @@ export async function POST(
           contentType: file.contentType,
           position: position++,
           onshapeElementId: elementId,
+          imported: true,
           // Newly exported 3MF files still need slice estimates; the model page
           // runs processPendingSlices in the background on next view.
           sliceStatus: sliceEligible("model", file.filename)
