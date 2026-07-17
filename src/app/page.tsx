@@ -1,15 +1,14 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { Box, Search } from "lucide-react";
+import { Box } from "lucide-react";
 import { db } from "@/db";
 import { getSession, signInRedirect } from "@/lib/auth";
 import { parseFeedSort } from "@/lib/feed-params";
 import { listFeed } from "@/lib/list-queries";
 import { FeedGrid } from "@/components/feed-grid";
 import { FeedSort } from "@/components/feed-sort";
+import { SearchBar } from "@/components/search-bar";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 
 export const dynamic = "force-dynamic";
 
@@ -52,16 +51,7 @@ export default async function HomePage({
         </p>
       </div>
 
-      <form action="/search" className="flex gap-2 mb-4 max-w-md">
-        <Input
-          type="search"
-          name="q"
-          placeholder="Search models and collections…"
-        />
-        <Button type="submit" variant="secondary" aria-label="Search">
-          <Search className="size-4" />
-        </Button>
-      </form>
+      <SearchBar />
 
       <div className="flex flex-wrap items-center justify-between gap-4 mb-8">
         <div className="flex flex-wrap gap-2">
