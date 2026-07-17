@@ -153,7 +153,18 @@ Decisions taken and why — guidance for development.
   row but *not* its S3 object, because earlier snapshots still reference the
   key; the model page's History panel reverts to any version (open to every
   signed-in user, like editing), re-inserting file rows from the snapshot and
-  appending a new version rather than rewriting history. Versions are capped
+  appending a new version rather than rewriting history. Each history entry
+  also links to a read-only **version preview**
+  (`/models/{id}/versions/{versionId}`): the same ModelView as the model
+  page, fed from the snapshot (files, images, PDFs, title/description, tags,
+  category, BOM), with every mutating affordance disabled via `modelId:
+  null` and just Restore/Back actions. Historical files have no
+  `model_files` row, so their bytes are served by
+  `/api/files/versions/[versionId]/[index]` — addressed by version row +
+  snapshot index (both immutable), authenticated like `/api/files/[id]`
+  (session or signed token; `versionFileSrc` in `src/lib/file-token.ts`
+  mints the tokened URLs next/image needs) and deliberately under
+  `/api/files/**` so `images.localPatterns` keeps covering it. Versions are capped
   (`VERSION_CAP`, 30/model); pruning deletes only S3 objects no remaining
   snapshot or live row references. Generated OpenSCAD variants are excluded
   from snapshots on purpose (additive, individually deletable, cheap to

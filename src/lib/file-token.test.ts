@@ -45,3 +45,17 @@ test("fileToken buckets expiry so URLs stay stable within a week", async () => {
   const token = fileToken(FILE_ID, now);
   assert.equal(verifyFileToken(FILE_ID, token, later), true);
 });
+
+test("version-file tokens are scoped to one version and file index", async () => {
+  // The version-preview page serves snapshot files by (version row, index);
+  // a token minted for one file must not unlock its neighbours.
+  const { fileToken, verifyFileToken, versionFileTokenId } = await import(
+    "@/lib/file-token"
+  );
+  const token = fileToken(versionFileTokenId(12, 0));
+  assert.equal(verifyFileToken(versionFileTokenId(12, 0), token), true);
+  assert.equal(verifyFileToken(versionFileTokenId(12, 1), token), false);
+  assert.equal(verifyFileToken(versionFileTokenId(13, 0), token), false);
+  // …and never for a regular file id.
+  assert.equal(verifyFileToken(FILE_ID, token), false);
+});

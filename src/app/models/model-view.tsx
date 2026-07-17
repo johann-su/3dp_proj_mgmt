@@ -65,6 +65,10 @@ export type PrintFileData = {
   // Signed /api/files access token for slicer deep links (null in the
   // create-wizard preview, where the file has no id yet either).
   downloadToken: string | null;
+  // Download URL for files without a live model_files row — the version
+  // preview serves historical files via /api/files/versions/… (already
+  // token-authenticated, so extra query params are appended with "&").
+  src?: string | null;
   size: number;
   printTime: number | null;
   grams: number | null;
@@ -108,6 +112,9 @@ export type ModelViewData = {
     id: string | null;
     filename: string;
     size: number;
+    // Like PrintFileData.src: serves the PDF when there is no live row
+    // (version preview).
+    src?: string | null;
   }>;
   modelId: string | null;
   // Viewer may delete the model and any variant: the owner or a
@@ -306,14 +313,20 @@ function PrintFileRow({
             filename={file.filename}
             makerworldUrl={makerworldUrl ?? undefined}
           />
-        ) : file.id ? (
+        ) : file.id || file.src ? (
           <Button
             asChild
             size="icon"
             variant="outline"
             aria-label={`Download ${file.filename}`}
           >
-            <a href={`/api/files/${file.id}?download=1`}>
+            <a
+              href={
+                file.id
+                  ? `/api/files/${file.id}?download=1`
+                  : `${file.src}&download=1`
+              }
+            >
               <Download className="size-4" />
             </a>
           </Button>
@@ -605,16 +618,25 @@ export function ModelView({ data }: { data: ModelViewData }) {
               </CardHeader>
               <CollapsibleContent>
                 <CardContent className="grid gap-2">
-                  {pdfFiles.map((file, index) => (
+                  {pdfFiles.map((file, index) => {
+                const viewHref = file.id
+                  ? `/api/files/${file.id}`
+                  : (file.src ?? null);
+                const downloadHref = file.id
+                  ? `/api/files/${file.id}?download=1`
+                  : file.src
+                    ? `${file.src}&download=1`
+                    : null;
+                return (
                 <div
                   key={file.id ?? `${file.filename}-${index}`}
                   className="flex min-w-0 items-center gap-3 border rounded-md px-3 py-2"
                 >
                   <FileText className="size-4 text-muted-foreground shrink-0" />
                   <div className="min-w-0">
-                    {file.id ? (
+                    {viewHref ? (
                       <a
-                        href={`/api/files/${file.id}`}
+                        href={viewHref}
                         target="_blank"
                         rel="noopener noreferrer"
                         className="block text-sm font-medium truncate hover:underline"
@@ -630,7 +652,7 @@ export function ModelView({ data }: { data: ModelViewData }) {
                       {formatBytes(file.size)}
                     </div>
                   </div>
-                  {file.id ? (
+                  {downloadHref ? (
                     <Button
                       asChild
                       size="icon"
@@ -638,7 +660,7 @@ export function ModelView({ data }: { data: ModelViewData }) {
                       className="ml-auto shrink-0"
                       aria-label={`Download ${file.filename}`}
                     >
-                      <a href={`/api/files/${file.id}?download=1`}>
+                      <a href={downloadHref}>
                         <Download className="size-4" />
                       </a>
                     </Button>
@@ -654,7 +676,8 @@ export function ModelView({ data }: { data: ModelViewData }) {
                     </Button>
                   )}
                 </div>
-              ))}
+                );
+              })}
                 </CardContent>
               </CollapsibleContent>
             </Card>
