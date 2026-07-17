@@ -200,8 +200,10 @@ export async function restoreSnapshot(
         animated: file.animated,
         position,
         onshapeElementId: file.onshapeElementId,
-        // Snapshots written before the imported flag existed lack the field.
+        // Snapshots written before these fields existed lack them.
         imported: file.imported ?? false,
+        sourceFileId: file.sourceFileId ?? null,
+        sourceModifiedAt: file.sourceModifiedAt ?? null,
         sliceStatus: file.sliceStatus,
         sliceSource: file.sliceSource,
         printTimeSeconds: file.printTimeSeconds,

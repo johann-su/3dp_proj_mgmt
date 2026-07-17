@@ -50,6 +50,7 @@ import { AddToCollection, type CollectionOption } from "./[id]/add-to-collection
 import { DeleteModelButton } from "./[id]/delete-model-button";
 import { HistoryPanel, type ModelHistoryEntry } from "./[id]/history-panel";
 import { OnshapeSyncButton } from "./[id]/onshape-sync-button";
+import { SourceSyncButton } from "./[id]/source-sync-button";
 import { ShareButton } from "./[id]/share-button";
 import { FileDownloadMenu } from "./[id]/file-download-menu";
 
@@ -468,6 +469,15 @@ export function ModelView({ data }: { data: ModelViewData }) {
               ))}
           </div>
         )}
+
+        {(platform === "makerworld" || platform === "printables") &&
+          isLoggedIn &&
+          modelId &&
+          sourceName && (
+            <div className="flex flex-wrap items-center gap-2">
+              <SourceSyncButton modelId={modelId} sourceName={sourceName} />
+            </div>
+          )}
 
         {(category || tags.length > 0) && (
           <div className="flex flex-wrap gap-1.5">

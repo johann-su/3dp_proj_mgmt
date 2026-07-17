@@ -22,6 +22,7 @@ import {
   type ImportedProject,
   type RemoteAsset,
 } from "./types";
+import type { UpstreamFile } from "./sync-diff";
 
 // Exact warning pushed when the stored Bambu token stops working. The
 // collection import job matches on it to abort early (every following
@@ -45,6 +46,13 @@ type DesignInstance = {
   profileId?: number;
   title?: string;
   instanceCreator?: DesignUser;
+  // Designer-action timestamps used as the profile's last-modified token for
+  // source sync. `updateTime` exists too but is deliberately ignored — it is
+  // touched by counter/boost activity (verified live: an untouched 2024
+  // design showed today's updateTime), so it would re-download everything on
+  // every sync.
+  publishTime?: string;
+  createTime?: string;
 };
 
 // A downloadable document attached to a design (assembly guide / BOM sheet).
@@ -76,6 +84,9 @@ type BomOtherPart = {
 type DesignModelFile = {
   modelName?: string;
   modelType?: string;
+  // Per-file last-modified timestamp — a genuine designer-edit signal,
+  // unlike the design-level updateTime.
+  modelUpdateTime?: string;
   children?: DesignModelFile[];
 };
 
@@ -113,7 +124,7 @@ type DesignExtension = {
 // first, then its parents (e.g. "Signs & Logos", then "Art").
 type DesignCategory = { name?: string };
 
-type MakerworldDesign = {
+export type MakerworldDesign = {
   id?: number;
   modelId?: string;
   title?: string;
@@ -145,7 +156,7 @@ export type MakerworldOptions = {
 // profiles we don't want. `restrictedToCreator` is false when we can't apply
 // it (missing author, or the designer published none of their own), in which
 // case every profile is kept rather than importing zero.
-function selectDesignerInstances(design: MakerworldDesign): {
+export function selectDesignerInstances(design: MakerworldDesign): {
   instances: (DesignInstance & { profileId: number })[];
   restrictedToCreator: boolean;
 } {
@@ -204,10 +215,14 @@ export function selectDocs(design: MakerworldDesign): RemoteAsset[] {
     if (typeof url !== "string" || !url.startsWith("http") || seen.has(url)) continue;
     seen.add(url);
     const fallback = url.split("/").pop()?.split("?")[0] || `document-${assets.length + 1}.pdf`;
+    const filename = doc.name?.trim() || fallback;
     assets.push({
       url,
-      filename: (doc.name?.trim() || fallback),
+      filename,
       kind: "pdf",
+      // Docs carry no timestamp, so the name is both identity and change
+      // signal (sync adds/removes by name, never re-downloads a match).
+      sourceFileId: `doc:${filename}`,
     });
   }
   return assets;
@@ -261,10 +276,131 @@ export function selectBomItems(design: MakerworldDesign): BomItemInput[] {
   return items;
 }
 
-function ensure3mf(name: string, fallback: string): string {
+export function ensure3mf(name: string, fallback: string): string {
   const clean = name.trim();
   if (clean.toLowerCase().endsWith(".3mf")) return clean;
   return `${(clean || fallback).replace(/\.[^.]*$/, "")}.3mf`;
+}
+
+// A print profile's last-modified token for source sync: when the designer
+// last (re)published it. NOT updateTime — see the DesignInstance comment.
+function profileToken(instance: DesignInstance): string | null {
+  return instance.publishTime ?? instance.createTime ?? null;
+}
+
+// The .scad group's shared last-modified token: the newest modelUpdateTime of
+// any raw .scad entry. Shared because the raw-files download is one zip — any
+// change re-downloads and re-stages all entries, and a newly added file moves
+// the max, so every entry flips to "changed" together. Lexicographic max is
+// safe: the API always sends the same ISO-8601 UTC format.
+function scadGroupToken(design: MakerworldDesign): string | null {
+  let max: string | null = null;
+  for (const f of collectScadModelFiles(design.designExtension?.model_files)) {
+    const t = f.modelUpdateTime;
+    if (t && (max === null || t > max)) max = t;
+  }
+  return max;
+}
+
+// One entry of the platform's current file list, with what the sync route
+// needs to resolve its download: profiles resolve individually, all scads
+// come from the single raw-files zip, docs are direct URLs.
+export type MakerworldUpstreamFile = UpstreamFile &
+  (
+    | { group: "profile"; profileId: number }
+    | { group: "scad" }
+    | { group: "doc"; url: string }
+  );
+
+// Pure listing of the design's current downloadable files (print profiles,
+// raw .scad sources, attached PDFs) with the ids/tokens the sync planner
+// diffs against model_files. Must stay in lockstep with the ids the import
+// path stamps (resolveDownloads / selectDocs / stage.ts scad entries).
+export function listMakerworldUpstreamFiles(
+  design: MakerworldDesign,
+): MakerworldUpstreamFile[] {
+  const files: MakerworldUpstreamFile[] = [];
+
+  const { instances } = selectDesignerInstances(design);
+  const seen = new Set<number>();
+  for (const instance of instances) {
+    if (seen.has(instance.profileId)) continue;
+    seen.add(instance.profileId);
+    files.push({
+      group: "profile",
+      profileId: instance.profileId,
+      sourceFileId: `profile:${instance.profileId}`,
+      // Display name for the preview dialog; the stored filename comes from
+      // the download itself (matching is by id, not name).
+      filename: ensure3mf(instance.title ?? "", `profile-${instance.profileId}`),
+      kind: "model",
+      modifiedAt: profileToken(instance),
+    });
+  }
+
+  const groupToken = scadGroupToken(design);
+  for (const scad of collectScadModelFiles(design.designExtension?.model_files)) {
+    const name = scad.modelName?.trim();
+    if (!name) continue;
+    // Basename, matching how stage.ts names extracted zip entries.
+    const base = name.split("/").pop() || name;
+    files.push({
+      group: "scad",
+      sourceFileId: `scad:${base}`,
+      filename: base,
+      kind: "model",
+      modifiedAt: groupToken,
+    });
+  }
+
+  for (const doc of selectDocs(design)) {
+    files.push({
+      group: "doc",
+      url: doc.url,
+      sourceFileId: `doc:${doc.filename}`,
+      filename: doc.filename,
+      kind: "pdf",
+      // No timestamp on attached documents — matched docs count as unchanged;
+      // sync still adds new ones and removes ones gone upstream.
+      modifiedAt: null,
+    });
+  }
+
+  return files;
+}
+
+// Fetches + validates the anonymous design JSON. Shared by the importer and
+// the source-sync route.
+export async function fetchMakerworldDesign(
+  id: string,
+  region: BambuRegion,
+): Promise<MakerworldDesign> {
+  const res = await fetch(`${apiBase(region)}/v1/design-service/design/${id}`, {
+    headers: {
+      "User-Agent": IMPORT_USER_AGENT,
+      Accept: "application/json",
+    },
+    redirect: "follow",
+  });
+  if (!res.ok) {
+    throw new ImportError(
+      `MakerWorld API responded with ${res.status}. ` +
+        "Download the .3mf in your browser instead and upload it — its metadata is imported automatically.",
+    );
+  }
+
+  let design: MakerworldDesign;
+  try {
+    design = (await res.json()) as MakerworldDesign;
+  } catch {
+    throw new ImportError("Could not read model data from the MakerWorld API");
+  }
+
+  // The API returns an empty envelope (id: 0) for ids that don't exist.
+  if (!design.id || !design.title) {
+    throw new ImportError("MakerWorld model not found");
+  }
+  return design;
 }
 
 // Resolves each print profile to a presigned download URL. Returns the model
@@ -313,6 +449,10 @@ async function resolveDownloads(
         url: result.url,
         filename: ensure3mf(result.name, instance.title ?? `profile-${instance.profileId}`),
         kind: "model",
+        sourceFileId: `profile:${instance.profileId}`,
+        ...(profileToken(instance)
+          ? { sourceModifiedAt: profileToken(instance)! }
+          : {}),
       });
     }
   }
@@ -337,6 +477,7 @@ async function resolveDownloads(
     } else if (!result) {
       warnings.push("Could not download the model's OpenSCAD source files.");
     } else {
+      const groupToken = scadGroupToken(design);
       assets.push({
         url: result.url,
         filename:
@@ -345,6 +486,9 @@ async function resolveDownloads(
           "raw-files.zip",
         kind: "model",
         extractScad: true,
+        // Per-entry ids ("scad:<name>") are derived at staging; the whole
+        // archive shares this last-modified token.
+        ...(groupToken ? { sourceModifiedAt: groupToken } : {}),
       });
     }
   }
@@ -364,31 +508,7 @@ export async function importFromMakerworld(
   }
 
   const region: BambuRegion = options.region ?? "global";
-  const res = await fetch(`${apiBase(region)}/v1/design-service/design/${id}`, {
-    headers: {
-      "User-Agent": IMPORT_USER_AGENT,
-      Accept: "application/json",
-    },
-    redirect: "follow",
-  });
-  if (!res.ok) {
-    throw new ImportError(
-      `MakerWorld API responded with ${res.status}. ` +
-        "Download the .3mf in your browser instead and upload it — its metadata is imported automatically.",
-    );
-  }
-
-  let design: MakerworldDesign;
-  try {
-    design = (await res.json()) as MakerworldDesign;
-  } catch {
-    throw new ImportError("Could not read model data from the MakerWorld API");
-  }
-
-  // The API returns an empty envelope (id: 0) for ids that don't exist.
-  if (!design.id || !design.title) {
-    throw new ImportError("MakerWorld model not found");
-  }
+  const design = await fetchMakerworldDesign(id, region);
 
   const images = selectImageUrls(design);
 

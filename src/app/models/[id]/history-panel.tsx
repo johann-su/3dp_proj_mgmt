@@ -37,6 +37,7 @@ const reasonLabels: Record<ModelVersionReason, string> = {
   create: "Created",
   edit: "Edited",
   "onshape-sync": "Onshape sync",
+  "source-sync": "Source sync",
   revert: "Reverted",
 };
 

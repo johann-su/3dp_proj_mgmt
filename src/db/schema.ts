@@ -188,9 +188,26 @@ export const modelFiles = pgTable("model_files", {
   onshapeElementId: text("onshape_element_id"),
   // Provenance: the file's bytes came from the model's source platform (URL
   // import, Onshape export, collection import) rather than a manual upload.
-  // Display-only — shown as a badge on the model page and edit form; Onshape
-  // sync keeps selecting its replaceable files via onshapeElementId.
+  // Shown as a badge on the model page and edit form, and scopes what the
+  // MakerWorld/Printables source sync may touch; Onshape sync keeps selecting
+  // its replaceable files via onshapeElementId.
   imported: boolean("imported").notNull().default(false),
+  // Upstream identity for MakerWorld/Printables source sync (issue-less
+  // sibling of onshapeElementId): "profile:<id>" (MakerWorld print profile),
+  // "scad:<name>" (raw-file OpenSCAD source), "doc:<name>" (attached PDF) or
+  // "file:<id>" (Printables file). Sync matches local imported files to
+  // upstream by this id, so local renames don't break the link. Null for
+  // manual uploads, Onshape exports and imports predating the feature (the
+  // first sync adopts those by filename).
+  sourceFileId: text("source_file_id"),
+  // Opaque upstream last-modified token (an ISO date string as the platform
+  // sends it — Printables per-file `modified`, MakerWorld per-profile
+  // `publishTime` / raw-file `modelUpdateTime`). Sync compares it for
+  // equality against the current upstream value; an unchanged token skips
+  // the download. Never parsed except by the legacy-adopt heuristic —
+  // MakerWorld's design-level updateTime is deliberately NOT used (it is
+  // touched by counters, not content edits).
+  sourceModifiedAt: text("source_modified_at"),
   sliceStatus: text("slice_status").$type<SliceStatus>(),
   sliceSource: text("slice_source").$type<SliceSource>(),
   printTimeSeconds: integer("print_time_seconds"),
@@ -238,7 +255,12 @@ export const modelFiles = pgTable("model_files", {
 // objects no longer referenced by any remaining snapshot or live file — see
 // src/lib/model-versions.ts.
 
-export type ModelVersionReason = "create" | "edit" | "onshape-sync" | "revert";
+export type ModelVersionReason =
+  | "create"
+  | "edit"
+  | "onshape-sync"
+  | "source-sync"
+  | "revert";
 
 // One file as recorded in a snapshot, in display order. Everything needed to
 // re-insert the model_files row on revert; the bytes stay at s3Key.
@@ -251,6 +273,8 @@ export type VersionFileSnapshot = {
   animated: boolean;
   onshapeElementId: string | null;
   imported: boolean;
+  sourceFileId: string | null;
+  sourceModifiedAt: string | null;
   sliceStatus: SliceStatus | null;
   sliceSource: SliceSource | null;
   printTimeSeconds: number | null;

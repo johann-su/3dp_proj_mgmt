@@ -46,6 +46,12 @@ export type UploadedFile = {
   // files through unchanged). Only honored when the model actually has a
   // sourceUrl to attribute the provenance to.
   imported?: boolean;
+  // Upstream identity + last-modified token stamped by the MakerWorld/
+  // Printables importers (see src/lib/import/sync-diff.ts); lets the source
+  // sync match this file against the platform's current file list. Honored
+  // under the same sourceUrl gate as `imported`.
+  sourceFileId?: string;
+  sourceModifiedAt?: string;
 };
 
 export type CreateModelInput = {
@@ -211,6 +217,13 @@ export async function createModel(
       uploads.map((file) => {
         const elementId =
           file.kind === "model" ? onshapeId(file.onshapeElementId) : null;
+        // Like `imported`, upstream sync ids are only meaningful with a
+        // source to sync against; length-capped since they travel through
+        // the client draft.
+        const sourceString = (value: string | undefined, max: number) =>
+          sourceUrl && typeof value === "string" && value.length <= max
+            ? value
+            : null;
         return {
           modelId: model.id,
           kind: file.kind,
@@ -224,6 +237,8 @@ export async function createModel(
           position: position++,
           onshapeElementId: elementId,
           imported: (!!sourceUrl && file.imported === true) || elementId !== null,
+          sourceFileId: sourceString(file.sourceFileId, 300),
+          sourceModifiedAt: sourceString(file.sourceModifiedAt, 64),
           sliceStatus: sliceEligible(file.kind, file.filename)
             ? ("pending" as const)
             : null,

@@ -17,6 +17,8 @@ function file(overrides: Partial<VersionFileSnapshot> = {}): VersionFileSnapshot
     animated: false,
     onshapeElementId: null,
     imported: false,
+    sourceFileId: null,
+    sourceModifiedAt: null,
     sliceStatus: null,
     sliceSource: null,
     printTimeSeconds: null,
