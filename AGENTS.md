@@ -70,6 +70,43 @@ test("formatDuration splits hours and minutes", () => {
 });
 ```
 
+# Code organization
+
+Rules of thumb for keeping files comprehensible as features grow. These are
+judgment calls, not hard limits — they follow the React docs' advice (don't
+extract prematurely, but a long list of useState/useEffect serving separate
+concerns is the signal to untangle) and Next.js's colocation conventions.
+
+- **Keep the existing layout**: route-specific components sit next to their
+  route under `src/app/…` (colocation is safe — only `page`/`route` files are
+  routable), shared components in `src/components`, non-React logic in
+  `src/lib`. Next.js is deliberately unopinionated here; the value is
+  consistency, so don't introduce `_components`/`hooks` folder schemes.
+- **Split on unrelated concerns, not on line count.** A long file whose state
+  and handlers all serve one feature (`bom-editor.tsx`, `rule-builder.tsx`)
+  is easier to work on than the same code spread across ten files — jumping
+  between many small files costs comprehension too. The smell that warrants a
+  split is *distance*: state declared hundreds of lines from its only use,
+  several self-contained subtrees each with their own useState/useEffect
+  cluster, or sub-components you must scroll past to reach the one you came
+  to edit. When adding a feature would push a file past that point, split
+  first, then add.
+- **Cut along state boundaries.** A subtree that owns its own state and talks
+  to its parent through a narrow prop interface moves out cleanly
+  (`model-form-pickers.tsx`, `model-file-cards.tsx`); a subtree that reads
+  half the parent's state should stay inline. Prefer moving the exported
+  types with the components and re-exporting from the old module so
+  consumers don't churn.
+- **Pull non-trivial pure logic out of components** into a sibling module
+  (`model-form-state.ts`) or `src/lib`, and unit-test it there — the same
+  extract-the-pure-core rule as the Testing section. Dirty checks, ordering/
+  diff bookkeeping and parsers don't need React to be understood or tested.
+- **Never define a component inside another component** — it remounts (and
+  drops state/focus) on every parent render. For markup that needs the
+  parent's closure, use a plain render function (`renderCard` in
+  `bom-editor.tsx`); promote it to a real component only when it can take
+  props instead.
+
 # Architecture notes
 
 Decisions taken and why — guidance for development.

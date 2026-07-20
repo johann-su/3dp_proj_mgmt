@@ -1,28 +1,16 @@
 "use client";
 
+// The two-step create/edit wizard. Owns all form state and the submit flow;
+// the picker components live in model-form-pickers.tsx and the entry types +
+// pure order/dirty logic in model-form-state.ts.
+
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import {
-  ArrowLeft,
-  ArrowRight,
-  ChevronDown,
-  ChevronLeft,
-  ChevronRight,
-  ChevronUp,
-  CloudDownload,
-  Eye,
-  FileBox,
-  FileText,
-  GripVertical,
-  ImageIcon,
-  Pencil,
-  X,
-} from "lucide-react";
+import { ArrowLeft, ArrowRight, Eye, FileText, Pencil } from "lucide-react";
 import {
   createModel,
   updateModel,
-  type FileOrderRef,
   type UploadedFile,
 } from "@/app/models/actions";
 import { extract3mfMetadata } from "@/lib/threemf";
@@ -32,8 +20,30 @@ import type { BomItemInput } from "@/lib/bom";
 import { IMPORT_DRAFT_KEY, type ImportDraftPayload } from "./import-draft";
 import { BomEditor } from "./bom-editor";
 import { ModelPreview } from "./model-preview";
+import {
+  PDF_ACCEPT,
+  buildUpdateFileOrders,
+  formIsDirty,
+  mergeTags,
+  newImageEntry,
+  newModelFileEntry,
+  orderFilesForCreate,
+  stagedImageEntry,
+  stagedModelFileEntry,
+  uploadFile,
+  type ExistingFile,
+  type ImageEntry,
+  type ModelFileEntry,
+  type ModelFormInitial,
+  type PendingFile,
+} from "./model-form-state";
+import {
+  FilePicker,
+  ImagePicker,
+  ModelFilePicker,
+  StepIndicator,
+} from "./model-form-pickers";
 import { cn, isNextRedirectError } from "@/lib/utils";
-import { formatBytes } from "@/lib/format";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -58,728 +68,9 @@ import {
 import { Card, CardContent } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 
+export type { ExistingFile, ModelFormInitial } from "./model-form-state";
+
 type Category = { id: string; name: string; slug: string; keywords: string[] };
-
-export type ExistingFile = {
-  id: string;
-  filename: string;
-  size: number;
-  kind: "model" | "image" | "pdf";
-  // Came with the model's source-platform import (model_files.imported) —
-  // keeps the cloud badge visible in edit mode.
-  imported: boolean;
-};
-
-// Prefilled values when editing; absent when creating a new model.
-export type ModelFormInitial = {
-  id: string;
-  title: string;
-  description: string;
-  categoryId: string | null;
-  tags: string[];
-  bom: BomItemInput[];
-  files: ExistingFile[];
-  createdAt: Date;
-};
-
-// One image in the wizard, in display order: already stored on the model
-// (edit mode), staged in S3 by a URL import (create mode), or freshly
-// picked (src is an object URL then).
-type ImageEntry = {
-  key: string;
-  src: string;
-  filename: string;
-  size: number;
-} & (
-  | { type: "existing"; id: string }
-  | { type: "staged"; staged: UploadedFile }
-  | { type: "new"; file: File }
-);
-
-function newImageEntry(file: File): ImageEntry {
-  return {
-    key: crypto.randomUUID(),
-    type: "new",
-    file,
-    src: URL.createObjectURL(file),
-    filename: file.name,
-    size: file.size,
-  };
-}
-
-function stagedImageEntry(file: UploadedFile): ImageEntry {
-  return {
-    key: file.key,
-    type: "staged",
-    staged: file,
-    src: `/api/uploads/preview?key=${encodeURIComponent(file.key)}`,
-    filename: file.filename,
-    size: file.size,
-  };
-}
-
-// One model (.3mf/.step) file in the wizard, in display order: already
-// stored on the model (edit mode), staged in S3 by a URL import (create
-// mode), or freshly picked. Mirrors ImageEntry so the same reorder mechanics
-// (drag + move buttons) apply.
-type ModelFileEntry = {
-  key: string;
-  filename: string;
-  size: number;
-} & (
-  | { type: "existing"; id: string; imported: boolean }
-  | { type: "staged"; staged: UploadedFile }
-  | { type: "new"; file: File }
-);
-
-function newModelFileEntry(file: File): ModelFileEntry {
-  return {
-    key: crypto.randomUUID(),
-    type: "new",
-    file,
-    filename: file.name,
-    size: file.size,
-  };
-}
-
-function stagedModelFileEntry(file: UploadedFile): ModelFileEntry {
-  return {
-    key: file.key,
-    type: "staged",
-    staged: file,
-    filename: file.filename,
-    size: file.size,
-  };
-}
-
-const MODEL_ACCEPT = ".3mf,.scad";
-const IMAGE_ACCEPT = ".png,.jpg,.jpeg,.webp,.gif";
-const PDF_ACCEPT = ".pdf";
-
-// A model/pdf file picked in the browser but not yet uploaded. Carries a
-// stable key (for React lists, and so a rename can target one entry) and an
-// editable display name independent of the underlying File's read-only name.
-type PendingFile = { key: string; file: File; name: string };
-
-function pendingFile(file: File): PendingFile {
-  return { key: crypto.randomUUID(), file, name: file.name };
-}
-
-// A name has no extension to preserve if there's no dot, or the dot is the
-// first character (a dotfile like ".gitignore").
-function splitExtension(name: string): [base: string, ext: string] {
-  const dot = name.lastIndexOf(".");
-  return dot <= 0 ? [name, ""] : [name.slice(0, dot), name.slice(dot)];
-}
-
-async function uploadFile(
-  file: File,
-  kind: "model" | "image" | "pdf",
-  filename: string = file.name,
-): Promise<UploadedFile> {
-  const params = new URLSearchParams({ filename, kind });
-  const res = await fetch(`/api/upload?${params}`, {
-    method: "POST",
-    body: file,
-    headers: { "Content-Type": file.type || "application/octet-stream" },
-  });
-  if (!res.ok) {
-    const body = await res.json().catch(() => null);
-    throw new Error(body?.error ?? `Upload failed for ${filename}`);
-  }
-  return res.json();
-}
-
-function FileRow({
-  name,
-  size,
-  imported,
-  onRemove,
-  onRename,
-}: {
-  name: string;
-  size: number;
-  // Marks files pulled in by URL import (already staged in S3).
-  imported?: boolean;
-  onRemove: () => void;
-  // Omitted where renaming doesn't apply (e.g. images, PDFs).
-  onRename?: (newName: string) => void;
-}) {
-  const [editing, setEditing] = useState(false);
-  const [draftBase, setDraftBase] = useState("");
-  const [base, ext] = splitExtension(name);
-
-  function commit() {
-    setEditing(false);
-    const trimmed = draftBase.trim();
-    if (trimmed && trimmed !== base) onRename?.(`${trimmed}${ext}`);
-  }
-
-  return (
-    <li className="flex min-w-0 items-center gap-2 text-sm border rounded-md px-3 py-2">
-      {imported && <CloudDownload className="size-3.5 text-primary shrink-0" />}
-      {editing ? (
-        <span className="flex min-w-0 flex-1 items-center gap-1.5">
-          <Input
-            autoFocus
-            aria-label={`New name for ${name}`}
-            value={draftBase}
-            onChange={(e) => setDraftBase(e.target.value)}
-            onBlur={commit}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") {
-                e.preventDefault();
-                commit();
-              } else if (e.key === "Escape") {
-                e.preventDefault();
-                setEditing(false);
-              }
-            }}
-            className="h-6 min-w-0 flex-1 px-1"
-          />
-          <span className="shrink-0 text-muted-foreground">{ext}</span>
-        </span>
-      ) : (
-        <span className="truncate">{name}</span>
-      )}
-      <span className="text-muted-foreground ml-auto shrink-0">
-        {formatBytes(size)}
-      </span>
-      {onRename && !editing && (
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon"
-          className="size-6 shrink-0"
-          aria-label={`Rename ${name}`}
-          onClick={() => {
-            setDraftBase(base);
-            setEditing(true);
-          }}
-        >
-          <Pencil className="size-3.5" />
-        </Button>
-      )}
-      <Button
-        type="button"
-        variant="ghost"
-        size="icon"
-        className="size-6 shrink-0"
-        aria-label={`Remove ${name}`}
-        onClick={onRemove}
-      >
-        <X className="size-3.5" />
-      </Button>
-    </li>
-  );
-}
-
-function FilePicker({
-  label,
-  hint,
-  accept,
-  files,
-  setFiles,
-  existing,
-  removeExisting,
-  renameExisting,
-  staged,
-  removeStaged,
-  renameStaged,
-  onFilesAdded,
-  onRenameNew,
-  icon,
-}: {
-  label?: string;
-  hint: string;
-  accept: string;
-  files: PendingFile[];
-  setFiles: (files: PendingFile[]) => void;
-  existing?: ExistingFile[];
-  removeExisting?: (id: string) => void;
-  renameExisting?: (id: string, name: string) => void;
-  // Files pulled in by URL import — already staged in S3.
-  staged?: UploadedFile[];
-  removeStaged?: (key: string) => void;
-  renameStaged?: (key: string, name: string) => void;
-  onFilesAdded?: (added: File[]) => void;
-  onRenameNew?: (key: string, name: string) => void;
-  icon: React.ReactNode;
-}) {
-  const inputRef = useRef<HTMLInputElement>(null);
-  const hasFiles =
-    files.length > 0 || (existing?.length ?? 0) > 0 || (staged?.length ?? 0) > 0;
-
-  return (
-    <div className="grid gap-2">
-      {label && <Label>{label}</Label>}
-      <input
-        ref={inputRef}
-        type="file"
-        accept={accept}
-        multiple
-        className="hidden"
-        onChange={(e) => {
-          const picked = Array.from(e.target.files ?? []);
-          if (picked.length > 0) {
-            setFiles([...files, ...picked.map(pendingFile)]);
-            onFilesAdded?.(picked);
-          }
-          e.target.value = "";
-        }}
-      />
-      <button
-        type="button"
-        onClick={() => inputRef.current?.click()}
-        className="border border-dashed rounded-lg p-6 text-sm text-muted-foreground hover:bg-accent/50 transition-colors flex flex-col items-center gap-2"
-      >
-        {icon}
-        {hint}
-      </button>
-      {hasFiles && (
-        <ul className="grid gap-1">
-          {existing?.map((file) => (
-            <FileRow
-              key={file.id}
-              name={file.filename}
-              size={file.size}
-              imported={file.imported}
-              onRemove={() => removeExisting?.(file.id)}
-              onRename={
-                renameExisting ? (name) => renameExisting(file.id, name) : undefined
-              }
-            />
-          ))}
-          {staged?.map((file) => (
-            <FileRow
-              key={file.key}
-              name={file.filename}
-              size={file.size}
-              imported
-              onRemove={() => removeStaged?.(file.key)}
-              onRename={
-                renameStaged ? (name) => renameStaged(file.key, name) : undefined
-              }
-            />
-          ))}
-          {files.map((entry) => (
-            <FileRow
-              key={entry.key}
-              name={entry.name}
-              size={entry.file.size}
-              onRemove={() => setFiles(files.filter((f) => f.key !== entry.key))}
-              onRename={
-                onRenameNew ? (name) => onRenameNew(entry.key, name) : undefined
-              }
-            />
-          ))}
-        </ul>
-      )}
-    </div>
-  );
-}
-
-function ModelFileRow({
-  entry,
-  isFirst,
-  isLast,
-  dragging,
-  onDragStart,
-  onDragEnd,
-  onDragEnter,
-  onMove,
-  onRemove,
-  onRename,
-}: {
-  entry: ModelFileEntry;
-  isFirst: boolean;
-  isLast: boolean;
-  dragging: boolean;
-  onDragStart: () => void;
-  onDragEnd: () => void;
-  onDragEnter: () => void;
-  onMove: (direction: -1 | 1) => void;
-  onRemove: () => void;
-  onRename: (newName: string) => void;
-}) {
-  const [editing, setEditing] = useState(false);
-  const [draftBase, setDraftBase] = useState("");
-  const [base, ext] = splitExtension(entry.filename);
-
-  function commit() {
-    setEditing(false);
-    const trimmed = draftBase.trim();
-    if (trimmed && trimmed !== base) onRename(`${trimmed}${ext}`);
-  }
-
-  return (
-    <li
-      className={cn(
-        "flex min-w-0 items-center gap-2 text-sm border rounded-md px-3 py-2",
-        dragging && "opacity-50",
-      )}
-      onDragOver={(e) => {
-        e.preventDefault();
-        e.dataTransfer.dropEffect = "move";
-      }}
-      onDragEnter={onDragEnter}
-      onDrop={(e) => e.preventDefault()}
-    >
-      {/* Only the grip starts the drag, so dragging doesn't fight with
-          selecting text in the rename input. The up/down buttons below cover
-          reordering for keyboard/touch use, where dragging is impractical. */}
-      <span
-        draggable
-        onDragStart={(e) => {
-          e.dataTransfer.effectAllowed = "move";
-          onDragStart();
-        }}
-        onDragEnd={onDragEnd}
-        aria-hidden="true"
-        className="shrink-0 cursor-grab text-muted-foreground"
-      >
-        <GripVertical className="size-4" />
-      </span>
-      {(entry.type === "staged" ||
-        (entry.type === "existing" && entry.imported)) && (
-        <CloudDownload className="size-3.5 text-primary shrink-0" />
-      )}
-      {editing ? (
-        <span className="flex min-w-0 flex-1 items-center gap-1.5">
-          <Input
-            autoFocus
-            aria-label={`New name for ${entry.filename}`}
-            value={draftBase}
-            onChange={(e) => setDraftBase(e.target.value)}
-            onBlur={commit}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") {
-                e.preventDefault();
-                commit();
-              } else if (e.key === "Escape") {
-                e.preventDefault();
-                setEditing(false);
-              }
-            }}
-            className="h-6 min-w-0 flex-1 px-1"
-          />
-          <span className="shrink-0 text-muted-foreground">{ext}</span>
-        </span>
-      ) : (
-        <span className="truncate">{entry.filename}</span>
-      )}
-      <span className="text-muted-foreground ml-auto shrink-0">
-        {formatBytes(entry.size)}
-      </span>
-      <Button
-        type="button"
-        variant="ghost"
-        size="icon"
-        className="size-6 shrink-0"
-        aria-label={`Move ${entry.filename} up`}
-        disabled={isFirst}
-        onClick={() => onMove(-1)}
-      >
-        <ChevronUp className="size-3.5" />
-      </Button>
-      <Button
-        type="button"
-        variant="ghost"
-        size="icon"
-        className="size-6 shrink-0"
-        aria-label={`Move ${entry.filename} down`}
-        disabled={isLast}
-        onClick={() => onMove(1)}
-      >
-        <ChevronDown className="size-3.5" />
-      </Button>
-      {!editing && (
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon"
-          className="size-6 shrink-0"
-          aria-label={`Rename ${entry.filename}`}
-          onClick={() => {
-            setDraftBase(base);
-            setEditing(true);
-          }}
-        >
-          <Pencil className="size-3.5" />
-        </Button>
-      )}
-      <Button
-        type="button"
-        variant="ghost"
-        size="icon"
-        className="size-6 shrink-0"
-        aria-label={`Remove ${entry.filename}`}
-        onClick={onRemove}
-      >
-        <X className="size-3.5" />
-      </Button>
-    </li>
-  );
-}
-
-function ModelFilePicker({
-  entries,
-  onAdd,
-  onRemove,
-  onRename,
-  onMove,
-  onReorder,
-}: {
-  entries: ModelFileEntry[];
-  onAdd: (files: File[]) => void;
-  onRemove: (key: string) => void;
-  onRename: (key: string, name: string) => void;
-  onMove: (key: string, direction: -1 | 1) => void;
-  onReorder: (key: string, targetKey: string) => void;
-}) {
-  const inputRef = useRef<HTMLInputElement>(null);
-  const [draggedKey, setDraggedKey] = useState<string | null>(null);
-
-  return (
-    <div className="grid gap-2">
-      <input
-        ref={inputRef}
-        type="file"
-        accept={MODEL_ACCEPT}
-        multiple
-        className="hidden"
-        onChange={(e) => {
-          const picked = Array.from(e.target.files ?? []);
-          if (picked.length > 0) onAdd(picked);
-          e.target.value = "";
-        }}
-      />
-      <button
-        type="button"
-        onClick={() => inputRef.current?.click()}
-        className="border border-dashed rounded-lg p-6 text-sm text-muted-foreground hover:bg-accent/50 transition-colors flex flex-col items-center gap-2"
-      >
-        <FileBox className="size-6" />
-        Click to add .3mf files (title, description, images and printer are
-        imported automatically) or parametric .scad files. Drag rows to
-        reorder.
-      </button>
-      {entries.length > 0 && (
-        <ul className="grid gap-1">
-          {entries.map((entry, i) => (
-            <ModelFileRow
-              key={entry.key}
-              entry={entry}
-              isFirst={i === 0}
-              isLast={i === entries.length - 1}
-              dragging={draggedKey === entry.key}
-              onDragStart={() => setDraggedKey(entry.key)}
-              onDragEnd={() => setDraggedKey(null)}
-              onDragEnter={() => {
-                if (draggedKey && draggedKey !== entry.key) {
-                  onReorder(draggedKey, entry.key);
-                }
-              }}
-              onMove={(direction) => onMove(entry.key, direction)}
-              onRemove={() => onRemove(entry.key)}
-              onRename={(name) => onRename(entry.key, name)}
-            />
-          ))}
-        </ul>
-      )}
-    </div>
-  );
-}
-
-function ImagePicker({
-  images,
-  onAdd,
-  onRemove,
-  onMove,
-  onReorder,
-}: {
-  images: ImageEntry[];
-  onAdd: (files: File[]) => void;
-  onRemove: (key: string) => void;
-  onMove: (key: string, direction: -1 | 1) => void;
-  onReorder: (key: string, targetKey: string) => void;
-}) {
-  const inputRef = useRef<HTMLInputElement>(null);
-  const [draggedKey, setDraggedKey] = useState<string | null>(null);
-
-  return (
-    <div className="grid gap-2">
-      <Label>Images</Label>
-      <input
-        ref={inputRef}
-        type="file"
-        accept={IMAGE_ACCEPT}
-        multiple
-        className="hidden"
-        onChange={(e) => {
-          const picked = Array.from(e.target.files ?? []);
-          if (picked.length > 0) onAdd(picked);
-          e.target.value = "";
-        }}
-      />
-      <button
-        type="button"
-        onClick={() => inputRef.current?.click()}
-        className="border border-dashed rounded-lg p-6 text-sm text-muted-foreground hover:bg-accent/50 transition-colors flex flex-col items-center gap-2"
-      >
-        <ImageIcon className="size-6" />
-        Click to add preview images — the first image is the cover, drag
-        thumbnails to reorder
-      </button>
-      {images.length > 0 && (
-        <ul className="grid grid-cols-3 sm:grid-cols-4 gap-2">
-          {images.map((image, i) => (
-            <li
-              key={image.key}
-              className={cn(
-                "relative rounded-md border overflow-hidden bg-muted cursor-grab",
-                draggedKey === image.key && "opacity-50",
-              )}
-              title={`${image.filename} (${formatBytes(image.size)})`}
-              draggable
-              onDragStart={(e) => {
-                e.dataTransfer.effectAllowed = "move";
-                setDraggedKey(image.key);
-              }}
-              onDragEnd={() => setDraggedKey(null)}
-              onDragOver={(e) => {
-                e.preventDefault();
-                e.dataTransfer.dropEffect = "move";
-              }}
-              onDragEnter={() => {
-                if (draggedKey && draggedKey !== image.key) {
-                  onReorder(draggedKey, image.key);
-                }
-              }}
-              onDrop={(e) => e.preventDefault()}
-            >
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src={image.src}
-                alt={image.filename}
-                className="aspect-square w-full object-cover"
-              />
-              {i === 0 && (
-                <span className="absolute top-1 left-1 rounded bg-primary text-primary-foreground text-[10px] font-medium px-1.5 py-0.5">
-                  Cover
-                </span>
-              )}
-              {image.type === "staged" && (
-                <span
-                  className="absolute top-1 right-1 rounded bg-primary text-primary-foreground p-1"
-                  title="Imported from source"
-                >
-                  <CloudDownload className="size-3" />
-                </span>
-              )}
-              <div className="absolute inset-x-0 bottom-0 flex items-center justify-between p-1 bg-gradient-to-t from-black/60 to-transparent">
-                <Button
-                  type="button"
-                  variant="secondary"
-                  size="icon"
-                  className="size-6"
-                  aria-label={`Move ${image.filename} left`}
-                  disabled={i === 0}
-                  onClick={() => onMove(image.key, -1)}
-                >
-                  <ChevronLeft className="size-3.5" />
-                </Button>
-                <Button
-                  type="button"
-                  variant="secondary"
-                  size="icon"
-                  className="size-6"
-                  aria-label={`Remove ${image.filename}`}
-                  onClick={() => onRemove(image.key)}
-                >
-                  <X className="size-3.5" />
-                </Button>
-                <Button
-                  type="button"
-                  variant="secondary"
-                  size="icon"
-                  className="size-6"
-                  aria-label={`Move ${image.filename} right`}
-                  disabled={i === images.length - 1}
-                  onClick={() => onMove(image.key, 1)}
-                >
-                  <ChevronRight className="size-3.5" />
-                </Button>
-              </div>
-            </li>
-          ))}
-        </ul>
-      )}
-    </div>
-  );
-}
-
-function StepIndicator({
-  step,
-  canGoToDetails,
-  onSelect,
-}: {
-  step: 1 | 2;
-  canGoToDetails: boolean;
-  onSelect: (step: 1 | 2) => void;
-}) {
-  return (
-    <ol className="flex items-center gap-3 text-sm mb-6">
-      {(
-        [
-          [1, "Files"],
-          [2, "Details"],
-        ] as const
-      ).map(([n, name], i) => {
-        const disabled = n === 2 && !canGoToDetails;
-        return (
-          <li key={n} className="flex items-center gap-3">
-            {i > 0 && <span className="w-8 h-px bg-border" />}
-            <button
-              type="button"
-              disabled={disabled}
-              onClick={() => onSelect(n)}
-              className={cn(
-                "flex items-center gap-2 rounded disabled:cursor-not-allowed disabled:opacity-50",
-                step === n
-                  ? "font-medium"
-                  : "text-muted-foreground hover:text-foreground",
-              )}
-            >
-              <span
-                className={cn(
-                  "size-5 rounded-full flex items-center justify-center text-xs",
-                  step === n
-                    ? "bg-primary text-primary-foreground"
-                    : "border text-muted-foreground",
-                )}
-              >
-                {n}
-              </span>
-              {name}
-            </button>
-          </li>
-        );
-      })}
-    </ol>
-  );
-}
-
-function mergeTags(existing: string, addition: string) {
-  const current = existing
-    .split(",")
-    .map((t) => t.trim())
-    .filter(Boolean);
-  if (current.some((t) => t.toLowerCase() === addition.toLowerCase())) {
-    return existing;
-  }
-  return [...current, addition].join(", ");
-}
 
 export function ModelForm({
   categories,
@@ -848,58 +139,20 @@ export function ModelForm({
 
   const hasModelFile = modelFileEntries.length > 0;
 
-  // Whether the form differs from what was loaded. In create mode there is no
-  // baseline, so any exit is treated as a discard (unchanged behaviour); in
-  // edit mode we compare every editable field/file list against `model` so a
-  // pristine edit view leaves without a prompt.
-  const dirty = (() => {
-    if (!model) return true;
-    if (title !== model.title) return true;
-    if (description !== model.description) return true;
-    if (categoryId !== (model.categoryId ?? "")) return true;
-
-    const currentTags = tags
-      .split(",")
-      .map((t) => t.trim())
-      .filter(Boolean);
-    if (
-      currentTags.length !== model.tags.length ||
-      currentTags.some((t, i) => t !== model.tags[i])
-    )
-      return true;
-
-    if (JSON.stringify(bom) !== JSON.stringify(model.bom)) return true;
-
-    // Model files: a "\0new" marker for freshly added entries, otherwise the
-    // id + filename, so adds, removes, reorders and renames all read as dirty.
-    const curModel = modelFileEntries.map((e) =>
-      e.type === "existing" ? `${e.id}:${e.filename}` : " new",
-    );
-    const initModel = model.files
-      .filter((f) => f.kind === "model")
-      .map((f) => `${f.id}:${f.filename}`);
-    if (
-      curModel.length !== initModel.length ||
-      curModel.some((v, i) => v !== initModel[i])
-    )
-      return true;
-
-    // Images have no rename; order matters (first image is the cover).
-    const curImg = images.map((im) => (im.type === "existing" ? im.id : " new"));
-    const initImg = model.files.filter((f) => f.kind === "image").map((f) => f.id);
-    if (
-      curImg.length !== initImg.length ||
-      curImg.some((v, i) => v !== initImg[i])
-    )
-      return true;
-
-    // PDFs: any freshly picked file, or a removed existing one.
-    if (pdfFiles.length > 0) return true;
-    const initPdf = model.files.filter((f) => f.kind === "pdf");
-    if (existingPdfFiles.length !== initPdf.length) return true;
-
-    return false;
-  })();
+  const dirty = formIsDirty(
+    {
+      title,
+      description,
+      categoryId,
+      tags,
+      bom,
+      modelFileEntries,
+      images,
+      pdfFiles,
+      existingPdfFiles,
+    },
+    model,
+  );
 
   // The popstate listener below is installed once, so it reads `dirty` through
   // a ref to always see the current value.
@@ -1175,20 +428,10 @@ export function ModelForm({
             .filter((image) => image.type === "existing")
             .map((image) => image.id),
         ]);
-        // newIndex values are indices into `uploaded`/`newFiles`, which lists
-        // new model files first, then new PDFs, then new images (toUpload's
-        // order) — so the running counter carries over between the two.
-        let uploadIndex = 0;
-        const modelFileOrder: FileOrderRef[] = modelFileEntries.map((entry) =>
-          entry.type === "existing"
-            ? { existingId: entry.id }
-            : { newIndex: uploadIndex++ },
-        );
-        uploadIndex += pdfFiles.length;
-        const imageOrder: FileOrderRef[] = images.map((image) =>
-          image.type === "existing"
-            ? { existingId: image.id }
-            : { newIndex: uploadIndex++ },
+        const { modelFileOrder, imageOrder } = buildUpdateFileOrders(
+          modelFileEntries,
+          pdfFiles.length,
+          images,
         );
         result = await updateModel({
           modelId: model.id,
@@ -1209,35 +452,12 @@ export function ModelForm({
         });
       } else {
         setStatus("Creating model…");
-        // Order determines position (and the image cover = first image):
-        // model files and images each follow the order arranged in the
-        // wizard (staged and new interleaved), then PDFs.
-        const uploadedImages = uploaded.filter((f) => f.kind === "image");
-        const uploadedModels = uploaded.filter((f) => f.kind === "model");
-        const uploadedPdfs = uploaded.filter((f) => f.kind === "pdf");
-        // uploadedModels/uploadedImages hold the new files in entry order, so
-        // walking the entries and consuming them one by one restores the
-        // arrangement.
-        let uploadedModelIndex = 0;
-        const orderedModelFiles: UploadedFile[] = [];
-        for (const entry of modelFileEntries) {
-          if (entry.type === "staged") orderedModelFiles.push(entry.staged);
-          else if (entry.type === "new")
-            orderedModelFiles.push(uploadedModels[uploadedModelIndex++]);
-        }
-        let uploadedIndex = 0;
-        const orderedImages: UploadedFile[] = [];
-        for (const image of images) {
-          if (image.type === "staged") orderedImages.push(image.staged);
-          else if (image.type === "new")
-            orderedImages.push(uploadedImages[uploadedIndex++]);
-        }
         result = await createModel({
           title,
           description,
           categoryId: categoryId || null,
           tags: tags.split(","),
-          files: [...orderedModelFiles, ...stagedPdfFiles, ...uploadedPdfs, ...orderedImages],
+          files: orderFilesForCreate(modelFileEntries, images, stagedPdfFiles, uploaded),
           bom,
           sourceUrl,
           onshapeMicroversion,
