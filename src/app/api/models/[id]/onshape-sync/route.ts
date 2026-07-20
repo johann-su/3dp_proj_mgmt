@@ -15,8 +15,11 @@ import { sliceEligible } from "@/lib/slicer";
 import { reportError } from "@/lib/telemetry";
 import { getOnshapeAccessToken } from "@/lib/onshape/credentials";
 import {
+  eligibleExportElements,
   exportPinnedModels,
   getCurrentMicroversion,
+  getElements,
+  MAX_EXPORT_ELEMENTS,
   onshapeAuthHeaders,
   OnshapeError,
   parseOnshapeUrl,
@@ -29,14 +32,27 @@ export const maxDuration = 300;
 // Re-exports the model's Onshape source and replaces the files that came from
 // Onshape (modelFiles.onshapeElementId). Only workspace pins can change;
 // version pins are immutable snapshots and are reported as up to date.
+//
+// Two-phase like the MakerWorld/Printables source sync: a POST without a
+// body is the preview — when the document has Part Studio/Assembly tabs the
+// model doesn't carry yet, it answers `needs-selection` with those tabs and
+// the client re-POSTs with the picked `addElementIds` (empty = decline).
+// Without new tabs the preview applies directly, as before.
 export async function POST(
-  _req: NextRequest,
+  req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
   const session = await getSession();
   if (!session) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
+
+  const body = (await req.json().catch(() => null)) as {
+    addElementIds?: string[];
+  } | null;
+  const addElementIds = Array.isArray(body?.addElementIds)
+    ? body.addElementIds.filter((v): v is string => typeof v === "string")
+    : null;
 
   const { id } = await params;
   const model = await db.query.models.findFirst({
@@ -88,23 +104,60 @@ export async function POST(
       wvm,
       pin.wvmId,
     );
-    if (microversion && microversion === model.onshapeMicroversion) {
-      return NextResponse.json({
-        status: "up-to-date",
-        message: "Already up to date with Onshape.",
-      });
-    }
+    const microversionChanged =
+      !microversion || microversion !== model.onshapeMicroversion;
 
-    // Re-export the tabs this model was actually imported with (the import
-    // dialog lets users pick a subset — e.g. Part Studios but not the
-    // Assembly), not whatever the URL pin would select today. Falls back to
-    // pin behavior for models whose Onshape files were all removed.
+    // The tabs this model was actually imported with (the import dialog lets
+    // users pick a subset — e.g. Part Studios but not the Assembly); the
+    // export falls back to pin behavior for models whose files carry no
+    // element ids (all Onshape files removed, or nothing synced yet).
     const importedElementIds = [
       ...new Set(
         model.files
           .map((f) => f.onshapeElementId)
           .filter((v): v is string => v !== null),
       ),
+    ];
+
+    if (addElementIds === null) {
+      // Preview: offer tabs added upstream since the import. Skipped for
+      // models without element ids (no baseline to diff against) and models
+      // already at the export cap. This check runs even when the
+      // microversion is unchanged, so a tab declined in an earlier sync can
+      // still be added later — the dialog is the only way to grow an
+      // existing model's tab set without re-importing.
+      const maxAdd = MAX_EXPORT_ELEMENTS - importedElementIds.length;
+      if (importedElementIds.length > 0 && maxAdd > 0) {
+        const imported = new Set(importedElementIds);
+        const newTabs = eligibleExportElements(
+          await getElements(auth, pin.documentId, wvm, pin.wvmId),
+        ).filter((e) => !imported.has(e.id));
+        if (newTabs.length > 0) {
+          return NextResponse.json({
+            status: "needs-selection",
+            newTabs,
+            microversionChanged,
+            maxAdd,
+          });
+        }
+      }
+      if (!microversionChanged) {
+        return NextResponse.json({
+          status: "up-to-date",
+          message: "Already up to date with Onshape.",
+        });
+      }
+    } else if (addElementIds.length === 0 && !microversionChanged) {
+      // Apply that declined every new tab on an otherwise unchanged
+      // document — nothing to export.
+      return NextResponse.json({
+        status: "up-to-date",
+        message: "Already up to date with Onshape.",
+      });
+    }
+
+    const selectedIds = [
+      ...new Set([...importedElementIds, ...(addElementIds ?? [])]),
     ];
     const { exports, warnings } = await exportPinnedModels(
       auth,
@@ -114,7 +167,7 @@ export async function POST(
         wvmId: pin.wvmId,
         elementId: pin.elementId,
       },
-      importedElementIds.length > 0 ? importedElementIds : null,
+      selectedIds.length > 0 ? selectedIds : null,
     );
 
     // Stage every export before touching the database: replacing the files is

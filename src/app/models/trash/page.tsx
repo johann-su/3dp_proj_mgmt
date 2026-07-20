@@ -1,4 +1,5 @@
 import Image from "next/image";
+import Link from "next/link";
 import { redirect } from "next/navigation";
 import { and, desc, eq, isNotNull } from "drizzle-orm";
 import { Trash2 } from "lucide-react";
@@ -76,26 +77,33 @@ export default async function TrashPage() {
                 key={model.id}
                 className="flex items-center gap-4 rounded-lg border p-3"
               >
-                <div className="relative size-16 shrink-0 overflow-hidden rounded-md bg-muted">
-                  {cover && (
-                    <Image
-                      src={fileSrc(cover.id)}
-                      alt=""
-                      fill
-                      sizes="64px"
-                      className="object-cover"
-                    />
-                  )}
-                </div>
-                <div className="min-w-0 flex-1">
-                  <div className="truncate font-medium">{model.title}</div>
-                  <div className="text-sm text-muted-foreground">
-                    {/* Moderators see everyone's trash — say whose model it is. */}
-                    {moderator && <>by {model.user.name} · </>}
-                    Deleted {formatDate(deletedAt)} · purged in {daysLeft} day
-                    {daysLeft === 1 ? "" : "s"}
+                {/* Whole left block opens the read-only preview, so a model
+                    can be inspected before restoring or purging it. */}
+                <Link
+                  href={`/models/trash/${model.id}`}
+                  className="flex min-w-0 flex-1 items-center gap-4 rounded-md outline-hidden hover:opacity-80 focus-visible:ring-2 focus-visible:ring-ring"
+                >
+                  <div className="relative size-16 shrink-0 overflow-hidden rounded-md bg-muted">
+                    {cover && (
+                      <Image
+                        src={fileSrc(cover.id)}
+                        alt=""
+                        fill
+                        sizes="64px"
+                        className="object-cover"
+                      />
+                    )}
                   </div>
-                </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="truncate font-medium">{model.title}</div>
+                    <div className="text-sm text-muted-foreground">
+                      {/* Moderators see everyone's trash — say whose model it is. */}
+                      {moderator && <>by {model.user.name} · </>}
+                      Deleted {formatDate(deletedAt)} · purged in {daysLeft} day
+                      {daysLeft === 1 ? "" : "s"}
+                    </div>
+                  </div>
+                </Link>
                 <TrashActions modelId={model.id} title={model.title} />
               </div>
             );
