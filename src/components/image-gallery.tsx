@@ -5,6 +5,11 @@ import Image from "next/image";
 import { Box, ChevronLeft, ChevronRight, Rotate3d, X, ZoomIn } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ModelViewer, type ViewerFile } from "@/components/model-viewer";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 
 type GalleryImage = { src: string };
 
@@ -106,32 +111,47 @@ export function ImageGallery({
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/90"
           onClick={closeLightbox}
         >
-          <button
-            type="button"
-            className="absolute right-4 top-4 flex size-9 items-center justify-center rounded-full bg-white/10 text-white hover:bg-white/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/50"
-            aria-label="Close"
-            onClick={closeLightbox}
-          >
-            <X className="size-5" />
-          </button>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                type="button"
+                className="absolute right-4 top-4 flex size-9 items-center justify-center rounded-full bg-white/10 text-white hover:bg-white/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/50"
+                aria-label="Close"
+                onClick={closeLightbox}
+              >
+                <X className="size-5" />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent>Close</TooltipContent>
+          </Tooltip>
           {images.length > 1 && (
             <>
-              <button
-                type="button"
-                className="absolute left-4 top-1/2 -translate-y-1/2 flex size-9 items-center justify-center rounded-full bg-white/10 text-white hover:bg-white/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/50"
-                aria-label="Previous image"
-                onClick={(e) => { e.stopPropagation(); setSelected((index - 1 + images.length) % images.length); }}
-              >
-                <ChevronLeft className="size-6" />
-              </button>
-              <button
-                type="button"
-                className="absolute right-4 top-1/2 -translate-y-1/2 flex size-9 items-center justify-center rounded-full bg-white/10 text-white hover:bg-white/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/50"
-                aria-label="Next image"
-                onClick={(e) => { e.stopPropagation(); setSelected((index + 1) % images.length); }}
-              >
-                <ChevronRight className="size-6" />
-              </button>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    type="button"
+                    className="absolute left-4 top-1/2 -translate-y-1/2 flex size-9 items-center justify-center rounded-full bg-white/10 text-white hover:bg-white/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/50"
+                    aria-label="Previous image"
+                    onClick={(e) => { e.stopPropagation(); setSelected((index - 1 + images.length) % images.length); }}
+                  >
+                    <ChevronLeft className="size-6" />
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent>Previous image</TooltipContent>
+              </Tooltip>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    type="button"
+                    className="absolute right-4 top-1/2 -translate-y-1/2 flex size-9 items-center justify-center rounded-full bg-white/10 text-white hover:bg-white/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/50"
+                    aria-label="Next image"
+                    onClick={(e) => { e.stopPropagation(); setSelected((index + 1) % images.length); }}
+                  >
+                    <ChevronRight className="size-6" />
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent>Next image</TooltipContent>
+              </Tooltip>
               <span className="absolute bottom-4 left-1/2 -translate-x-1/2 rounded-full bg-white/10 px-3 py-1 text-sm text-white tabular-nums">
                 {index + 1} / {images.length}
               </span>
@@ -179,22 +199,32 @@ export function ImageGallery({
         )}
         {!show3d && images.length > 1 && (
           <>
-            <button
-              type="button"
-              className="absolute left-2 top-1/2 -translate-y-1/2 flex size-8 items-center justify-center rounded-full bg-background/80 hover:bg-background focus-visible:ring-3 focus-visible:ring-ring/50 outline-none z-10"
-              aria-label="Previous image"
-              onClick={(e) => { e.stopPropagation(); step(-1); }}
-            >
-              <ChevronLeft className="size-5" />
-            </button>
-            <button
-              type="button"
-              className="absolute right-2 top-1/2 -translate-y-1/2 flex size-8 items-center justify-center rounded-full bg-background/80 hover:bg-background focus-visible:ring-3 focus-visible:ring-ring/50 outline-none z-10"
-              aria-label="Next image"
-              onClick={(e) => { e.stopPropagation(); step(1); }}
-            >
-              <ChevronRight className="size-5" />
-            </button>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  type="button"
+                  className="absolute left-2 top-1/2 -translate-y-1/2 flex size-8 items-center justify-center rounded-full bg-background/80 hover:bg-background focus-visible:ring-3 focus-visible:ring-ring/50 outline-none z-10"
+                  aria-label="Previous image"
+                  onClick={(e) => { e.stopPropagation(); step(-1); }}
+                >
+                  <ChevronLeft className="size-5" />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent>Previous image</TooltipContent>
+            </Tooltip>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  type="button"
+                  className="absolute right-2 top-1/2 -translate-y-1/2 flex size-8 items-center justify-center rounded-full bg-background/80 hover:bg-background focus-visible:ring-3 focus-visible:ring-ring/50 outline-none z-10"
+                  aria-label="Next image"
+                  onClick={(e) => { e.stopPropagation(); step(1); }}
+                >
+                  <ChevronRight className="size-5" />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent>Next image</TooltipContent>
+            </Tooltip>
             <span className="absolute bottom-2 right-2 rounded-full bg-background/80 px-2 py-0.5 text-xs text-muted-foreground tabular-nums pointer-events-none">
               {index + 1} / {images.length}
             </span>

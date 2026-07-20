@@ -7,6 +7,11 @@ import { ThreeMFLoader } from "three/addons/loaders/3MFLoader.js";
 import { Loader2, Maximize2, Minimize2, TriangleAlert } from "lucide-react";
 import { parsePlateLayout } from "@/lib/threemf-plates";
 import { cn } from "@/lib/utils";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 
 // In-browser 3D preview of stored .3mf files, built on the same on-demand
 // three.js pattern as the parametric customizer's <ScadPreview>: the scene is
@@ -379,18 +384,25 @@ export function ModelViewer({
             ))}
           </select>
         )}
-        <button
-          type="button"
-          onClick={() => setFullscreen((v) => !v)}
-          className="flex size-8 shrink-0 items-center justify-center rounded-md border bg-background/90 shadow-sm backdrop-blur hover:bg-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
-          aria-label={fullscreen ? "Exit full screen" : "View full screen"}
-        >
-          {fullscreen ? (
-            <Minimize2 className="size-4" />
-          ) : (
-            <Maximize2 className="size-4" />
-          )}
-        </button>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <button
+              type="button"
+              onClick={() => setFullscreen((v) => !v)}
+              className="flex size-8 shrink-0 items-center justify-center rounded-md border bg-background/90 shadow-sm backdrop-blur hover:bg-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
+              aria-label={fullscreen ? "Exit full screen" : "View full screen"}
+            >
+              {fullscreen ? (
+                <Minimize2 className="size-4" />
+              ) : (
+                <Maximize2 className="size-4" />
+              )}
+            </button>
+          </TooltipTrigger>
+          <TooltipContent>
+            {fullscreen ? "Exit full screen" : "View full screen"}
+          </TooltipContent>
+        </Tooltip>
       </div>
 
       {/* Plate selector, mirroring MakerWorld's per-plate rail. Drag its right

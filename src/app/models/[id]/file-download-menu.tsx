@@ -14,6 +14,11 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 
 // Orca and Bambu register different URL schemes (`orcaslicer:` vs.
 // `bambustudioopen:` — NOT `bambustudio:`, an unregistered scheme fails
@@ -73,16 +78,21 @@ export function FileDownloadMenu({
 
   return (
     <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <Button
-          size="icon"
-          variant="outline"
-          className="shrink-0"
-          aria-label={`Download or open ${filename}`}
-        >
-          <Download className="size-4" />
-        </Button>
-      </DropdownMenuTrigger>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <DropdownMenuTrigger asChild>
+            <Button
+              size="icon"
+              variant="outline"
+              className="shrink-0"
+              aria-label={`Download or open ${filename}`}
+            >
+              <Download className="size-4" />
+            </Button>
+          </DropdownMenuTrigger>
+        </TooltipTrigger>
+        <TooltipContent>Download or open</TooltipContent>
+      </Tooltip>
       <DropdownMenuContent align="end" className="min-w-40">
         <DropdownMenuItem asChild>
           <a href={`/api/files/${fileId}?download=1`}>

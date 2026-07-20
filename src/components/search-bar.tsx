@@ -5,6 +5,11 @@ import { Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Kbd, KbdGroup } from "@/components/ui/kbd";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 
 // Global ⌘K / Ctrl+K shortcut focuses the homepage search box, with a hint
 // badge mirroring the shortcut mark in its idle state (hidden once focused
@@ -47,9 +52,14 @@ export function SearchBar() {
           </KbdGroup>
         )}
       </div>
-      <Button type="submit" variant="secondary" aria-label="Search">
-        <Search className="size-4" />
-      </Button>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button type="submit" variant="secondary" aria-label="Search">
+            <Search className="size-4" />
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent>Search</TooltipContent>
+      </Tooltip>
     </form>
   );
 }

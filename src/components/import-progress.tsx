@@ -15,6 +15,11 @@ import {
   DropdownMenuContent,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 
 export const IMPORT_JOB_STARTED_EVENT = "printvault:import-job-started";
 
@@ -146,27 +151,32 @@ export function ImportProgressIndicator() {
     } catch {}
   };
 
+  const label = running
+    ? `Importing collection: ${job.completed} of ${job.total}`
+    : "Import finished";
+
   return (
     <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <button
-          type="button"
-          className="flex size-8 items-center justify-center rounded-md hover:bg-accent"
-          aria-label={
-            running
-              ? `Importing collection: ${job.completed} of ${job.total}`
-              : "Import finished"
-          }
-        >
-          {running ? (
-            <ProgressRing fraction={fraction} />
-          ) : job.status === "done" && job.failed === 0 ? (
-            <CheckCircle2 className="size-5 text-green-600" />
-          ) : (
-            <AlertCircle className="size-5 text-amber-500" />
-          )}
-        </button>
-      </DropdownMenuTrigger>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <DropdownMenuTrigger asChild>
+            <button
+              type="button"
+              className="flex size-8 items-center justify-center rounded-md hover:bg-accent"
+              aria-label={label}
+            >
+              {running ? (
+                <ProgressRing fraction={fraction} />
+              ) : job.status === "done" && job.failed === 0 ? (
+                <CheckCircle2 className="size-5 text-green-600" />
+              ) : (
+                <AlertCircle className="size-5 text-amber-500" />
+              )}
+            </button>
+          </DropdownMenuTrigger>
+        </TooltipTrigger>
+        <TooltipContent>{label}</TooltipContent>
+      </Tooltip>
       <DropdownMenuContent align="end" className="w-80 p-3">
         <div className="grid gap-2 text-sm">
           {running ? (

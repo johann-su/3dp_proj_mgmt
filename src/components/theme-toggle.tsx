@@ -4,6 +4,11 @@ import { useSyncExternalStore } from "react";
 import { useTheme } from "next-themes";
 import { Moon, Sun } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 
 const emptySubscribe = () => () => {};
 
@@ -16,19 +21,23 @@ export function ThemeToggle() {
     () => true,
     () => false,
   );
+  const isDark = mounted && resolvedTheme === "dark";
 
   return (
-    <Button
-      variant="ghost"
-      size="icon"
-      aria-label="Toggle theme"
-      onClick={() => setTheme(resolvedTheme === "dark" ? "light" : "dark")}
-    >
-      {mounted && resolvedTheme === "dark" ? (
-        <Sun className="size-5" />
-      ) : (
-        <Moon className="size-5" />
-      )}
-    </Button>
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <Button
+          variant="ghost"
+          size="icon"
+          aria-label="Toggle theme"
+          onClick={() => setTheme(resolvedTheme === "dark" ? "light" : "dark")}
+        >
+          {isDark ? <Sun className="size-5" /> : <Moon className="size-5" />}
+        </Button>
+      </TooltipTrigger>
+      <TooltipContent>
+        {isDark ? "Switch to light mode" : "Switch to dark mode"}
+      </TooltipContent>
+    </Tooltip>
   );
 }

@@ -25,6 +25,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { deleteUser, setUserRole } from "./actions";
 
 export type UserRow = {
@@ -117,17 +122,21 @@ export function UsersTable({
                   </SelectContent>
                 </Select>
                 <AlertDialog>
-                  <AlertDialogTrigger asChild>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="text-destructive hover:text-destructive"
-                      disabled={busyId === u.id}
-                      title="Delete user"
-                    >
-                      <Trash2 className="size-4" />
-                    </Button>
-                  </AlertDialogTrigger>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <AlertDialogTrigger asChild>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="text-destructive hover:text-destructive"
+                          disabled={busyId === u.id}
+                        >
+                          <Trash2 className="size-4" />
+                        </Button>
+                      </AlertDialogTrigger>
+                    </TooltipTrigger>
+                    <TooltipContent>Delete user</TooltipContent>
+                  </Tooltip>
                   <AlertDialogContent>
                     <AlertDialogHeader>
                       <AlertDialogTitle>

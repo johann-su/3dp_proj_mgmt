@@ -22,6 +22,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 
 // Dropdown options for the rule editor, queried server-side (searchFacets plus
 // tags/categories) and passed down because the builder is a client component.
@@ -146,16 +151,21 @@ function GroupEditor({
           ))}
         </div>
         {onRemove && (
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon-sm"
-            className="text-muted-foreground"
-            onClick={onRemove}
-            aria-label="Remove group"
-          >
-            <X className="size-4" />
-          </Button>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon-sm"
+                className="text-muted-foreground"
+                onClick={onRemove}
+                aria-label="Remove group"
+              >
+                <X className="size-4" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>Remove group</TooltipContent>
+          </Tooltip>
         )}
       </div>
 
@@ -250,16 +260,21 @@ function ConditionRow({
 
       <ValueEditor condition={condition} onChange={onChange} facets={facets} />
 
-      <Button
-        type="button"
-        variant="ghost"
-        size="icon-sm"
-        className="text-muted-foreground"
-        onClick={onRemove}
-        aria-label="Remove condition"
-      >
-        <X className="size-4" />
-      </Button>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-sm"
+            className="text-muted-foreground"
+            onClick={onRemove}
+            aria-label="Remove condition"
+          >
+            <X className="size-4" />
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent>Remove condition</TooltipContent>
+      </Tooltip>
     </div>
   );
 }
