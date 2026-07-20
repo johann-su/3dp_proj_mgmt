@@ -6,8 +6,18 @@ import type { BomItemInput } from "@/lib/bom";
 import { importFromMakerworld, parseMakerworldUrl } from "@/lib/import/makerworld";
 import { parseMakerworldCollectionUrl } from "@/lib/import/makerworld-collection";
 import { importFromPrintables, parsePrintablesUrl } from "@/lib/import/printables";
-import { importFromOnshape } from "@/lib/import/onshape";
-import { parseOnshapeUrl } from "@/lib/onshape/api";
+import {
+  importFromOnshape,
+  listOnshapeImportTabs,
+  type OnshapeBranchPick,
+  type OnshapeImportTab,
+} from "@/lib/import/onshape";
+import {
+  isOnshapeId,
+  MAX_EXPORT_ELEMENTS,
+  parseOnshapeUrl,
+  type OnshapeBranchChoice,
+} from "@/lib/onshape/api";
 import { getBambuCredential } from "@/lib/bambu/credentials";
 import { getOnshapeAccessToken } from "@/lib/onshape/credentials";
 import { reportError } from "@/lib/telemetry";
@@ -15,6 +25,22 @@ import { reportError } from "@/lib/telemetry";
 export const runtime = "nodejs";
 // Downloading large model files from the source platform can take a while.
 export const maxDuration = 300;
+
+// First-POST answer for a multi-tab or multi-branch Onshape document: the
+// client shows the tab-selection dialog and re-POSTs with `onshapeElements`
+// (plus `onshapeWvm`/`onshapeWvmId` when a branch/version was picked).
+export type OnshapeSelectionResponse = {
+  needsOnshapeSelection: true;
+  title: string;
+  tabs: OnshapeImportTab[];
+  // Server-side export cap (MAX_EXPORT_ELEMENTS) — the dialog stops the user
+  // from selecting more instead of silently truncating.
+  maxTabs: number;
+  // Branch/version dropdown entries and the one the tab list was read from;
+  // picking another re-requests this listing (each branch has its own tabs).
+  branches: OnshapeBranchChoice[];
+  selected: OnshapeBranchPick;
+};
 
 export type ImportDraft = {
   source: string;
@@ -42,8 +68,24 @@ export async function POST(req: NextRequest) {
     // Set once the user has agreed to import a model with a lot of files
     // (the Continue/Cancel prompt in import-form.tsx).
     confirm?: boolean;
+    // Onshape only: the tabs picked in the selection dialog. Absent on the
+    // first POST — the route answers with the document's tab list instead of
+    // importing, and the client re-POSTs with the chosen element ids.
+    onshapeElements?: string[];
+    // Onshape only: the branch/version picked in the dialog's dropdown —
+    // overrides the URL's /w|v/ pin for both the tab listing and the import.
+    onshapeWvm?: string;
+    onshapeWvmId?: string;
   } | null;
   const confirmManyFiles = body?.confirm === true;
+  const onshapeElements = Array.isArray(body?.onshapeElements)
+    ? body.onshapeElements.filter((v): v is string => typeof v === "string")
+    : null;
+  const onshapeBranch: OnshapeBranchPick | null =
+    (body?.onshapeWvm === "w" || body?.onshapeWvm === "v") &&
+    isOnshapeId(body.onshapeWvmId)
+      ? { wvm: body.onshapeWvm, wvmId: body.onshapeWvmId }
+      : null;
   let url: URL;
   try {
     url = new URL(body?.url ?? "");
@@ -83,10 +125,39 @@ export async function POST(req: NextRequest) {
         project = await importFromPrintables(url, printablesId, { confirmManyFiles });
       } else if (onshapePin) {
         const accessToken = await getOnshapeAccessToken(session.user.id);
-        project = await importFromOnshape(
-          onshapePin,
-          accessToken ? { accessToken } : null,
-        );
+        const auth = accessToken ? { accessToken } : null;
+        if (!onshapeElements) {
+          // First POST (or a branch switch from the dialog): answer with the
+          // tab list so the user picks what to import. A document with one
+          // tab and no other branches/versions has nothing to choose —
+          // import it, passing the tab explicitly so an ineligible pinned
+          // tab (URL copied on e.g. a Variable Studio) can't derail the
+          // export.
+          const { title, tabs, branches, selected } = await listOnshapeImportTabs(
+            onshapePin,
+            auth,
+            onshapeBranch,
+          );
+          if (tabs.length > 1 || branches.length > 1) {
+            return NextResponse.json({
+              needsOnshapeSelection: true,
+              title,
+              tabs,
+              maxTabs: MAX_EXPORT_ELEMENTS,
+              branches,
+              selected,
+            } satisfies OnshapeSelectionResponse);
+          }
+          project = await importFromOnshape(onshapePin, auth, {
+            selectedElementIds: tabs.map((t) => t.id),
+            branch: onshapeBranch,
+          });
+        } else {
+          project = await importFromOnshape(onshapePin, auth, {
+            selectedElementIds: onshapeElements,
+            branch: onshapeBranch,
+          });
+        }
       } else {
         return NextResponse.json(
           {

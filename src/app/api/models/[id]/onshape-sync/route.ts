@@ -95,12 +95,27 @@ export async function POST(
       });
     }
 
-    const { exports, warnings } = await exportPinnedModels(auth, {
-      documentId: pin.documentId,
-      wvm,
-      wvmId: pin.wvmId,
-      elementId: pin.elementId,
-    });
+    // Re-export the tabs this model was actually imported with (the import
+    // dialog lets users pick a subset — e.g. Part Studios but not the
+    // Assembly), not whatever the URL pin would select today. Falls back to
+    // pin behavior for models whose Onshape files were all removed.
+    const importedElementIds = [
+      ...new Set(
+        model.files
+          .map((f) => f.onshapeElementId)
+          .filter((v): v is string => v !== null),
+      ),
+    ];
+    const { exports, warnings } = await exportPinnedModels(
+      auth,
+      {
+        documentId: pin.documentId,
+        wvm,
+        wvmId: pin.wvmId,
+        elementId: pin.elementId,
+      },
+      importedElementIds.length > 0 ? importedElementIds : null,
+    );
 
     // Stage every export before touching the database: replacing the files is
     // all-or-nothing so a mid-way failure can't leave the model half-synced.

@@ -153,6 +153,60 @@ export async function getElements(
   );
 }
 
+// Workspace (branch) / version entries as the documents API returns them
+// (BTWorkspaceInfo / BTVersionInfo — id, name, parent, createdAt).
+export type OnshapeWvmInfo = {
+  id?: string;
+  name?: string;
+  parent?: string | null;
+  createdAt?: string;
+};
+
+export async function getWorkspaces(
+  auth: OnshapeAuth,
+  documentId: string,
+): Promise<OnshapeWvmInfo[]> {
+  return onshapeFetch<OnshapeWvmInfo[]>(auth, `/documents/d/${documentId}/workspaces`);
+}
+
+export async function getVersions(
+  auth: OnshapeAuth,
+  documentId: string,
+): Promise<OnshapeWvmInfo[]> {
+  return onshapeFetch<OnshapeWvmInfo[]>(auth, `/documents/d/${documentId}/versions`);
+}
+
+// One selectable entry in the import dialog's branch/version dropdown.
+export type OnshapeBranchChoice = {
+  wvm: "w" | "v";
+  id: string;
+  name: string;
+};
+
+// Flattens the document's branches and versions into the dropdown list:
+// workspaces first (in API order — "Main" leads), then versions newest-first.
+// The root "Start" version (parent null on every document) is the empty
+// initial state — nothing to import, so it's dropped; the name is checked too
+// so a missing `parent` field can never wipe out real versions.
+export function branchChoices(
+  workspaces: OnshapeWvmInfo[],
+  versions: OnshapeWvmInfo[],
+): OnshapeBranchChoice[] {
+  const valid = (list: OnshapeWvmInfo[]) =>
+    list.filter((e): e is OnshapeWvmInfo & { id: string } => isOnshapeId(e.id));
+  return [
+    ...valid(workspaces).map((w) => ({
+      wvm: "w" as const,
+      id: w.id,
+      name: w.name || "Unnamed branch",
+    })),
+    ...valid(versions)
+      .filter((v) => !(v.parent == null && v.name === "Start"))
+      .sort((a, b) => (b.createdAt ?? "").localeCompare(a.createdAt ?? ""))
+      .map((v) => ({ wvm: "v" as const, id: v.id, name: v.name || "Unnamed version" })),
+  ];
+}
+
 export async function getCurrentMicroversion(
   auth: OnshapeAuth,
   documentId: string,
@@ -253,37 +307,68 @@ export type OnshapeExport = {
   url: string;
 };
 
-const MAX_EXPORT_ELEMENTS = 8;
+// Exports run sequentially and take seconds each; the cap keeps one import
+// inside the route's 300s budget. Surfaced to the tab-selection dialog so the
+// user picks which tabs count against it instead of getting a silent cut-off.
+export const MAX_EXPORT_ELEMENTS = 8;
 
-function modelFilename(name: string): string {
-  const base = name.trim().replace(/[^a-zA-Z0-9._ -]/g, "_") || "model";
-  return `${base}.3mf`;
-}
+// A document tab that can be exported as 3MF. Part Studios hold the geometry
+// and are the natural printable unit (Onshape's recommended workflows model
+// each part in a Part Studio — sometimes one studio per part — and only
+// position them in Assemblies); an Assembly export places every part at its
+// mated position, so interlocking parts come out overlapping.
+export type OnshapeExportElement = {
+  id: string;
+  name: string;
+  elementType: "PARTSTUDIO" | "ASSEMBLY";
+};
 
-// Exports the elements a document pin refers to as 3MF: the pinned element when
-// the URL contains /e/{eid}, otherwise every Part Studio and Assembly tab
-// (capped). Used by both the URL importer and the sync endpoint so they stay in
-// lockstep.
-export async function exportPinnedModels(
-  auth: OnshapeAuth,
-  pin: { documentId: string; wvm: "w" | "v"; wvmId: string; elementId: string | null },
-): Promise<{ exports: OnshapeExport[]; warnings: string[] }> {
-  const warnings: string[] = [];
-  const elements = (await getElements(auth, pin.documentId, pin.wvm, pin.wvmId)).filter(
-    (e): e is { id: string; name: string; elementType: string } =>
+export function eligibleExportElements(
+  elements: OnshapeElement[],
+): OnshapeExportElement[] {
+  return elements.filter(
+    (e): e is OnshapeExportElement =>
       isOnshapeId(e.id) &&
       (e.elementType === "PARTSTUDIO" || e.elementType === "ASSEMBLY"),
   );
+}
 
+// Picks which tabs to export, in document tab order. An explicit selection
+// (the import dialog, or sync re-exporting the tabs a model was imported
+// with) wins over the URL's pinned tab — the pin is just whichever tab was
+// open when the user copied the link, not a deliberate choice.
+export function selectExportElements(
+  elements: OnshapeExportElement[],
+  opts: {
+    pinnedElementId?: string | null;
+    selectedElementIds?: string[] | null;
+  },
+): { selected: OnshapeExportElement[]; warnings: string[] } {
+  const warnings: string[] = [];
   let selected = elements;
-  if (pin.elementId) {
-    selected = elements.filter((e) => e.id === pin.elementId);
+  const wanted = opts.selectedElementIds?.filter(isOnshapeId) ?? [];
+  if (wanted.length > 0) {
+    const wantedSet = new Set(wanted);
+    selected = elements.filter((e) => wantedSet.has(e.id));
+    if (selected.length === 0) {
+      throw new OnshapeError(
+        "None of the selected Onshape tabs exist in the document anymore",
+      );
+    }
+    if (selected.length < wantedSet.size) {
+      warnings.push(
+        `${wantedSet.size - selected.length} selected Onshape tab(s) no longer exist and were skipped.`,
+      );
+    }
+  } else if (opts.pinnedElementId) {
+    selected = elements.filter((e) => e.id === opts.pinnedElementId);
     if (selected.length === 0) {
       throw new OnshapeError(
         "The linked Onshape tab no longer exists or is not a Part Studio/Assembly",
       );
     }
-  } else if (selected.length > MAX_EXPORT_ELEMENTS) {
+  }
+  if (selected.length > MAX_EXPORT_ELEMENTS) {
     warnings.push(
       `Only the first ${MAX_EXPORT_ELEMENTS} Part Studio/Assembly tabs were exported.`,
     );
@@ -292,6 +377,30 @@ export async function exportPinnedModels(
   if (selected.length === 0) {
     throw new OnshapeError("The Onshape document has no Part Studio or Assembly tabs");
   }
+  return { selected, warnings };
+}
+
+function modelFilename(name: string): string {
+  const base = name.trim().replace(/[^a-zA-Z0-9._ -]/g, "_") || "model";
+  return `${base}.3mf`;
+}
+
+// Exports document tabs as 3MF: the explicitly selected elements when given
+// (import dialog / sync), else the pinned element when the URL contains
+// /e/{eid}, else every Part Studio and Assembly tab (capped). Used by both
+// the URL importer and the sync endpoint so they stay in lockstep.
+export async function exportPinnedModels(
+  auth: OnshapeAuth,
+  pin: { documentId: string; wvm: "w" | "v"; wvmId: string; elementId: string | null },
+  selectedElementIds?: string[] | null,
+): Promise<{ exports: OnshapeExport[]; warnings: string[] }> {
+  const elements = eligibleExportElements(
+    await getElements(auth, pin.documentId, pin.wvm, pin.wvmId),
+  );
+  const { selected, warnings } = selectExportElements(elements, {
+    pinnedElementId: pin.elementId,
+    selectedElementIds,
+  });
 
   const exports: OnshapeExport[] = [];
   const usedNames = new Set<string>();
