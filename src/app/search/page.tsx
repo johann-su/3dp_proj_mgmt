@@ -3,6 +3,11 @@ import { redirect } from "next/navigation";
 import { Search, SearchX } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { SearchFilters } from "@/components/search-filters";
 import { SearchResults } from "@/components/search-results";
 import { getSession, signInRedirect } from "@/lib/auth";
@@ -64,9 +69,14 @@ export default async function SearchPage({
           placeholder="Search models and collections…"
           autoFocus
         />
-        <Button type="submit" variant="secondary" aria-label="Search">
-          <Search className="size-4" />
-        </Button>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button type="submit" variant="secondary" aria-label="Search">
+              <Search className="size-4" />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>Search</TooltipContent>
+        </Tooltip>
       </form>
 
       <div className="grid grid-cols-1 md:grid-cols-[220px_1fr] gap-8">

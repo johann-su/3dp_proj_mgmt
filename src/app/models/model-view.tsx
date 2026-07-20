@@ -160,19 +160,24 @@ function DeleteVariantButton({
   }
 
   return (
-    <Button
-      size="icon"
-      variant="ghost"
-      disabled={deleting}
-      onClick={handleDelete}
-      aria-label={`Delete ${filename}`}
-    >
-      {deleting ? (
-        <Loader2 className="size-4 animate-spin" />
-      ) : (
-        <Trash2 className="size-4 text-muted-foreground" />
-      )}
-    </Button>
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <Button
+          size="icon"
+          variant="ghost"
+          disabled={deleting}
+          onClick={handleDelete}
+          aria-label={`Delete ${filename}`}
+        >
+          {deleting ? (
+            <Loader2 className="size-4 animate-spin" />
+          ) : (
+            <Trash2 className="size-4 text-muted-foreground" />
+          )}
+        </Button>
+      </TooltipTrigger>
+      <TooltipContent>Delete variant</TooltipContent>
+    </Tooltip>
   );
 }
 
@@ -314,22 +319,27 @@ function PrintFileRow({
             makerworldUrl={makerworldUrl ?? undefined}
           />
         ) : file.id || file.src ? (
-          <Button
-            asChild
-            size="icon"
-            variant="outline"
-            aria-label={`Download ${file.filename}`}
-          >
-            <a
-              href={
-                file.id
-                  ? `/api/files/${file.id}?download=1`
-                  : `${file.src}&download=1`
-              }
-            >
-              <Download className="size-4" />
-            </a>
-          </Button>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                asChild
+                size="icon"
+                variant="outline"
+                aria-label={`Download ${file.filename}`}
+              >
+                <a
+                  href={
+                    file.id
+                      ? `/api/files/${file.id}?download=1`
+                      : `${file.src}&download=1`
+                  }
+                >
+                  <Download className="size-4" />
+                </a>
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>Download</TooltipContent>
+          </Tooltip>
         ) : (
           <Button
             size="icon"
@@ -653,17 +663,22 @@ export function ModelView({ data }: { data: ModelViewData }) {
                     </div>
                   </div>
                   {downloadHref ? (
-                    <Button
-                      asChild
-                      size="icon"
-                      variant="ghost"
-                      className="ml-auto shrink-0"
-                      aria-label={`Download ${file.filename}`}
-                    >
-                      <a href={downloadHref}>
-                        <Download className="size-4" />
-                      </a>
-                    </Button>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          asChild
+                          size="icon"
+                          variant="ghost"
+                          className="ml-auto shrink-0"
+                          aria-label={`Download ${file.filename}`}
+                        >
+                          <a href={downloadHref}>
+                            <Download className="size-4" />
+                          </a>
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent>Download</TooltipContent>
+                    </Tooltip>
                   ) : (
                     <Button
                       size="icon"

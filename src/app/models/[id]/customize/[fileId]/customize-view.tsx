@@ -330,11 +330,16 @@ export function CustomizeView({
         className="relative flex min-h-0 flex-col border-b lg:w-[var(--panel-width)] lg:shrink-0 lg:border-b-0 lg:border-r order-2 lg:order-1"
       >
         <div className="flex items-center gap-2 border-b px-4 py-3">
-          <Button asChild variant="ghost" size="icon" className="shrink-0">
-            <Link href={`/models/${modelId}`} aria-label="Back to model">
-              <ArrowLeft className="size-4" />
-            </Link>
-          </Button>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button asChild variant="ghost" size="icon" className="shrink-0">
+                <Link href={`/models/${modelId}`} aria-label="Back to model">
+                  <ArrowLeft className="size-4" />
+                </Link>
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>Back to model</TooltipContent>
+          </Tooltip>
           <div className="min-w-0">
             <div className="truncate text-sm font-semibold">{modelTitle}</div>
             <div className="truncate text-xs text-muted-foreground">{filename}</div>

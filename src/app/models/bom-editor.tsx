@@ -28,6 +28,11 @@ import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 
 const EMPTY_ITEM: BomItemInput = {
   name: "",
@@ -375,16 +380,21 @@ export function BomEditor({
             </div>
           </div>
         </div>
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon"
-          className="size-7 shrink-0 self-start -mt-0.5 -mr-0.5"
-          aria-label={`Remove BOM item ${item.name || index + 1}`}
-          onClick={() => setItems(items.filter((_, j) => j !== index))}
-        >
-          <X className="size-3.5" />
-        </Button>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="size-7 shrink-0 self-start -mt-0.5 -mr-0.5"
+              aria-label={`Remove BOM item ${item.name || index + 1}`}
+              onClick={() => setItems(items.filter((_, j) => j !== index))}
+            >
+              <X className="size-3.5" />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>Remove item</TooltipContent>
+        </Tooltip>
       </div>
     );
   }
@@ -505,39 +515,53 @@ export function BomEditor({
             <span className="shrink-0 text-xs text-muted-foreground">
               {group.items.length} item{group.items.length === 1 ? "" : "s"}
             </span>
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon"
-              className="size-7 shrink-0"
-              aria-label={`Move section ${group.section} up`}
-              disabled={i === 0}
-              onClick={() => moveSection(i, -1)}
-            >
-              <ChevronUp className="size-3.5" />
-            </Button>
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon"
-              className="size-7 shrink-0"
-              aria-label={`Move section ${group.section} down`}
-              disabled={i === sectionGroups.length - 1}
-              onClick={() => moveSection(i, 1)}
-            >
-              <ChevronDown className="size-3.5" />
-            </Button>
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon"
-              className="size-7 shrink-0"
-              aria-label={`Delete section ${group.section}`}
-              title="Delete section (items move out of it)"
-              onClick={() => deleteSection(group.section!)}
-            >
-              <Trash2 className="size-3.5" />
-            </Button>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="size-7 shrink-0"
+                  aria-label={`Move section ${group.section} up`}
+                  disabled={i === 0}
+                  onClick={() => moveSection(i, -1)}
+                >
+                  <ChevronUp className="size-3.5" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>Move section up</TooltipContent>
+            </Tooltip>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="size-7 shrink-0"
+                  aria-label={`Move section ${group.section} down`}
+                  disabled={i === sectionGroups.length - 1}
+                  onClick={() => moveSection(i, 1)}
+                >
+                  <ChevronDown className="size-3.5" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>Move section down</TooltipContent>
+            </Tooltip>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="size-7 shrink-0"
+                  aria-label={`Delete section ${group.section}`}
+                  onClick={() => deleteSection(group.section!)}
+                >
+                  <Trash2 className="size-3.5" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>Delete section (items move out of it)</TooltipContent>
+            </Tooltip>
           </div>
           <div className="grid gap-2 p-2">
             {renderGroupItems(group)}
