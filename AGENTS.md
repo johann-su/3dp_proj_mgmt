@@ -297,13 +297,21 @@ Decisions taken and why — guidance for development.
   stream to S3 like any other asset and get slice estimates like regular
   uploads. The canonical document URL is stored as the model's `sourceUrl`
   (doubling as the "Edit in Onshape" link) together with the workspace
-  microversion; "Sync from Onshape" (owner-only,
+  microversion; "Sync from Onshape" (any signed-in user — syncing counts as
+  editing, per the collaborative-editing rule;
   `POST /api/models/{id}/onshape-sync`) compares the current microversion and
   re-exports **the tabs the model was imported with** (the distinct
   `model_files.onshape_element_id` values, falling back to the URL pin when
   none remain), replacing the previously imported files; a tab deleted in
   Onshape is dropped with a warning, since the pre-sync state becomes a
-  version.
+  version. Sync is two-phase like the MakerWorld/Printables source sync: a
+  body-less POST is the preview, and when the document has eligible tabs the
+  model doesn't carry (checked even when the microversion is unchanged, so a
+  previously declined tab stays addable), it answers `needs-selection` with
+  the new tabs and the button opens a picker (import-dialog defaults);
+  re-POSTing with the chosen `addElementIds` (empty = decline) exports
+  imported + added tabs together. This picker is the only way to add
+  upstream tabs to an existing model without re-importing it.
 - **MakerWorld collection import** (`POST /api/import/collection`,
   `src/lib/import/makerworld-collection.ts` + `collection-job.ts`) bulk-imports
   every model of a `makerworld.com/…/collections/{id}` list. Collections are
@@ -321,7 +329,8 @@ Decisions taken and why — guidance for development.
   `sourceUrl`) are only linked, which makes re-running a failed job a resume.
   The source URL is stored on the collection (`collections.source_url`,
   rendered as an "Imported from MakerWorld" link), and "Sync from MakerWorld"
-  (owner-only, `POST /api/collections/{id}/sync`) re-runs the same job
+  (any signed-in user — syncing counts as editing and uses the syncer's own
+  Bambu connection; `POST /api/collections/{id}/sync`) re-runs the same job
   against the existing collection: designs added remotely import as new
   models, everything already in the library is (re-)linked. Sync never
   deletes — models removed remotely stay, and a model the user pulled out of
@@ -369,8 +378,9 @@ Decisions taken and why — guidance for development.
   api.bambulab.com/v1/design-service/design/{id}/model?modelType=all&type=download`,
   undocumented and Bambu-login-gated like profile downloads; only
   `modelType=all` exists ("scad"/"3mf" answer 404) and it returns one zip of
-  every raw file, from which staging extracts just the `.scad` entries). The
-  owner gets a "Customize" button on the model page linking to a full-page
+  every raw file, from which staging extracts just the `.scad` entries).
+  `.scad` files get a "Customize" button on the model page (any signed-in
+  viewer) linking to a full-page
   customizer (`/models/{id}/customize/{fileId}`): a parameter rail built
   from the OpenSCAD customizer comments in the source — parsed by the pure
   `src/lib/scad-params.ts` (the design API's `scadConfig` field is empty in
@@ -380,8 +390,9 @@ Decisions taken and why — guidance for development.
   loop) fed by `POST /api/models/{id}/customize/preview`, which returns
   ephemeral **binary STL** (the service's second output format; nothing is
   stored, the client debounces changes and drops stale responses via a
-  sequence counter). "Generate .3mf" (owner-only, `POST
-  /api/models/{id}/customize`) renders through the **openscad service**
+  sequence counter). "Generate .3mf" (any signed-in user — variants land on
+  the model like a shared render, deletable by their generator or the owner;
+  `POST /api/models/{id}/customize`) renders through the **openscad service**
   (`openscad/`, fourth compose container: zero-dependency wrapper around the
   OpenSCAD CLI, Debian package + vendored pinned BOSL2/MCAD under
   `OPENSCADPATH`) and **stores** the result as a `model_files` row flagged

@@ -4,9 +4,11 @@ import {
   branchChoices,
   buildExportRequest,
   eligibleExportElements,
+  getDocument,
   isOnshapeId,
   MAX_EXPORT_ELEMENTS,
   onshapeDocumentUrl,
+  OnshapeError,
   parseOnshapeUrl,
   selectExportElements,
   type OnshapeExportElement,
@@ -181,6 +183,43 @@ test("branchChoices drops the root Start version but keeps user versions named S
     choices.map((c) => c.id),
     [elementId(1), elementId(3)],
   );
+});
+
+test("a 429 is retried honoring Retry-After, then succeeds", async (t) => {
+  // One import fires dozens of API calls, so transient rate limits must not
+  // sink it. Retry-After: 0 keeps the test instant.
+  const original = globalThis.fetch;
+  t.after(() => {
+    globalThis.fetch = original;
+  });
+  let calls = 0;
+  globalThis.fetch = async () => {
+    calls++;
+    return calls === 1
+      ? new Response("", { status: 429, headers: { "retry-after": "0" } })
+      : new Response(JSON.stringify({ name: "Doc" }), { status: 200 });
+  };
+  const doc = await getDocument({ accessToken: "t" }, DID);
+  assert.equal(doc.name, "Doc");
+  assert.equal(calls, 2);
+});
+
+test("persistent 429s give up with a rate-limit error, not an infinite loop", async (t) => {
+  const original = globalThis.fetch;
+  t.after(() => {
+    globalThis.fetch = original;
+  });
+  let calls = 0;
+  globalThis.fetch = async () => {
+    calls++;
+    return new Response("", { status: 429, headers: { "retry-after": "0" } });
+  };
+  await assert.rejects(
+    () => getDocument({ accessToken: "t" }, DID),
+    (err: unknown) => err instanceof OnshapeError && err.status === 429,
+  );
+  // Initial attempt + the bounded retries.
+  assert.equal(calls, 3);
 });
 
 test("onshapeDocumentUrl round-trips a parsed pin", () => {

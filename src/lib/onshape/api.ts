@@ -73,36 +73,66 @@ export class OnshapeError extends Error {
   }
 }
 
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+// Onshape rate-limits, and a single import issues dozens of calls (listing,
+// up to MAX_EXPORT_ELEMENTS translations, polling each) — so 429s get a
+// couple of retries, honoring Retry-After when it's a sane number of seconds.
+const RATE_LIMIT_RETRIES = 2;
+const MAX_RETRY_AFTER_MS = 15_000;
+
 async function onshapeFetch<T>(
   auth: OnshapeAuth,
   path: string,
   init?: { method?: "POST"; body?: unknown },
 ): Promise<T> {
-  const res = await fetch(`${API_BASE}${path}`, {
-    method: init?.method ?? "GET",
-    headers: {
-      ...onshapeAuthHeaders(auth),
-      Accept: "application/json",
-      ...(init?.body !== undefined ? { "Content-Type": "application/json" } : {}),
-    },
-    body: init?.body !== undefined ? JSON.stringify(init.body) : undefined,
-  });
-  if (res.status === 401) {
-    throw new OnshapeError(
-      "Your Onshape connection expired — reconnect it in Settings → Onshape",
-      401,
-    );
+  for (let attempt = 0; ; attempt++) {
+    const res = await fetch(`${API_BASE}${path}`, {
+      method: init?.method ?? "GET",
+      headers: {
+        ...onshapeAuthHeaders(auth),
+        Accept: "application/json",
+        ...(init?.body !== undefined ? { "Content-Type": "application/json" } : {}),
+      },
+      body: init?.body !== undefined ? JSON.stringify(init.body) : undefined,
+    });
+    if (res.status === 429) {
+      if (attempt < RATE_LIMIT_RETRIES) {
+        const retryAfter = Number(res.headers.get("retry-after"));
+        await sleep(
+          Math.min(
+            // Retry-After can also be an HTTP date; treat anything that isn't
+            // a plain number of seconds as absent and back off instead.
+            Number.isFinite(retryAfter) && retryAfter >= 0
+              ? retryAfter * 1000
+              : 2000 * (attempt + 1),
+            MAX_RETRY_AFTER_MS,
+          ),
+        );
+        continue;
+      }
+      throw new OnshapeError(
+        "Onshape is rate-limiting requests — try again in a moment",
+        429,
+      );
+    }
+    if (res.status === 401) {
+      throw new OnshapeError(
+        "Your Onshape connection expired — reconnect it in Settings → Onshape",
+        401,
+      );
+    }
+    if (res.status === 403 || res.status === 404) {
+      throw new OnshapeError(
+        "Document not found, or your Onshape account has no access to it",
+        res.status,
+      );
+    }
+    if (!res.ok) {
+      throw new OnshapeError(`Onshape API responded with ${res.status}`, res.status);
+    }
+    return (await res.json()) as T;
   }
-  if (res.status === 403 || res.status === 404) {
-    throw new OnshapeError(
-      "Document not found, or your Onshape account has no access to it",
-      res.status,
-    );
-  }
-  if (!res.ok) {
-    throw new OnshapeError(`Onshape API responded with ${res.status}`, res.status);
-  }
-  return (await res.json()) as T;
 }
 
 export type OnshapeSessionInfo = { name?: string; email?: string };
@@ -230,8 +260,6 @@ type TranslationInfo = {
 // How long to wait for one export. Exports of typical hobby models take
 // seconds; the importing route caps the whole request at 300s anyway.
 const TRANSLATION_TIMEOUT_MS = 240_000;
-
-const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 // Builds the request that starts an async 3MF export. There is no dedicated
 // …/export/3mf route (the docs list format-specific routes for glTF/OBJ/STEP

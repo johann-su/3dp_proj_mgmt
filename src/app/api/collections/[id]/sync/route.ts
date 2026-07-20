@@ -10,7 +10,8 @@ import { reportError } from "@/lib/telemetry";
 export const runtime = "nodejs";
 
 // Re-runs the collection import against the stored MakerWorld source URL
-// (owner-only). Designs added remotely since the last run import as new
+// (any signed-in user — syncing counts as editing; see the session check
+// below). Designs added remotely since the last run import as new
 // models; everything already in the library is just (re-)linked into the
 // collection. Nothing is deleted — models removed from the remote collection
 // stay local.
