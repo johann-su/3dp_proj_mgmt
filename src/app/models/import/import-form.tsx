@@ -4,7 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Box, Boxes, CloudDownload } from "lucide-react";
+import { Box, Boxes, CloudDownload, HelpCircle } from "lucide-react";
 import { IMPORT_DRAFT_KEY } from "@/app/models/import-draft";
 import type { OnshapeBranchPick, OnshapeImportTab } from "@/lib/import/onshape";
 import type { OnshapeBranchChoice } from "@/lib/onshape/api";
@@ -32,6 +32,14 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
 
 // Default tab selection, following Onshape's workflow: Part Studios hold the
 // printable geometry (preselected); Assemblies only position parts, so their
@@ -241,7 +249,80 @@ export function ImportForm() {
       <CardContent>
         <form onSubmit={handleSubmit} className="grid gap-4">
           <div className="grid gap-2">
-            <Label htmlFor="url">Model or collection URL</Label>
+            <div className="flex items-center justify-between">
+              <Label htmlFor="url">Model or collection URL</Label>
+              <Dialog>
+                <DialogTrigger asChild>
+                  <Button type="button" variant="ghost" size="xs">
+                    <HelpCircle className="size-3.5" />
+                    What gets imported?
+                  </Button>
+                </DialogTrigger>
+                <DialogContent className="sm:max-w-xl">
+                  <DialogHeader>
+                    <DialogTitle>Importing models</DialogTitle>
+                    <DialogDescription>
+                      What&apos;s imported from each source, and what a connected
+                      account adds.
+                    </DialogDescription>
+                  </DialogHeader>
+                  <div className="grid gap-5 text-sm">
+                    <section className="grid gap-1.5">
+                      <h3 className="font-medium">Printables</h3>
+                      <p className="text-muted-foreground">
+                        Metadata, images and model files import directly — no
+                        connected account needed.
+                      </p>
+                    </section>
+                    <section className="grid gap-1.5">
+                      <h3 className="font-medium">MakerWorld</h3>
+                      <p className="text-muted-foreground">
+                        Metadata and images always import. The <code>.3mf</code>{" "}
+                        files import too once you{" "}
+                        <Link href="/settings/bambu" className="underline">
+                          connect your Bambu account
+                        </Link>
+                        . Without a connection, download the <code>.3mf</code>{" "}
+                        yourself and upload it instead — the metadata is read
+                        from the file automatically.
+                      </p>
+                    </section>
+                    <section className="grid gap-1.5">
+                      <h3 className="font-medium">MakerWorld collections</h3>
+                      <p className="text-muted-foreground">
+                        A <code>makerworld.com/…/collections/…</code> link
+                        imports every model in the collection in the
+                        background, into a new collection here. Requires a
+                        connected Bambu account; progress shows in the
+                        top-right corner.
+                      </p>
+                    </section>
+                    <section className="grid gap-1.5">
+                      <h3 className="font-medium">Onshape</h3>
+                      <p className="text-muted-foreground">
+                        Paste a document link (
+                        <code>cad.onshape.com/documents/…</code>), pick the
+                        Part Studio/Assembly tabs to import, and each exports
+                        as its own <code>.3mf</code> file. Requires{" "}
+                        <Link href="/settings/onshape" className="underline">
+                          signing in with your Onshape account
+                        </Link>
+                        .
+                      </p>
+                      <p className="text-muted-foreground">
+                        To keep several parameterizations of one design, put
+                        each on its own branch or version (choose it in the
+                        import dialog) and import them as separate models —
+                        or derive configured Part Studios into separate tabs.
+                        Editing Variable Studio values in place between
+                        imports doesn&apos;t stick: the next sync re-exports
+                        the branch&apos;s current state.
+                      </p>
+                    </section>
+                  </div>
+                </DialogContent>
+              </Dialog>
+            </div>
             <Input
               id="url"
               name="url"
@@ -256,29 +337,8 @@ export function ImportForm() {
             {fetching ? "Fetching model… this can take a moment" : "Fetch model"}
           </Button>
           <p className="text-xs text-muted-foreground">
-            Printables: metadata, images and model files are imported. <br />
-            MakerWorld: metadata and images always import; the <code>.3mf</code>
-            files import too once you{" "}
-            <Link href="/settings/bambu" className="underline">
-              connect your Bambu account
-            </Link>
-            . Otherwise download the .3mf in your browser and upload it — the metadata is read from the file automatically. <br />
-            MakerWorld collections (makerworld.com/…/collections/…): every model in the
-            collection imports in the background into a new collection here — requires a
-            connected Bambu account; progress shows in the top-right corner. <br />
-            Onshape: paste a document link (cad.onshape.com/documents/…), pick the
-            Part Studio/Assembly tabs to import, and each exports as its own{" "}
-            <code>.3mf</code> file — requires{" "}
-            <Link href="/settings/onshape" className="underline">
-              signing in with your Onshape account
-            </Link>
-            . <br />
-            Parametric Onshape documents: to keep several parameterizations of one
-            design, put each on its own branch or version (choose it in the import
-            dialog) and import them as separate models — or derive configured Part
-            Studios into separate tabs. Editing Variable Studio values in place
-            between imports doesn&apos;t stick: the next sync re-exports the
-            branch&apos;s current state.
+            Supports Printables, MakerWorld (single models or whole{" "}
+            <code>collections</code> links), and Onshape document links.
           </p>
         </form>
       </CardContent>
