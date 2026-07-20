@@ -272,17 +272,38 @@ Decisions taken and why — guidance for development.
   Access + refresh tokens are stored encrypted at rest like the Bambu token,
   access tokens are refreshed transparently (~60 min lifetime, rotated refresh
   tokens), and a connection that can no longer be refreshed is dropped so the
-  user simply reconnects. Importing a `cad.onshape.com/documents/…` URL reads
-  the document metadata + thumbnail and runs an asynchronous 3MF export of the
-  linked tab (or of every Part Studio/Assembly tab) — see the Onshape
-  integration section below for the API details. The resulting `.3mf` files
+  user simply reconnects. Importing a `cad.onshape.com/documents/…` URL first
+  answers with the document's Part Studio/Assembly tab list
+  (`needsOnshapeSelection`, the same round-trip pattern as the many-files
+  confirm) and the import form shows a tab-selection dialog: **Part Studios
+  are preselected, Assemblies are not**, because Part Studios hold the
+  printable geometry while an assembly export places parts at their mated
+  positions (an interlocking design — lid inside box — comes out overlapping
+  and slices as fused). The URL's `/e/{eid}` is just whichever tab was open
+  when the link was copied, so it only gets a "linked tab" badge, not
+  authority; an explicit selection always beats the pin
+  (`selectExportElements` in `src/lib/onshape/api.ts`, unit-tested). The
+  dialog also carries a **branch/version dropdown** (workspaces first, then
+  versions newest-first — `branchChoices`, which drops the implicit root
+  "Start" version every document has) whenever the document offers more than
+  one; picking one re-requests the tab listing (each branch has its own
+  tabs) and the pick overrides the URL's /w|v/ pin for the export and the
+  stored `sourceUrl` — importing a version yields an immutable snapshot that
+  "Sync from Onshape" reports as always up to date.
+  Documents with one tab and no branch choice skip the dialog. Each chosen tab (capped at
+  `MAX_EXPORT_ELEMENTS`, surfaced in the dialog) runs an asynchronous 3MF
+  export into its own file — see the Onshape integration section below for
+  the API details. The resulting `.3mf` files
   stream to S3 like any other asset and get slice estimates like regular
   uploads. The canonical document URL is stored as the model's `sourceUrl`
   (doubling as the "Edit in Onshape" link) together with the workspace
   microversion; "Sync from Onshape" (owner-only,
   `POST /api/models/{id}/onshape-sync`) compares the current microversion and
-  re-exports, replacing the previously imported files (tracked via
-  `model_files.onshape_element_id`).
+  re-exports **the tabs the model was imported with** (the distinct
+  `model_files.onshape_element_id` values, falling back to the URL pin when
+  none remain), replacing the previously imported files; a tab deleted in
+  Onshape is dropped with a warning, since the pre-sync state becomes a
+  version.
 - **MakerWorld collection import** (`POST /api/import/collection`,
   `src/lib/import/makerworld-collection.ts` + `collection-job.ts`) bulk-imports
   every model of a `makerworld.com/…/collections/{id}` list. Collections are
@@ -561,6 +582,13 @@ touching it:
   `…/documents/{did}/{w|v|m}/{wvmid}[/e/{eid}]` — `w` workspaces are syncable,
   `v` versions are immutable snapshots, `m` microversions are rejected at
   import (not exportable via the w/v endpoints).
+- **Branches/versions**: `GET /documents/d/{did}/workspaces` and
+  `…/versions` (BTWorkspaceInfo/BTVersionInfo: `id`, `name`, `parent`,
+  `createdAt`) feed the import dialog's dropdown. Every document has an
+  implicit root version named "Start" with `parent: null` — the empty
+  initial state; `branchChoices` filters it on `parent == null && name ===
+  "Start"` (both conditions, so a missing `parent` field or a user version
+  named "Start" can't be dropped by mistake).
 - Don't trust remembered endpoint shapes; verify against
   `cad.onshape.com/api/openapi` or the docs below before changing API calls.
 
