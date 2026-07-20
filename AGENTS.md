@@ -107,566 +107,66 @@ concerns is the signal to untangle) and Next.js's colocation conventions.
   `bom-editor.tsx`); promote it to a real component only when it can take
   props instead.
 
-# Architecture notes
+# Architecture
 
-Decisions taken and why — guidance for development.
+Decisions taken and why. The **cross-cutting rules** below apply to almost any
+change and are worth keeping in context; the **deep-dive docs** hold each
+subsystem's non-obvious contracts and are read on demand.
 
-- **The whole catalog is private** — instances hold paid models. Two layers:
-  `src/proxy.ts` (Next 16's renamed middleware) redirects pages without a
-  session *cookie* to `/sign-in`, but that's an optimistic presence check a
-  hand-set cookie defeats and its matcher skips `/api` — so every page also
-  verifies the session server-side (`getSession()` + redirect), and every API
-  route and server action checks it too (list-type actions return an empty
-  page instead). Keep both checks when adding a page. Both layers preserve
-  the requested page across login (shared links land where they pointed):
-  the proxy redirects to `/sign-in?callbackUrl=<path>` and also forwards the
-  original path as the `x-callback-path` request header, which the page-level
-  guard reads — so write the guard as
-  `if (!session) redirect(await signInRedirect())` (from `@/lib/auth`), not a
-  bare `redirect("/sign-in")`. The callback value is attacker-controlled
-  (URL bar); `safeCallbackPath` (`src/lib/callback-url.ts`, unit-tested)
-  validates it down to an in-app path — reject-listing absolute/protocol-
-  relative URLs, control chars, and `/api`/auth paths — before anything
-  redirects to it, and the sign-in/sign-up pages re-validate server-side
-  before handing it to the client forms (email `router.push` and the OIDC
-  `callbackURL`). There is no
-  finer-grained RBAC on purpose: signed in = full read access, and **editing
-  is collaborative — any signed-in user can edit a model or collection**
-  (update fields/files, generate customizer variants, run Onshape/MakerWorld
-  sync, add/remove collection members), since a self-hosted instance serves a
-  trusted group and shared editing is worth more than the risk. **Destructive/
-  owner-scoped actions stay owner-gated**: deleting a model (`deleteModel`,
-  a soft delete into the owner's trash — see the versioning bullet below) or
-  collection (`deleteCollection`); deleting a generated variant is owner-or-
-  its-generator. When adding a mutation, follow this split — open editing to
-  any session, gate only deletion/ownership transfer on
-  `canActAsOwner(session.user, record.userId)` (owner, or a moderator/admin
-  acting owner-equivalent — see the roles bullet).
-- **User roles** (issue #54; tier definitions + pure helpers in
-  `src/lib/roles.ts`): `user.role` is `user | moderator | admin`, exposed as
-  `session.user.role` via BetterAuth `user.additionalFields` (`input: false`,
-  so sign-up payloads can't self-assign a role). **Moderator =
-  owner-equivalent on content**: `canActAsOwner(session.user, ownerId)` is
-  the standard owner gate and passes for moderators/admins — model
-  trash/restore/purge, collection deletion, variant deletion, and the
-  matching UI flags all use it; moderators also see (and their page load
-  sweeps) *everyone's* trash. **Admin = moderator + user management**:
-  Settings → Users (`src/app/settings/users/`) lists all accounts, edits
-  roles (`setUserRole`) and deletes accounts (`deleteUser`) — the two
-  mutations gated on `isAdmin`; admins cannot change their own role or
-  delete their own account, so someone can always undo a mistake. Deleting
-  a user purges their models up front via `purgeModel` (the user-row FK
-  cascade would leak the S3 objects) and then lets the cascades take
-  sessions, collections and credentials; their version edits and generated
-  variants on other users' models survive with the reference nulled.
-  First-admin
-  bootstrap: `INITIAL_ADMIN_EMAIL` applies only while the DB has **no admin
-  at all** — enforced at user creation (`databaseHooks.user.create.before`
-  in `src/lib/auth.ts`, covers fresh DBs incl. first OIDC login) and lazily
-  on settings-layout load (`ensureInitialAdmin` in `src/lib/admin.ts`,
-  covers accounts predating the feature; same no-scheduler pattern as the
-  trash sweep) — once an admin exists it is inert, doubling as recovery for
-  a zero-admin DB. **OIDC group mapping**: `OIDC_ADMIN_GROUP` /
-  `OIDC_MODERATOR_GROUP` name IdP groups (exact strings from the `groups`
-  claim; Authentik sends it with the `profile` scope) whose membership is
-  authoritative on every SSO login — synced in `mapProfileToUser`
-  (`applyOidcGroupRole`), which must update the row itself because
-  BetterAuth strips `input: false` fields from provider profiles; first
-  logins hand the role to the create hook via the `pendingOidcRoles` map. A
-  missing/malformed claim leaves stored roles untouched (no mass-demotion
-  on IdP misconfig). Deliberately **not** BetterAuth's organization plugin
-  (per-organization membership roles + org/member/invitation tables — the
-  wrong shape for one instance-global role) nor its admin plugin (would add
-  ban/impersonation endpoints and schema columns this app doesn't want).
-  When adding an owner-gated mutation use `canActAsOwner`; gate admin-only
-  surfaces on `isAdmin(session.user.role)`.
-- **Model versioning & trash** (issue #55; `src/lib/model-versions.ts`, pure
-  snapshot helpers in `src/lib/version-snapshot.ts`): every completed model
-  mutation (create, edit, Onshape sync, revert) appends a `model_versions` row
-  holding a full JSON snapshot of the mutable state — title, description,
-  category, tags, BOM, and the ordered file list including each file's
-  `s3Key`. `model_files` deliberately keeps meaning **"the live files only"**
-  (no query has to filter out historical rows): removing a file deletes its
-  row but *not* its S3 object, because earlier snapshots still reference the
-  key; the model page's History panel reverts to any version (open to every
-  signed-in user, like editing), re-inserting file rows from the snapshot and
-  appending a new version rather than rewriting history. Each history entry
-  also links to a read-only **version preview**
-  (`/models/{id}/versions/{versionId}`): the same ModelView as the model
-  page, fed from the snapshot (files, images, PDFs, title/description, tags,
-  category, BOM), with every mutating affordance disabled via `modelId:
-  null` and just Restore/Back actions. Historical files have no
-  `model_files` row, so their bytes are served by
-  `/api/files/versions/[versionId]/[index]` — addressed by version row +
-  snapshot index (both immutable), authenticated like `/api/files/[id]`
-  (session or signed token; `versionFileSrc` in `src/lib/file-token.ts`
-  mints the tokened URLs next/image needs) and deliberately under
-  `/api/files/**` so `images.localPatterns` keeps covering it. Versions are capped
-  (`VERSION_CAP`, 30/model); pruning deletes only S3 objects no remaining
-  snapshot or live row references. Generated OpenSCAD variants are excluded
-  from snapshots on purpose (additive, individually deletable, cheap to
-  regenerate) — their bytes *are* deleted when their `.scad` source or the
-  variant itself is removed. Models predating the feature get their pre-edit
-  state recorded lazily on the next mutation (`ensureBaselineVersion`) — no
-  data migration. **When adding a model mutation path**: run it in one
-  transaction with `ensureBaselineVersion` first and `recordVersion` last,
-  S3-delete only the keys those helpers return, and never delete a
-  non-variant model file's S3 object directly. Deletion is a trash bin:
-  `deleteModel` just sets `models.deleted_at`; every listing hides trashed
-  models (`deleted_at IS NULL` in `list-queries`/`search`/`smart-collections`
-  plus the collection member/cover paths — **new model listings must add the
-  same condition**); `/models/trash` restores (clear `deleted_at`) or purges
-  permanently — scoped to the viewer's own models, except moderators/admins,
-  who see the whole instance's trash — and loading it purges models trashed
-  longer than `TRASH_RETENTION_DAYS` (30) — the same lazy no-scheduler
-  pattern as the `import_jobs` heartbeat check.
-- **Uploads** stream through `POST /api/upload` to S3 (no browser↔S3 CORS setup needed);
-  only signed-in users can upload, and file extensions are validated server-side.
-  Stored content types are always derived from the allowlisted extension
-  (`contentTypeForFilename`), never from a client header/value — `/api/files`
-  serves images inline on our origin, so an uploader-chosen `text/html` would
-  be stored XSS. File routes also send `X-Content-Type-Options: nosniff`.
-- **Downloads & images** stream from S3 through `GET /api/files/[id]`, so the S3
-  endpoint never needs to be reachable from the browser. The route accepts a
-  session cookie (browser links/downloads) **or a signed file token**
-  (`src/lib/file-token.ts`: HMAC over file id + expiry, keyed off
-  `BETTER_AUTH_SECRET`, expiry bucketed to week boundaries so URLs stay
-  cache-stable). Tokens exist because two consumers cannot send cookies: the
-  next/image optimizer (its internal fetch carries no request headers) and
-  slicer deep links. Images therefore render from `fileSrc(id)`
-  (`…?token=…`) — signed server-side and passed down in the card/gallery
-  data, since cards also render inside client components — and deep links use
-  the token **path** variant `/api/files/[id]/[token]/[filename]` (Orca keeps
-  the query string when naming downloads, so `?token=` would corrupt the
-  filename). `next.config.ts` must keep `images.localPatterns` allowing
-  `/api/files/**` with unrestricted `search`, or Next 16 rejects the tokened
-  srcs.
-- **Auth** is BetterAuth email/password with sessions stored in Postgres.
-  `DISABLE_SIGNUP=true` turns off self-registration (BetterAuth's
-  `emailAndPassword.disableSignUp` plus hiding the `/sign-up` page); OIDC
-  keeps provisioning users on first login regardless — who may authenticate
-  through SSO is the IdP's decision.
-- **.3mf import** (`src/lib/threemf.ts`) runs client-side on file selection: the zip is
-  unpacked in the browser (fflate) and title/description (`3D/3dmodel.model`), printer
-  name (`Metadata/project_settings.config` / `slice_info.config`) and preview images
-  (`Auxiliaries/`, `Metadata/plate_*.png`, thumbnails) prefill the form.
-- **URL import** (`POST /api/import`, `src/lib/import/`) fetches a model's public
-  metadata + images server-side and stages them to S3 for the create form.
-  MakerWorld uses the anonymous `api.bambulab.com/v1/design-service/design/{id}`
-  JSON API (the makerworld.com pages themselves are Cloudflare-gated); Printables
-  uses its public GraphQL API, which also yields anonymous file download links.
-  MakerWorld file downloads require a Bambu Cloud login: a user connects their
-  account at **Settings → Bambu Cloud** (`src/app/settings/bambu/`, backed by
-  `src/lib/bambu/`), which logs in via `api.bambulab.com` (handling email-code
-  and TOTP two-factor) or accepts a pasted `token` cookie. The resulting access
-  token is stored **encrypted at rest** (AES-256-GCM, `src/lib/crypto.ts`, keyed
-  by `BAMBU_TOKEN_SECRET`/`BETTER_AUTH_SECRET`). At import time the token
-  exchanges each print profile for a short-lived presigned URL that streams to
-  S3 like any other asset. Without a connection, only metadata + images import.
-  **Per-file import provenance**: every file staged by an importer (all three
-  platforms, single-model and collection jobs, Onshape sync inserts) is flagged
-  `model_files.imported`, so files added manually to an imported model later
-  stay distinguishable — the model page and edit form badge imported files
-  with a cloud icon. The flag is carried through version snapshots and scopes
-  the source sync below; Onshape sync keeps selecting the files it replaces
-  via `onshape_element_id`, never via `imported`. Migration 0019 backfilled it
-  (Onshape by element id; other platforms by files sharing their model's
-  `created_at` — same insert transaction — on models with a `source_url`).
-- **Source sync** (MakerWorld/Printables; `POST /api/models/{id}/source-sync`,
-  pure planner in `src/lib/import/sync-diff.ts`): the model page's "Sync from
-  MakerWorld/Printables" button diffs the model's *imported* files against
-  the platform's current file list and shows a preview dialog (concrete
-  filenames) before applying. The contract: **imported files mirror
-  upstream, everything else is local** — manual uploads, generated variants,
-  images, title/description/tags/BOM are never touched, and files removed
-  upstream are removed locally (safe because the pre-sync state becomes a
-  version; reason `source-sync`). Matching uses `model_files.source_file_id`
-  (`profile:<id>` / `scad:<name>` / `doc:<name>` on MakerWorld, `file:<id>`
-  on Printables — stamped by the importers and required to stay in lockstep
-  with `listMakerworldUpstreamFiles`/`listPrintablesUpstreamFiles`), so
-  local renames survive; change detection compares
-  `model_files.source_modified_at`, an opaque per-file token (Printables
-  per-file `modified`; MakerWorld per-profile `publishTime` and raw-file
-  `modelUpdateTime` — **never the design/instance `updateTime`**, which
-  MakerWorld touches on counter activity: an untouched 2024 design reports
-  today's date, verified live). An unchanged token skips the download
-  entirely; all `.scad` files share one group token because they arrive as
-  a single raw-files zip (any change re-stages them all). Neither platform
-  exposes revision history, so `model_versions` doubles as the record of
-  upstream changes. Imports predating the feature carry no ids — the first
-  sync adopts them by filename, treats "upstream modified after the local
-  row's created_at" as stale, and re-stamps ids/tokens. MakerWorld
-  profile/scad downloads need the user's Bambu connection, like the
-  importer; Printables sync is fully anonymous.
-- **Onshape auth & import flow** (`src/lib/onshape/`, `src/lib/import/onshape.ts`)
-  authenticates with OAuth2 ("Sign in with Onshape", the flow behind
-  [passport-onshape](https://github.com/onshape/passport-onshape), implemented
-  directly in `src/lib/onshape/oauth.ts`): the self-hoster registers one OAuth
-  app at dev-portal.onshape.com (redirect URL
-  `{BETTER_AUTH_URL}/api/onshape/callback`, read documents + profile scopes)
-  and sets `ONSHAPE_CLIENT_ID`/`ONSHAPE_CLIENT_SECRET`; users then connect
-  under **Settings → Onshape** via consent screen — no API keys to copy.
-  Access + refresh tokens are stored encrypted at rest like the Bambu token,
-  access tokens are refreshed transparently (~60 min lifetime, rotated refresh
-  tokens), and a connection that can no longer be refreshed is dropped so the
-  user simply reconnects. Importing a `cad.onshape.com/documents/…` URL first
-  answers with the document's Part Studio/Assembly tab list
-  (`needsOnshapeSelection`, the same round-trip pattern as the many-files
-  confirm) and the import form shows a tab-selection dialog: **Part Studios
-  are preselected, Assemblies are not**, because Part Studios hold the
-  printable geometry while an assembly export places parts at their mated
-  positions (an interlocking design — lid inside box — comes out overlapping
-  and slices as fused). The URL's `/e/{eid}` is just whichever tab was open
-  when the link was copied, so it only gets a "linked tab" badge, not
-  authority; an explicit selection always beats the pin
-  (`selectExportElements` in `src/lib/onshape/api.ts`, unit-tested). The
-  dialog also carries a **branch/version dropdown** (workspaces first, then
-  versions newest-first — `branchChoices`, which drops the implicit root
-  "Start" version every document has) whenever the document offers more than
-  one; picking one re-requests the tab listing (each branch has its own
-  tabs) and the pick overrides the URL's /w|v/ pin for the export and the
-  stored `sourceUrl` — importing a version yields an immutable snapshot that
-  "Sync from Onshape" reports as always up to date.
-  Documents with one tab and no branch choice skip the dialog. Each chosen tab (capped at
-  `MAX_EXPORT_ELEMENTS`, surfaced in the dialog) runs an asynchronous 3MF
-  export into its own file — see the Onshape integration section below for
-  the API details. The resulting `.3mf` files
-  stream to S3 like any other asset and get slice estimates like regular
-  uploads. The canonical document URL is stored as the model's `sourceUrl`
-  (doubling as the "Edit in Onshape" link) together with the workspace
-  microversion; "Sync from Onshape" (any signed-in user — syncing counts as
-  editing, per the collaborative-editing rule;
-  `POST /api/models/{id}/onshape-sync`) compares the current microversion and
-  re-exports **the tabs the model was imported with** (the distinct
-  `model_files.onshape_element_id` values, falling back to the URL pin when
-  none remain), replacing the previously imported files; a tab deleted in
-  Onshape is dropped with a warning, since the pre-sync state becomes a
-  version. Sync is two-phase like the MakerWorld/Printables source sync: a
-  body-less POST is the preview, and when the document has eligible tabs the
-  model doesn't carry (checked even when the microversion is unchanged, so a
-  previously declined tab stays addable), it answers `needs-selection` with
-  the new tabs and the button opens a picker (import-dialog defaults);
-  re-POSTing with the chosen `addElementIds` (empty = decline) exports
-  imported + added tabs together. This picker is the only way to add
-  upstream tabs to an existing model without re-importing it.
-- **MakerWorld collection import** (`POST /api/import/collection`,
-  `src/lib/import/makerworld-collection.ts` + `collection-job.ts`) bulk-imports
-  every model of a `makerworld.com/…/collections/{id}` list. Collections are
-  "favorites lists" in Bambu's API: `GET
-  api.bambulab.com/v1/design-service/favorites/{id}` (metadata) and
-  `…/favorites/{id}/designs?limit=&offset=` (contents, hidden designs
-  excluded) answer anonymously — undocumented; discovered from MakerWorld's
-  own frontend (`getFavorites` in the `/collections/[collectionId]` page
-  chunk), so Bambu can change them at will. Because editing dozens of models
-  by hand is infeasible, imported designs skip the create-form draft flow:
-  the job runs in the background (`after()`, like slicing) via an
-  `import_jobs` row (status/progress/heartbeat), reuses the single-model
-  importer per design, inserts finished models directly, and links them into
-  a local collection created up front — already-imported designs (matching
-  `sourceUrl`) are only linked, which makes re-running a failed job a resume.
-  The source URL is stored on the collection (`collections.source_url`,
-  rendered as an "Imported from MakerWorld" link), and "Sync from MakerWorld"
-  (any signed-in user — syncing counts as editing and uses the syncer's own
-  Bambu connection; `POST /api/collections/{id}/sync`) re-runs the same job
-  against the existing collection: designs added remotely import as new
-  models, everything already in the library is (re-)linked. Sync never
-  deletes — models removed remotely stay, and a model the user pulled out of
-  the local collection gets re-linked on the next sync. Local
-  title/description edits are never overwritten.
-  Slice estimates run as a post-phase so a slow slicer doesn't stall visible
-  progress. A connected Bambu account is required up front (otherwise every
-  model would be a file-less shell), jobs are capped at 200 designs, and one
-  runs per user at a time. Progress surfaces as a ring in the top-right
-  header (`src/components/import-progress.tsx`) polling `GET
-  /api/import-jobs`, with cancel (checked between designs) and per-design
-  failures as warnings; a poll marks heartbeat-stale "running" jobs failed so
-  a server restart doesn't leave a spinner forever.
-- **Print estimates** come from two sources. Files sliced in Bambu Studio /
-  OrcaSlicer embed per-plate predictions in `Metadata/slice_info.config`, which
-  are read directly from S3 via ranged GETs (`src/lib/threemf-remote.ts`).
-  Unsliced `.3mf` files are sent to the **slicer service** (`slicer/`, the
-  third compose container): a zero-dependency Node HTTP wrapper around the
-  headless PrusaSlicer CLI (Debian's `prusa-slicer` package) that parses print
-  time and filament use from the G-code footer. The service honors the
-  settings embedded in the file — Bambu/Orca `project_settings.config` keys
-  are translated to their PrusaSlicer equivalents (machine limits, speeds,
-  accelerations, layer height, infill, and the filament of the extruder the
-  objects actually use), PrusaSlicer projects load their own `Slic3r_PE.config`
-  — falling back to a generic 0.4 mm/PLA profile (`slicer/config.ini`) for
-  files without settings. Only whitelisted keys are copied (a crafted archive
-  can't smuggle in `post_process` scripts), and the bed is a huge virtual
-  plate so multi-plate Bambu projects (whose world coordinates extend far past
-  the physical bed) still slice; estimates are totals across all plates.
-  Slicing runs in the background after upload (`after()` in the model actions,
-  `src/lib/slicer.ts`); results land on `model_files` (`slice_status`,
-  `print_time_seconds`, `filament_grams`, …) together with the hardware the
-  project was set up for (`printer_info`: printer model, nozzle, build plate,
-  used filaments), which the model page shows per file. Slicer-derived numbers
-  are still approximations (PrusaSlicer's time estimator, not the printer's
-  firmware) and shown with a `~` prefix; files PrusaSlicer cannot slice are
-  flagged on the model page so the uploader notices a broken or unprintable
-  file. Legacy `.step` files (from before Onshape imports switched to 3MF) and
-  files uploaded before this feature are skipped. The service is optional:
-  without `SLICER_URL`, unsliced files simply show no estimates and stay
-  `pending`.
-- **Parametric OpenSCAD models**: a model can carry its `.scad` source as a
-  model file (uploaded, or imported — Printables serves `.scad` anonymously
-  via its `otherFiles` group; MakerWorld's comes through `GET
-  api.bambulab.com/v1/design-service/design/{id}/model?modelType=all&type=download`,
-  undocumented and Bambu-login-gated like profile downloads; only
-  `modelType=all` exists ("scad"/"3mf" answer 404) and it returns one zip of
-  every raw file, from which staging extracts just the `.scad` entries).
-  `.scad` files get a "Customize" button on the model page (any signed-in
-  viewer) linking to a full-page
-  customizer (`/models/{id}/customize/{fileId}`): a parameter rail built
-  from the OpenSCAD customizer comments in the source — parsed by the pure
-  `src/lib/scad-params.ts` (the design API's `scadConfig` field is empty in
-  practice, so the source is the only schema; `/* [Hidden] */` stays hidden,
-  unrecognized annotations degrade to plain inputs) — beside a live three.js
-  preview (plain `three`, no react-three-fiber; renders on demand, no rAF
-  loop) fed by `POST /api/models/{id}/customize/preview`, which returns
-  ephemeral **binary STL** (the service's second output format; nothing is
-  stored, the client debounces changes and drops stale responses via a
-  sequence counter). "Generate .3mf" (any signed-in user — variants land on
-  the model like a shared render, deletable by their generator or the owner;
-  `POST /api/models/{id}/customize`) renders through the **openscad service**
-  (`openscad/`, fourth compose container: zero-dependency wrapper around the
-  OpenSCAD CLI, Debian package + vendored pinned BOSL2/MCAD under
-  `OPENSCADPATH`) and **stores** the result as a `model_files` row flagged
-  `generated_from_id` + `generated_params` — stored rather than streamed back
-  because only stored files get slice estimates and slicer deep links.
-  Identical parameter sets dedupe via `generated_params_hash`; variants are
-  capped at 20 per source, render nested under the `.scad` card, and are
-  deletable (DELETE on the same route). Renders are normalized by
-  `normalizeThreeMf` (OpenSCAD centers on the origin like Onshape).
-  Security: values only travel via OpenSCAD's `-p` parameter-set JSON (never
-  `-D`/CLI), `coerceScadValues` clamps them against the parsed schema, and
-  `findForbiddenFileRefs` rejects `import()`/`surface()` and any
-  `include`/`use` outside the bundled libraries (multi-file projects are
-  unsupported — keep `SCAD_LIBRARY_ALLOWLIST` in sync with the Dockerfile).
-  The service itself runs non-root with a hard timeout and compose
-  memory/pid limits (CGAL happily eats unbounded RAM). Optional like the
-  slicer: without `OPENSCAD_URL` the customizer UI is hidden and `.scad`
-  files are plain downloads. Slicer deep links are `.3mf`-only — Bambu
-  Studio rejects other filenames, so `.scad`/`.step` rows render a plain
-  download button instead of `FileDownloadMenu`.
-- **Categories are a fixed, keyword-tagged set** — the seeded list
-  (`src/lib/category-defaults.ts`) is the whole taxonomy; imports never add
-  categories (that would sprawl into duplicates). Each category carries
-  `keywords` matched by the pure `src/lib/category-suggest.ts` against a
-  model's title, tags and — strongest signal — the source platform's own
-  category names (MakerWorld's `categories` list leaf-first, Printables'
-  `category.path`; both flow through `ImportedProject.categories` into the
-  create-form draft). The keyword lists embed the MakerWorld taxonomy mapped
-  onto ours, so source categories rank existing ones instead of creating new
-  ones. No model stays uncategorized: the form preselects the live suggestion
-  (fallback "Other") until the user picks manually, the collection-import job
-  assigns one on direct insert (`pickCategoryId` in `src/lib/categories.ts`),
-  the server actions fall back to "Other" on null, and migration 0015
-  backfilled existing blanks. "Other" has no keywords on purpose — it is only
-  ever the fallback. Keyword defaults live in both `category-defaults.ts` and
-  migration `0015_category_keywords.sql`; keep them in sync.
-- **Search** is a dedicated `/search` page backed entirely by Postgres (no
-  separate search engine — kept simple and self-hostable). `src/lib/search.ts`
-  runs one keyset-paginated query over a `models UNION ALL collections`
-  projection: fuzzy matching uses `pg_trgm`'s `strict_word_similarity` (best
-  word-boundary-aligned match, so a short query like "tlon" matches the word
-  "Talon" inside a longer title — whole-string `similarity()`/`%` scores even an
-  exact word below the 0.3 default and was the original bug) OR'd with an ILIKE
-  substring fallback, and relevance ranks on the same word similarity. Models
-  match on title, description, and their tags (an `EXISTS` over model_tags);
-  collections match on title + description only. The GIN trigram indexes still
-  accelerate the ILIKE fallback. Filters — type (models/collections), uploader,
-  printer, filament (jsonb `@>`), nozzle, and print-time bucket — apply to the
-  model_files metadata via `EXISTS`; any model-only filter drops collections
-  from the union. Sort is relevance (falls back to newest without a query),
-  newest, oldest, most viewed, or most downloaded, each with its own
-  self-describing keyset cursor (score/time/metric-based). "Most downloaded"
-  sums `model_files.download_count` per model — collections have no download
-  metric to sum, so it's model-only like the printer/filament/nozzle filters
-  and degrades to newest for a collections-only search. Views/downloads are
-  fire-and-forget counters (`src/lib/metrics.ts`: `models`/`collections`
-  `view_count` bumped on page load, `model_files.download_count` on file
-  download). All URL/param parsing and the cursor codec live in the DB-free
-  `src/lib/search-params.ts` (unit-tested); `pg_trgm` and the supporting
-  indexes are created in migration `0008_search.sql`. The homepage
-  (`src/lib/list-queries.ts`) is the same kind of ranked `models UNION ALL
-  collections` listing — category filter plus a sort control (newest, oldest,
-  recently updated, most viewed, most downloaded) — and shares its
-  id-hydration step with search via `src/lib/catalog-hydrate.ts`; its own pure
-  sort/cursor parsing lives in `src/lib/feed-params.ts`. Its search box just
-  submits the query to `/search`.
-- **Observability** (issue #63) is opt-in OpenTelemetry — all three signals
-  (traces, metrics, logs) over one OTLP/HTTP (protobuf) endpoint:
-  `src/instrumentation.ts` registers `@vercel/otel` (automatic spans for every
-  request, route handler and outgoing fetch, plus a metric reader and log
-  processor) **only when an OTLP endpoint is configured** via the standard SDK
-  env vars (`OTEL_EXPORTER_OTLP_ENDPOINT` /
-  `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT`; `OTEL_SERVICE_NAME` overrides the
-  default "print-vault"). The gate (`otlpConfigured` in `src/lib/telemetry.ts`)
-  exists because `@vercel/otel` is *not* a no-op without configuration — it
-  would install the SDK and POST every trace to its `http://localhost:4318`
-  default — and most self-hosters run no collector; unset env = no telemetry,
-  identical to `SLICER_URL`/`OPENSCAD_URL` optionality. Point it at a
-  collector's 4318 port (not gRPC 4317); the collector fans signals out to the
-  vendor backends (Prometheus/Loki/Tempo or similar) — the app itself never
-  speaks those protocols. **Logging**: all server logging goes through the
-  pino logger in `src/lib/logger.ts` (`LOG_LEVEL` env, default "info") — never
-  `console.*` — which always writes JSON to stdout; with telemetry enabled,
-  `@opentelemetry/instrumentation-pino` stamps `trace_id`/`span_id` onto every
-  record and forwards it over OTLP, so log lines correlate with traces.
-  Swallowed operational errors (slicer/OpenSCAD calls, Onshape/Bambu routes,
-  import jobs, metrics counters, trash purge) go through
-  `reportError(message, err)` in `src/lib/telemetry.ts`, which logs via pino,
-  bumps the `print_vault.errors` counter, and records the exception on the
-  active span — or on a standalone error span when the request span already
-  ended, as in `after()` background work — so failures surface in the tracing
-  backend; use it instead of a bare log call in new catch-and-continue blocks.
-  **Metrics**: counters/histograms for slicer estimates, OpenSCAD renders and
-  collection-import designs live behind the `record*` helpers in
-  `src/lib/telemetry.ts` — instruments are created **lazily on first record**
-  because instrumentation.ts imports the module before `registerOTel()`
-  installs the global MeterProvider; creating one at module load would bind it
-  to the no-op meter forever. Follow that pattern (a helper in telemetry.ts,
-  dot-named `print_vault.*` instrument, low-cardinality attrs like `outcome`)
-  when adding a metric, and remember every helper must stay a free, non-
-  throwing no-op on deploys without a collector.
-- **"Open in slicer" deep links** (`src/app/models/[id]/file-download-menu.tsx`)
-  hand a `.3mf` to Bambu Studio / OrcaSlicer via their custom URL schemes. The
-  two apps register different schemes **and parse the link differently**, so the
-  component builds a *different* URL per app (`SLICERS[].buildUrl`). Both apps
-  fetch the URL themselves **without cookies**, so deep links use the
-  token-authenticated path route `/api/files/<id>/<token>/<name>.3mf`
-  (`src/app/api/files/[id]/[token]/[filename]/`, reusing the `[id]` handler;
-  the token must be a path segment, not `?token=`, because Orca keeps the
-  query string when deriving the filename). Do not try
-  to unify the two link formats — every "obvious" shared format breaks one of them:
-  - **Schemes differ from the app names.** OrcaSlicer registers `orcaslicer:`;
-    Bambu Studio registers **`bambustudioopen:`** (NOT `bambustudio:`). An
-    unregistered scheme fails *silently* — macOS finds no handler and shows
-    nothing, not even the "open this app?" prompt. Verify against the installed
-    app: `PlistBuddy -c "Print :CFBundleURLTypes"
-    /Applications/BambuStudio.app/Contents/Info.plist`.
-  - **Orca** wants `orcaslicer://open?file=<encoded-url>` (Orca's regex
-    `open[\/]?\?file=` also accepts a `open/?` slash — the legacy PrusaSlicer
-    "mysterious slash" — but Printables/MakerWorld omit it, so we do too) and
-    (for a non-MakerWorld host) treats the *entire* remainder after `file=` as
-    the URL to fetch — so **must NOT** get a `&name=` appended (it gets fetched
-    as part of the URL and our route 404s: `{"error":"Not found"}`). Orca names
-    the saved file from that URL's **last path segment** (`filename_from_url` in
-    `Downloader.cpp` — which does **not** strip query strings), so a bare
-    `.../api/files/<id>` saves as the UUID with no extension and a `?token=`
-    would end up inside the filename. We therefore point Orca at the
-    token+filename-suffixed route `.../api/files/<id>/<token>/<name>.3mf`
-    (which ignores the name and reuses the `[id]` handler) to get a real `.3mf`
-    name — the same shape as Printables' `…/build_tray_v3.step` link. See
-    `Downloader::start_download` in OrcaSlicer.
-  - **Bambu** (macOS `GUI_App::MacOpenURL`) takes whatever follows
-    `bambustudioopen://`, `url_decode`s it once, and treats it as the raw
-    download URL — **rejected unless it starts with `http`/`https`** (an
-    `open/?file=` prefix silently no-ops *after* the trusted-site prompt). It
-    then splits a trailing `&name=` (a literal `.Find("&name=")`, so it must be
-    `&name=`, not `?name=`) to name the file and **aborts ("Download failed,
-    unknown file format") unless that name ends in `.3mf`** (the bare-UUID URL
-    tail has no extension). Match MakerWorld's own links: percent-encode the
-    whole `<url>&name=<filename>.3mf` as one blob after the scheme
-    (`bambustudioopen://<encodeURIComponent(url + "&name=" + name)>`) so the
-    browser can't mangle the literal `&`/`:` before the OS hands it off.
-  - Cold launch (app not already running): **Bambu works** — `MacOpenURL`
-    stashes the URL in `m_download_file_url` and replays it after `post_init`.
-    **Orca does not** — its Apple Event arrives before the handler is ready and
-    is dropped, so it only launches to the home screen (upstream macOS bug, not
-    fixable here). Bambu's `import_model_id` also early-returns if its network
-    plugin/agent isn't loaded (`if (!m_agent) return;`), and its trusted-site
-    allowlist only auto-trusts makerworld / bblmw CDN / `amazonaws.com` /
-    `aliyuncs.com` hosts (any other host — including a self-hosted instance —
-    prompts "not from a trusted site"; clicking through is expected).
-- **Icon-only buttons need a tooltip** — any button whose only content is a
-  lucide icon (no visible text label) should be wrapped in
-  `Tooltip`/`TooltipTrigger`/`TooltipContent` (`@/components/ui/tooltip`;
-  `TooltipProvider` is mounted once in the root layout, so any component can
-  use it) naming the action, since the icon alone isn't self-explanatory and
-  the `aria-label` most of these already carry for a11y isn't visible to a
-  sighted mouse user. Wrap the trigger even when it's already `asChild`'d into
-  something else — `TooltipTrigger asChild` composes fine stacked on top of
-  `DropdownMenuTrigger asChild` or `AlertDialogTrigger asChild` (Radix `Slot`
-  merges through arbitrary depth); skip only elements that are always
-  `disabled` (disabled buttons get `pointer-events-none`, so a tooltip on one
-  can never show) and the ubiquitous shadcn dialog/sheet "X" close button
-  (self-evident, has `sr-only` text already, and a tooltip on every modal
-  close button is more noise than help). **Sidebar exception**: don't add a
-  tooltip when the sidebar is expanded and the button already shows a text
-  label next to the icon — `SidebarMenuButton`'s own `tooltip` prop already
-  handles this correctly (`src/components/ui/sidebar.tsx`: it wraps every
-  button in a `Tooltip` but sets `hidden={state !== "collapsed" || isMobile}`
-  on the content, so the tooltip only actually appears once the sidebar is
-  collapsed to icons); follow that pattern rather than reinventing it for new
-  sidebar items.
+## Cross-cutting rules
 
-# Onshape integration
+- **Access control — every new page, route, or action.** The whole catalog is
+  private (instances hold paid models), enforced in two layers: `src/proxy.ts`
+  (Next 16's renamed middleware) does an optimistic session-*cookie* check, and
+  every page/route/action *also* verifies the session server-side. Pages must
+  guard with `if (!session) redirect(await signInRedirect())` (from
+  `@/lib/auth`), not a bare `redirect("/sign-in")`; API/actions check too
+  (list-type actions return an empty page). **Editing is collaborative** — any
+  signed-in user may edit a model/collection. **Destructive/owner actions stay
+  owner-gated** via `canActAsOwner(session.user, record.userId)` (which also
+  passes for moderators/admins). See
+  [`docs/architecture/auth-and-access.md`](docs/architecture/auth-and-access.md).
+- **Model mutations must version and never orphan S3.** Run the mutation in one
+  transaction with `ensureBaselineVersion` first and `recordVersion` last;
+  S3-delete only the keys those helpers return, and **never** delete a
+  non-variant model file's S3 object directly (old snapshots reference it). Any
+  **new model listing must filter `deleted_at IS NULL`** (trash is a soft
+  delete). See
+  [`docs/architecture/versioning.md`](docs/architecture/versioning.md).
+- **Logging & errors.** All server logging goes through the pino logger in
+  `src/lib/logger.ts` — never `console.*`. In catch-and-continue blocks use
+  `reportError(message, err)` (`src/lib/telemetry.ts`) rather than a bare log,
+  so the error reaches the tracing backend. See
+  [`docs/architecture/observability.md`](docs/architecture/observability.md).
+- **Icon-only buttons get a `Tooltip`** naming the action (with a couple of
+  documented exceptions). See
+  [`docs/architecture/ui-conventions.md`](docs/architecture/ui-conventions.md).
+- **Optional services degrade to off.** `SLICER_URL`, `OPENSCAD_URL`, and the
+  OTLP endpoint are each unset-means-feature-disabled; keep new integrations
+  with external services the same way.
 
-Code lives in `src/lib/onshape/` (API client, OAuth, credentials) and
-`src/lib/import/onshape.ts` (importer); the sync endpoint is
-`src/app/api/models/[id]/onshape-sync/route.ts`. Things to know before
-touching it:
+## Deep-dive docs
 
-- **Auth**: every call needs the user's OAuth2 Bearer token (no anonymous
-  API). Invalid tokens don't always 401 — `/users/sessioninfo` answers 204 as
-  an anonymous session, so only a 200 counts as authenticated.
-- **Exports are async translations**: start one, poll
-  `GET /translations/{id}` until `requestState` leaves `ACTIVE`, then download
-  from `GET /documents/d/{did}/externaldata/{fid}` using
-  `resultExternalDataIds`. Poll with backoff (Onshape rate-limits).
-- **Format-specific export routes exist only for glTF, OBJ, and STEP**
-  (`POST …/export/step` etc.). Every other format — including the 3MF we
-  export — must go through the generic
-  `POST /{partstudios|assemblies}/d/{did}/{wv}/{wvid}/e/{eid}/translations`
-  with `formatName` in the body. Hitting a nonexistent route like
-  `…/export/3mf` returns 404, which `onshapeFetch` surfaces as the misleading
-  "Document not found" error. See `buildExportRequest` in
-  `src/lib/onshape/api.ts` and
-  <https://onshape-public.github.io/docs/api-adv/translation/>.
-- **Mesh formats need tessellation detail parameters**: translations to mesh
-  formats (3MF, STL, …) must include a `resolution` preset
-  (`fine|medium|coarse`, lowercase) — or custom `angularTolerance` /
-  `distanceTolerance` / `maximumChordLength` values — plus the `unit`, or the
-  translation starts fine but then FAILs with "Invalid 3MF detail parameters
-  were specified". CAD formats like STEP don't take these. The full request
-  schema is `BTTranslateFormatParams` in `cad.onshape.com/api/openapi`.
-- **We export 3MF only** so the headless slicer can slice the result; the
-  legacy STEP export path was removed on purpose — don't reintroduce it.
-- **Onshape 3MF exports are in meters, centered on the origin** — the `unit`
-  request parameter does not change the written file (`unit="meter"` with
-  meter-scale coordinates). That is spec-valid 3MF, but PrusaSlicer, Bambu
-  Studio and OrcaSlicer ignore the 3MF `unit` attribute (coordinates are read
-  as mm → a 25 mm part becomes 0.025 mm) and reject geometry at negative X/Y
-  as "outside of the print volume". Every staged Onshape export therefore runs
-  through `normalizeThreeMf` (`src/lib/threemf-normalize.ts`), which rescales
-  the model to millimeters and moves the build onto the plate (XY center at
-  128 mm, lowest point at z=0) — keep that in place for any new code path that
-  stores Onshape exports.
-- **Part Studios vs Assemblies** use different URL resources (`partstudios` /
-  `assemblies`) but the same request shape; pick by `elementType`.
-- **URL pins**: document URLs are
-  `…/documents/{did}/{w|v|m}/{wvmid}[/e/{eid}]` — `w` workspaces are syncable,
-  `v` versions are immutable snapshots, `m` microversions are rejected at
-  import (not exportable via the w/v endpoints).
-- **Branches/versions**: `GET /documents/d/{did}/workspaces` and
-  `…/versions` (BTWorkspaceInfo/BTVersionInfo: `id`, `name`, `parent`,
-  `createdAt`) feed the import dialog's dropdown. Every document has an
-  implicit root version named "Start" with `parent: null` — the empty
-  initial state; `branchChoices` filters it on `parent == null && name ===
-  "Start"` (both conditions, so a missing `parent` field or a user version
-  named "Start" can't be dropped by mistake).
-- Don't trust remembered endpoint shapes; verify against
-  `cad.onshape.com/api/openapi` or the docs below before changing API calls.
+Per-subsystem design notes live in
+[`docs/architecture/`](docs/architecture/README.md). **Before editing one of
+these subsystems, read its file** — they hold the gotchas that aren't visible
+in the code, and each says what to update when you change its behaviour. They
+are loaded *on demand*, not `@`-imported here (that would pull all of them into
+every session and defeat the point).
 
-# Documentation Sources
+| Editing… | Read first |
+|---|---|
+| Auth, sessions, roles, access control | [`auth-and-access.md`](docs/architecture/auth-and-access.md) |
+| Model mutations, versioning, trash | [`versioning.md`](docs/architecture/versioning.md) |
+| Uploads, downloads, file tokens/images | [`files.md`](docs/architecture/files.md) |
+| Platform import (.3mf, MakerWorld/Printables URL, source sync, collections) | [`import.md`](docs/architecture/import.md) |
+| Onshape import/sync + API client | [`onshape.md`](docs/architecture/onshape.md) |
+| Slicer estimates & "open in slicer" deep links | [`slicing.md`](docs/architecture/slicing.md) |
+| OpenSCAD customizer / parametric models | [`openscad.md`](docs/architecture/openscad.md) |
+| Search, homepage listing, categories | [`search-and-catalog.md`](docs/architecture/search-and-catalog.md) |
+| OpenTelemetry, logging, metrics | [`observability.md`](docs/architecture/observability.md) |
+| Icon-only buttons & other UI conventions | [`ui-conventions.md`](docs/architecture/ui-conventions.md) |
 
-- [Onshape API](https://onshape-public.github.io/docs/api-intro/)
-- [Onshape import/export (translations)](https://onshape-public.github.io/docs/api-adv/translation/)
-- Slicer deep links — [Bambu Studio `GUI_App.cpp` URL handler](https://github.com/bambulab/BambuStudio/blob/master/src/slic3r/GUI/GUI_App.cpp)
-  and `Plater::import_model_id` in [`Plater.cpp`](https://github.com/bambulab/BambuStudio/blob/master/src/slic3r/GUI/Plater.cpp);
-  OrcaSlicer's identical [`Plater::import_model_id`](https://github.com/SoftFever/OrcaSlicer/blob/main/src/slic3r/GUI/Plater.cpp);
-  [Bambu Studio URL schemes — what doesn't work and why](https://productionshaped.com/notes/2026-05-14-bambu-studio-url-schemes-what-doesnt-work-and-why/);
-  [BambuStudio #6120 (URL handler domain restriction)](https://github.com/bambulab/BambuStudio/issues/6120)
+> Operator/user-facing docs (install, self-hosting, configuration) live in the
+> top-level `README.md` and `docs/` — a dedicated docs site is planned. The
+> files above are for developers and agents working *on* the code.
