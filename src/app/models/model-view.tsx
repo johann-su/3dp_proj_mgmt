@@ -16,6 +16,7 @@ import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { ImageGallery } from "@/components/image-gallery";
 import { Markdown } from "@/components/markdown";
+import { ShareButton } from "@/components/share-button";
 import {
   Tooltip,
   TooltipContent,
@@ -33,7 +34,6 @@ import { DeleteModelButton } from "./[id]/delete-model-button";
 import { HistoryPanel, type ModelHistoryEntry } from "./[id]/history-panel";
 import { OnshapeSyncButton } from "./[id]/onshape-sync-button";
 import { SourceSyncButton } from "./[id]/source-sync-button";
-import { ShareButton } from "./[id]/share-button";
 
 export type { CollectionOption };
 export type { PdfFileData, PrintFileData } from "./model-file-cards";
