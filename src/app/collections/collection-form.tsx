@@ -78,13 +78,18 @@ export function CollectionForm({
         />
       </div>
       <div className="grid gap-2">
-        <Label htmlFor="description">Description (optional)</Label>
+        <div className="flex items-baseline justify-between">
+          <Label htmlFor="description">Description (optional)</Label>
+          <span className="text-xs text-muted-foreground">
+            Markdown supported
+          </span>
+        </div>
         <Textarea
           id="description"
           name="description"
           rows={4}
           defaultValue={initialDescription}
-          placeholder="What belongs in this collection?"
+          placeholder="What belongs in this collection? Markdown works: **bold**, - lists, [links](https://…)"
         />
       </div>
 
