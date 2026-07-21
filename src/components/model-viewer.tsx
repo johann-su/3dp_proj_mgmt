@@ -25,7 +25,15 @@ import {
 // virtual bed; we split them back into per-plate groups (see threemf-plates.ts)
 // and show one plate at a time, like MakerWorld.
 
-export type ViewerFile = { filename: string; src: string };
+export type ViewerFile = {
+  filename: string;
+  src: string;
+  // Physical build-plate size in mm from the file's embedded slicer config
+  // (PrinterInfo.bedSizeMm, issue #80). When present the preview draws a real
+  // bed instead of a square sized to the geometry, giving a "will it fit"
+  // reference; absent for files with no printer info.
+  bed?: { x: number; y: number } | null;
+};
 
 type Plate = { name: string; group: THREE.Group };
 
@@ -41,6 +49,8 @@ type SceneRefs = {
 
 const MODEL_COLOR = 0xd9d9de;
 const GRID_COLOR = 0x8b8f96;
+// Bed grid tint when the geometry overflows the real plate (issue #80).
+const GRID_WARN_COLOR = 0xdc2626;
 
 // Guard against a giant project hanging the tab.
 const MAX_BYTES = 50 * 1024 * 1024;
@@ -55,6 +65,53 @@ const RAIL_WIDTH_KEY = "model-viewer-plate-rail-width";
 
 function clampRailWidth(width: number) {
   return Math.min(RAIL_MAX_WIDTH, Math.max(RAIL_MIN_WIDTH, width));
+}
+
+// Builds a build-plate grid of `bedX` × `bedZ` mm (world XZ) centred on the
+// origin — a translucent plane plus grid lines at ~10 mm cells. Unlike
+// THREE.GridHelper (square only) this handles rectangular beds like the Prusa
+// MK-series 250×210, so the drawn plate matches the printer's real dimensions.
+function makeBedGrid(bedX: number, bedZ: number, color: number) {
+  const group = new THREE.Group();
+  const halfX = bedX / 2;
+  const halfZ = bedZ / 2;
+  // ~10 mm cells, coarser on big beds so the line count stays modest. Even
+  // division keeps both outer edges on a line regardless of the bed size.
+  const target = Math.max(bedX, bedZ) > 400 ? 20 : 10;
+  const divX = Math.max(1, Math.round(bedX / target));
+  const divZ = Math.max(1, Math.round(bedZ / target));
+  const positions: number[] = [];
+  for (let i = 0; i <= divX; i++) {
+    const x = -halfX + (bedX * i) / divX;
+    positions.push(x, 0, -halfZ, x, 0, halfZ);
+  }
+  for (let j = 0; j <= divZ; j++) {
+    const z = -halfZ + (bedZ * j) / divZ;
+    positions.push(-halfX, 0, z, halfX, 0, z);
+  }
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute(
+    "position",
+    new THREE.Float32BufferAttribute(positions, 3),
+  );
+  const grid = new THREE.LineSegments(
+    geometry,
+    new THREE.LineBasicMaterial({ color, transparent: true, opacity: 0.35 }),
+  );
+  const plane = new THREE.Mesh(
+    new THREE.PlaneGeometry(bedX, bedZ),
+    new THREE.MeshStandardMaterial({
+      color,
+      transparent: true,
+      opacity: 0.12,
+      roughness: 1,
+      side: THREE.DoubleSide,
+    }),
+  );
+  plane.rotation.x = -Math.PI / 2;
+  plane.position.y = -0.05; // just under the grid to avoid z-fighting
+  group.add(plane, grid);
+  return group;
 }
 
 // Frees GPU resources for any renderable (Mesh, GridHelper/LineSegments, …).
@@ -84,9 +141,19 @@ export function ModelViewer({
   const mountRef = useRef<HTMLDivElement>(null);
   const refs = useRef<SceneRefs | null>(null);
   const platesRef = useRef<Plate[]>([]);
+  // Real bed size (mm) of the selected file, set on load and read by showPlate
+  // (kept on a ref so showPlate stays dependency-free like platesRef).
+  const bedRef = useRef<{ x: number; y: number } | null>(null);
   const [fileIndex, setFileIndex] = useState(0);
   const [plateIndex, setPlateIndex] = useState(0);
   const [plateNames, setPlateNames] = useState<string[]>([]);
+  // The real plate the geometry sits on, for the size-reference badge; null
+  // when the file has no printer info and the bed is footprint-derived.
+  const [bedInfo, setBedInfo] = useState<{
+    x: number;
+    y: number;
+    oversized: boolean;
+  } | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   // Expand the viewport to a full-screen overlay, like the image lightbox. The
@@ -111,34 +178,32 @@ export function ModelViewer({
     const size = box.getSize(new THREE.Vector3());
     const center = box.getCenter(new THREE.Vector3());
 
-    // Build-plate grid sized to the plate's footprint (10 mm cells, min 100 mm).
-    const footprint = Math.max(size.x, size.z);
-    const bedSize = Math.max(100, Math.ceil((footprint * 1.25) / 20) * 20);
+    // Draw the file's real bed when we know it (.3mf X→world X, Y→world Z), so
+    // the plate is a true size reference; otherwise fall back to a square just
+    // larger than the plate's footprint (10 mm cells, min 100 mm).
+    const realBed = bedRef.current;
+    // A small tolerance keeps a print that exactly fills the bed from tripping
+    // the overflow flag.
+    const oversized =
+      !!realBed && (size.x > realBed.x + 1 || size.z > realBed.y + 1);
+    let bedX: number;
+    let bedZ: number;
+    if (realBed) {
+      bedX = realBed.x;
+      bedZ = realBed.y;
+    } else {
+      const footprint = Math.max(size.x, size.z);
+      bedX = bedZ = Math.max(100, Math.ceil((footprint * 1.25) / 20) * 20);
+    }
+    setBedInfo(realBed ? { x: realBed.x, y: realBed.y, oversized } : null);
+
     disposeObject(r.bed);
     r.bed.clear();
-    const grid = new THREE.GridHelper(
-      bedSize,
-      Math.round(bedSize / 10),
-      GRID_COLOR,
-      GRID_COLOR,
-    );
-    (grid.material as THREE.Material).transparent = true;
-    (grid.material as THREE.Material).opacity = 0.35;
-    const plane = new THREE.Mesh(
-      new THREE.PlaneGeometry(bedSize, bedSize),
-      new THREE.MeshStandardMaterial({
-        color: GRID_COLOR,
-        transparent: true,
-        opacity: 0.12,
-        roughness: 1,
-        side: THREE.DoubleSide,
-      }),
-    );
-    plane.rotation.x = -Math.PI / 2;
-    plane.position.y = -0.05; // just under the grid to avoid z-fighting
-    r.bed.add(plane, grid);
+    r.bed.add(makeBedGrid(bedX, bedZ, oversized ? GRID_WARN_COLOR : GRID_COLOR));
 
-    const radius = Math.max(size.length() / 2, 10);
+    // Frame the whole bed, not just the geometry, so a small print reads as
+    // small on a large plate (the point of the real-bed reference).
+    const radius = Math.max(size.length() / 2, Math.hypot(bedX, bedZ) / 2, 10);
     r.camera.position.set(
       center.x + radius * 1.6,
       center.y + radius * 1.4,
@@ -217,6 +282,7 @@ export function ModelViewer({
   useEffect(() => {
     const file = files[fileIndex];
     if (!file) return;
+    bedRef.current = file.bed ?? null;
     const controller = new AbortController();
     let disposed = false;
 
@@ -446,6 +512,27 @@ export function ModelViewer({
             className="group/rail absolute inset-y-0 -right-1 z-10 w-2 cursor-col-resize touch-none"
           >
             <div className="mx-auto h-full w-1 rounded-full bg-transparent transition-colors group-hover/rail:bg-primary/80" />
+          </div>
+        </div>
+      )}
+
+      {/* Real build-plate size reference (issue #80): the plate the file was
+          sliced for, flagged when the geometry overflows it. */}
+      {bedInfo && !loading && !error && (
+        <div className="pointer-events-none absolute bottom-2 left-1/2 z-10 -translate-x-1/2">
+          <div
+            className={cn(
+              "flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium shadow-sm backdrop-blur",
+              bedInfo.oversized
+                ? "bg-destructive/90 text-destructive-foreground"
+                : "bg-background/80 text-muted-foreground",
+            )}
+          >
+            {bedInfo.oversized && <TriangleAlert className="size-3.5" />}
+            <span className="tabular-nums">
+              {bedInfo.oversized ? "Larger than the " : ""}
+              {bedInfo.x} × {bedInfo.y} mm plate
+            </span>
           </div>
         </div>
       )}

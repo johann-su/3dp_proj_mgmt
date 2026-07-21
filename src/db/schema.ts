@@ -168,6 +168,12 @@ export type PrinterInfo = {
   nozzleDiameterMm?: number;
   bedType?: string; // "Textured PEI Plate"
   filamentTypes?: string[]; // ["PETG"]
+  // Physical build-plate size in mm (bounding box of the bed shape), so the 3D
+  // preview can draw a real bed the geometry is measured against (issue #80).
+  // Parsed from the embedded config's printable area (Bambu `printable_area` /
+  // PrusaSlicer `bed_shape`), falling back to a known-model lookup when the
+  // config lacks a usable shape. { x: 256, y: 256 }
+  bedSizeMm?: { x: number; y: number };
 };
 
 export const modelFiles = pgTable("model_files", {

@@ -7,6 +7,7 @@ import { buildSnapshot, summarizeVersionChange } from "@/lib/version-snapshot";
 import { getSession, signInRedirect } from "@/lib/auth";
 import { canActAsOwner } from "@/lib/roles";
 import { fileSrc, fileToken } from "@/lib/file-token";
+import { resolveBedSizeMm } from "@/lib/printer-beds";
 import { get3mfSliceInfo } from "@/lib/threemf-remote";
 import { processPendingSlices } from "@/lib/slicer";
 import { incrementModelViewCount } from "@/lib/metrics";
@@ -212,7 +213,11 @@ export default async function ModelPage({
     // and .scad geometry can't be rendered client-side, so they're excluded.
     modelFiles: printFiles
       .filter((f) => f.filename.toLowerCase().endsWith(".3mf"))
-      .map((f) => ({ filename: f.filename, src: fileSrc(f.id) })),
+      .map((f) => ({
+        filename: f.filename,
+        src: fileSrc(f.id),
+        bed: resolveBedSizeMm(f.printerInfo),
+      })),
     bom: model.bomItems,
     printFiles: (() => {
       const toEntry = (file: (typeof printFiles)[number]): PrintFileData => {

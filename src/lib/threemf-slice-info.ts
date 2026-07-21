@@ -16,6 +16,7 @@
 
 import { inflateSync } from "fflate";
 import type { PrinterInfo } from "@/db/schema";
+import { bedSizeForModel } from "@/lib/printer-beds";
 
 export type SliceInfo = {
   plateCount: number;
@@ -168,15 +169,50 @@ function firstNumber(value: unknown): number | undefined {
   return Number.isFinite(parsed) ? parsed : undefined;
 }
 
+// Both slicers describe the bed as a polygon of "XxY" mm points — Bambu/Orca as
+// a `printable_area` array, PrusaSlicer as a comma-joined `bed_shape` string. We
+// only need the plate size, so we take the polygon's bounding box (which also
+// gives a sane square for circular/delta beds). Returns undefined for missing,
+// malformed, or implausibly sized shapes so callers can fall back.
+const BED_POINT_RE = /^\s*(-?[\d.]+)\s*x\s*(-?[\d.]+)\s*$/i;
+
+function bedSizeFromPoints(points: unknown): { x: number; y: number } | undefined {
+  if (!Array.isArray(points) || points.length < 3) return undefined;
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+  for (const pt of points) {
+    const m = BED_POINT_RE.exec(String(pt));
+    if (!m) return undefined;
+    const x = Number(m[1]);
+    const y = Number(m[2]);
+    if (!Number.isFinite(x) || !Number.isFinite(y)) return undefined;
+    minX = Math.min(minX, x);
+    maxX = Math.max(maxX, x);
+    minY = Math.min(minY, y);
+    maxY = Math.max(maxY, y);
+  }
+  const x = Math.round(maxX - minX);
+  const y = Math.round(maxY - minY);
+  // Reject degenerate / implausible plates: real FDM beds run from ~120 mm
+  // hobby printers up to large-format machines, comfortably inside this range.
+  if (x < 20 || y < 20 || x > 2000 || y > 2000) return undefined;
+  return { x, y };
+}
+
 function printerInfoFromBambu(
   settings: Record<string, unknown>,
   modelXml: string | null,
 ): PrinterInfo | null {
+  const model =
+    cleanLabel(settings.printer_model) ?? cleanLabel(settings.printer_settings_id);
   const info: PrinterInfo = {
-    model: cleanLabel(settings.printer_model) ?? cleanLabel(settings.printer_settings_id),
+    model,
     nozzleDiameterMm: firstNumber(settings.nozzle_diameter),
     bedType: cleanLabel(settings.curr_bed_type),
     filamentTypes: usedFilamentTypes(modelXml, settings.filament_type),
+    bedSizeMm: bedSizeFromPoints(settings.printable_area) ?? bedSizeForModel(model),
   };
   return Object.values(info).some((v) => v !== undefined) ? info : null;
 }
@@ -192,12 +228,16 @@ function printerInfoFromPrusaIni(ini: string): PrinterInfo | null {
     ?.split(";")
     .map((t) => cleanLabel(t))
     .filter((t): t is string => t !== undefined);
+  const model =
+    cleanLabel(values.get("printer_model")) ??
+    cleanLabel(values.get("printer_settings_id"));
   const info: PrinterInfo = {
-    model:
-      cleanLabel(values.get("printer_model")) ??
-      cleanLabel(values.get("printer_settings_id")),
+    model,
     nozzleDiameterMm: firstNumber(values.get("nozzle_diameter")?.split(",")[0]),
     filamentTypes: types && types.length > 0 ? [...new Set(types)] : undefined,
+    bedSizeMm:
+      bedSizeFromPoints(values.get("bed_shape")?.split(",")) ??
+      bedSizeForModel(model),
   };
   return Object.values(info).some((v) => v !== undefined) ? info : null;
 }
