@@ -5,10 +5,9 @@ import { toast } from "sonner";
 import { Check, Share2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
-// Copies the current model page's URL to the clipboard. Uses
-// window.location.href so the link always matches what the viewer is looking
-// at (canonical /models/{id}), without threading the origin down from the
-// server.
+// Copies the current page's URL to the clipboard. Uses window.location.href
+// so the link always matches what the viewer is looking at, without
+// threading the origin down from the server.
 export function ShareButton() {
   const [copied, setCopied] = useState(false);
 

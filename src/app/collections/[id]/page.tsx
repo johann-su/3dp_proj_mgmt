@@ -15,6 +15,7 @@ import { smartCollectionModelCards } from "@/lib/smart-collections";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ModelCard, type ModelCardData } from "@/components/model-card";
+import { ShareButton } from "@/components/share-button";
 import { CollectionSyncButton } from "./collection-sync-button";
 import { DeleteCollectionButton } from "./delete-collection-button";
 
@@ -128,6 +129,7 @@ export default async function CollectionPage({
             stays with the owner and moderators/admins. The page already
             redirects signed-out visitors. */}
         <div className="flex items-center gap-2">
+          <ShareButton />
           <Button asChild variant="outline" size="sm">
             <Link href={`/collections/${collection.id}/edit`}>
               <SquarePen className="size-4" />
