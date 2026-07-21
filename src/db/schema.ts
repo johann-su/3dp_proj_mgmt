@@ -206,7 +206,11 @@ export const modelFiles = pgTable("model_files", {
   // equality against the current upstream value; an unchanged token skips
   // the download. Never parsed except by the legacy-adopt heuristic —
   // MakerWorld's design-level updateTime is deliberately NOT used (it is
-  // touched by counters, not content edits).
+  // touched by counters, not content edits). Onshape reuses this slot for the
+  // per-element microversion (issue #70): the element's opaque change token,
+  // compared for equality so an unchanged tab is skipped by onshape-sync. The
+  // two never collide — an Onshape file has no sourceFileId and its model's
+  // sourceUrl isn't a MakerWorld/Printables URL, so source-sync never sees it.
   sourceModifiedAt: text("source_modified_at"),
   sliceStatus: text("slice_status").$type<SliceStatus>(),
   sliceSource: text("slice_source").$type<SliceSource>(),

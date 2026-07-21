@@ -55,6 +55,24 @@ current microversion and re-exports **the tabs the model was imported with** (th
 distinct `model_files.onshape_element_id` values, falling back to the URL pin
 when none remain), replacing the previously imported files; a tab deleted in
 Onshape is dropped with a warning, since the pre-sync state becomes a version.
+
+**Sync only re-exports tabs that actually changed** (issue #70). The
+workspace-wide `currentmicroversion` moves on *any* edit — a drawing, an
+unimported tab, a Variable Studio flip — so it is only a coarse "did anything
+change" gate; unchanged, it reports "up to date" without listing tabs. When it
+*has* moved, `planOnshapeSync` (`src/lib/onshape/api.ts`, unit-tested) diffs
+each imported tab's stored per-element microversion against the current one from
+the elements listing and re-exports only the tabs whose microversion moved (plus
+any explicitly added tabs). Unchanged tabs keep their existing rows and S3 keys
+untouched, so no `model_versions` entry is recorded when nothing the model
+carries changed. The per-element microversion is stored in
+`model_files.source_modified_at` — the same opaque-token slot the
+MakerWorld/Printables source sync uses; an Onshape file never takes part in that
+sync (it has no `source_file_id` and the model's `sourceUrl` isn't a
+MakerWorld/Printables URL), so the slot is free here. Imports predating the
+feature carry no token and re-export once (which stamps it); a no-op sync that
+only advanced the workspace microversion writes the new microversion back with
+no version, so the next sync short-circuits on the coarse gate.
 Sync is two-phase like the MakerWorld/Printables source sync: a body-less POST
 is the preview, and when the document has eligible tabs the model doesn't carry
 (checked even when the microversion is unchanged, so a previously declined tab
@@ -105,6 +123,12 @@ Things to know before touching it:
 - **Part Studios vs Assemblies** use different URL resources
   (`partstudios` / `assemblies`) but the same request shape; pick by
   `elementType`.
+- **Per-element microversion**: each entry in the elements listing
+  (`GET /documents/d/{did}/{wvm}/{wvmid}/elements`, `BTDocumentElementInfo`)
+  carries a `microversionId` — the document microversion in which *that* tab was
+  last changed, so it moves only when the tab changes (verified against
+  `cad.onshape.com/api/openapi`). Sync uses it to skip re-exporting unchanged
+  tabs; see the sync paragraph above and `planOnshapeSync`.
 - **URL pins**: document URLs are `…/documents/{did}/{w|v|m}/{wvmid}[/e/{eid}]` —
   `w` workspaces are syncable, `v` versions are immutable snapshots, `m`
   microversions are rejected at import (not exportable via the w/v endpoints).

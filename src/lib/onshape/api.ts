@@ -169,6 +169,11 @@ export type OnshapeElement = {
   id?: string;
   name?: string;
   elementType?: string;
+  // BTDocumentElementInfo.microversionId — the document microversion in which
+  // this element (tab) was last changed. Unlike the workspace-wide
+  // currentmicroversion, it moves only when *this* tab changes, so sync can
+  // tell an edited Part Studio apart from an untouched one (issue #70).
+  microversionId?: string;
 };
 
 export async function getElements(
@@ -333,6 +338,9 @@ export type OnshapeExport = {
   elementId: string;
   filename: string;
   url: string;
+  // Per-element microversion at export time; the caller stores it on the file
+  // (model_files.sourceModifiedAt) so the next sync can skip an unchanged tab.
+  microversionId?: string;
 };
 
 // Exports run sequentially and take seconds each; the cap keeps one import
@@ -349,6 +357,8 @@ export type OnshapeExportElement = {
   id: string;
   name: string;
   elementType: "PARTSTUDIO" | "ASSEMBLY";
+  // Carried through from OnshapeElement for the per-tab sync diff (issue #70).
+  microversionId?: string;
 };
 
 export function eligibleExportElements(
@@ -359,6 +369,48 @@ export function eligibleExportElements(
       isOnshapeId(e.id) &&
       (e.elementType === "PARTSTUDIO" || e.elementType === "ASSEMBLY"),
   );
+}
+
+// One imported Onshape tab as sync needs to reason about it: the element it
+// came from and the per-element microversion stored when it was last exported
+// (model_files.sourceModifiedAt — the opaque-token slot the MakerWorld/
+// Printables sync also uses; an Onshape file never takes part in that sync, so
+// the slot is free to hold the element microversion here).
+export type ImportedOnshapeTab = {
+  elementId: string;
+  microversion: string | null;
+};
+
+// Decides, per imported tab, whether sync must re-export it. The workspace-wide
+// currentmicroversion moves on *any* edit — a drawing, an unimported tab, a
+// Variable Studio flip — so it can't say which tabs actually changed; each
+// element carries its own microversion that moves only when that tab changes.
+// A tab whose stored token still matches its current microversion is the same
+// export we already have and is left untouched (no re-export, no S3 write, no
+// version). A tab with no stored token (an import predating issue #70) or an
+// unknown current microversion can't be proven identical, so it re-exports. A
+// tab missing from the listing was deleted upstream and is dropped.
+export function planOnshapeSync(
+  imported: ImportedOnshapeTab[],
+  eligible: OnshapeExportElement[],
+): { changedIds: string[]; unchangedIds: string[]; deletedIds: string[] } {
+  const currentById = new Map(eligible.map((e) => [e.id, e.microversionId]));
+  const changedIds: string[] = [];
+  const unchangedIds: string[] = [];
+  const deletedIds: string[] = [];
+  for (const { elementId, microversion } of imported) {
+    if (!currentById.has(elementId)) {
+      deletedIds.push(elementId);
+    } else {
+      const current = currentById.get(elementId);
+      if (current && microversion && current === microversion) {
+        unchangedIds.push(elementId);
+      } else {
+        changedIds.push(elementId);
+      }
+    }
+  }
+  return { changedIds, unchangedIds, deletedIds };
 }
 
 // Picks which tabs to export, in document tab order. An explicit selection
@@ -421,11 +473,16 @@ export async function exportPinnedModels(
   auth: OnshapeAuth,
   pin: { documentId: string; wvm: "w" | "v"; wvmId: string; elementId: string | null },
   selectedElementIds?: string[] | null,
+  // Pre-fetched eligible elements — sync already lists them for its per-tab
+  // diff, so it passes them in to avoid a second /elements call.
+  elements?: OnshapeExportElement[],
 ): Promise<{ exports: OnshapeExport[]; warnings: string[] }> {
-  const elements = eligibleExportElements(
-    await getElements(auth, pin.documentId, pin.wvm, pin.wvmId),
-  );
-  const { selected, warnings } = selectExportElements(elements, {
+  const eligible =
+    elements ??
+    eligibleExportElements(
+      await getElements(auth, pin.documentId, pin.wvm, pin.wvmId),
+    );
+  const { selected, warnings } = selectExportElements(eligible, {
     pinnedElementId: pin.elementId,
     selectedElementIds,
   });
@@ -443,7 +500,12 @@ export async function exportPinnedModels(
       filename = modelFilename(`${element.name || "model"}-${element.id.slice(0, 6)}`);
     }
     usedNames.add(filename.toLowerCase());
-    exports.push({ elementId: element.id, filename, url });
+    exports.push({
+      elementId: element.id,
+      filename,
+      url,
+      microversionId: element.microversionId,
+    });
   }
   return { exports, warnings };
 }
