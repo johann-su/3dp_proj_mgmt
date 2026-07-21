@@ -1,0 +1,6 @@
+# This app is its own npm package (deliberately not a root workspace member,
+# so the two Next versions never share a node_modules). The root .gitignore's
+# anchored /node_modules, /.next and /out don't reach in here.
+node_modules
+.next
+out

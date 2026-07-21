@@ -167,6 +167,13 @@ every session and defeat the point).
 | OpenTelemetry, logging, metrics | [`observability.md`](docs/architecture/observability.md) |
 | Icon-only buttons & other UI conventions | [`ui-conventions.md`](docs/architecture/ui-conventions.md) |
 
-> Operator/user-facing docs (install, self-hosting, configuration) live in the
-> top-level `README.md` and `docs/` — a dedicated docs site is planned. The
-> files above are for developers and agents working *on* the code.
+> Operator/user-facing docs (install, self-hosting, configuration, integration
+> setup) are authored as `.mdx` in `docs/` and published as a standalone Nextra
+> site built from `nextra/` — its own npm package with its own (older) Next
+> version, reading `docs/` through the `nextra/content` symlink; static export,
+> deployed separately (`nextra/Dockerfile`), never served by the app.
+> `docs/architecture/` (the files above, for developers and agents working *on*
+> the code) is excluded from the site. **A change to operator-visible behaviour
+> or env vars updates the matching `docs/*.mdx` page in the same PR.** The
+> `nextra/` package is excluded from the root tsconfig/ESLint; run its checks
+> with `cd nextra && npm run build`.

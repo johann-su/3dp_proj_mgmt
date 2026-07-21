@@ -1,0 +1,29 @@
+---
+title: User roles
+description: What plain users, moderators and admins may do
+---
+
+# User roles
+
+Every account starts as a plain **user**: full read access and collaborative
+editing, with destructive actions (deleting a model or collection) limited to
+what they own. Two elevated roles exist for cleanup and administration:
+
+- **Moderator** — owner-equivalent on all content: may delete, restore, or
+  permanently purge any model, delete any collection, remove any generated
+  variant, and sees every user's trash under `/models/trash`.
+- **Admin** — everything a moderator can do, plus user management: the
+  **Settings → Users** page lists all accounts and changes their roles.
+
+## Bootstrapping the first admin
+
+Set `INITIAL_ADMIN_EMAIL` to an account's email: while the database has no
+admin at all, that account is promoted at sign-up or on its next visit to any
+settings page. Once an admin exists the variable does nothing (roles are
+managed in the UI), but it also recovers an instance whose last admin account
+is gone.
+
+With [OIDC](/sso), the IdP still decides who may *sign in* — roles only govern
+permissions inside the app. To drive roles from IdP groups instead of
+**Settings → Users**, see
+[Roles from IdP groups](/sso#roles-from-idp-groups-optional).

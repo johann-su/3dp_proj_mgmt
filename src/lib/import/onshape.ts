@@ -183,6 +183,10 @@ export async function importFromOnshape(
         kind: "model",
         headers,
         onshapeElementId: file.elementId,
+        // Store the per-element microversion so the first sync can already skip
+        // tabs that haven't changed since import (issue #70). Only workspace
+        // pins carry one; version pins are immutable and never sync.
+        ...(file.microversionId ? { sourceModifiedAt: file.microversionId } : {}),
       });
     }
 

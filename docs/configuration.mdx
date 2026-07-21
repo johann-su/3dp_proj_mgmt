@@ -1,0 +1,76 @@
+---
+title: Configuration
+description: Environment-variable reference for a Print Vault deployment
+---
+
+# Configuration
+
+All configuration is via environment variables. The `app` service in
+`compose.yml` passes the ones below through; for development they live in
+`.env` (start from `.env.example`).
+
+## Core
+
+| Variable | Required | Description |
+|---|---|---|
+| `DATABASE_URL` | yes | Postgres connection string. The compose stack wires this to its own `postgres` service. |
+| `BETTER_AUTH_SECRET` | yes | Long random secret (`openssl rand -base64 32`). Guards sessions, keys the signed `/api/files` access tokens and (by default) the encrypted Bambu/Onshape credentials — it must be strong on any real deployment. |
+| `BETTER_AUTH_URL` | yes | Public base URL of the deployment, no trailing slash (e.g. `https://models.example.com`). OAuth redirect URIs are derived from it. |
+
+## Accounts & sign-up
+
+| Variable | Default | Description |
+|---|---|---|
+| `DISABLE_SIGNUP` | unset | Set to `true` to turn off self-registration once your accounts exist. OIDC sign-in still creates users on first login. |
+| `INITIAL_ADMIN_EMAIL` | unset | Bootstrap the first admin: while the database has no admin at all, the account with this email is promoted. Inert once an admin exists. See [User roles](/roles). |
+
+## S3 storage
+
+| Variable | Default | Description |
+|---|---|---|
+| `S3_ENDPOINT` | — (required) | Endpoint of your S3-compatible storage (AWS S3, MinIO, Garage, …). |
+| `S3_REGION` | `us-east-1` | Region. Garage users: must match `s3_api.s3_region` from the Garage config (default `garage`). |
+| `S3_ACCESS_KEY_ID` | — (required) | Access key with read/write on the bucket. |
+| `S3_SECRET_ACCESS_KEY` | — (required) | Secret key. |
+| `S3_BUCKET` | `models` | Bucket name. |
+| `S3_FORCE_PATH_STYLE` | `true` | Path-style addressing; keep `true` for MinIO/Garage, set `false` for AWS S3 virtual-hosted style. |
+
+## Single sign-on (optional)
+
+An SSO button appears on the sign-in page when `OIDC_ISSUER`,
+`OIDC_CLIENT_ID` and `OIDC_CLIENT_SECRET` are all set — see
+[OIDC single sign-on](/sso) for provider setup and the group-to-role mapping.
+
+| Variable | Default | Description |
+|---|---|---|
+| `OIDC_ISSUER` | unset | Issuer URL; must serve `/.well-known/openid-configuration` (a full discovery URL is also accepted). |
+| `OIDC_CLIENT_ID` | unset | Client ID of the registered application. |
+| `OIDC_CLIENT_SECRET` | unset | Client secret. |
+| `OIDC_PROVIDER_NAME` | `SSO` | Label of the sign-in button. |
+| `OIDC_ADMIN_GROUP` | unset | IdP group name (from the OIDC `groups` claim) whose members become admins on every SSO login. |
+| `OIDC_MODERATOR_GROUP` | unset | Same, for the moderator role. |
+
+## Integrations (optional)
+
+| Variable | Default | Description |
+|---|---|---|
+| `ONSHAPE_CLIENT_ID` | unset | OAuth app client ID — enables the [Onshape](/integrations/onshape) import/sync feature. |
+| `ONSHAPE_CLIENT_SECRET` | unset | OAuth app client secret. |
+| `BAMBU_TOKEN_SECRET` | falls back to `BETTER_AUTH_SECRET` | Key used to encrypt stored [Bambu Cloud](/integrations/bambu-cloud) tokens at rest. Rotating it forces users to reconnect their Bambu account. |
+
+## Optional services
+
+Each of these is unset-means-off: without the URL the feature simply
+disappears from the UI.
+
+| Variable | Compose default | Description |
+|---|---|---|
+| `SLICER_URL` | `http://slicer:8000` | Headless PrusaSlicer service (`slicer` in `compose.yml`). Estimates print time & filament use for unsliced `.3mf` uploads; without it, such files show no estimates. |
+| `OPENSCAD_URL` | `http://openscad:8000` | Headless OpenSCAD service (`openscad` in `compose.yml`). Renders customized `.3mf` files from parametric `.scad` models; without it, the customizer UI is hidden and `.scad` files are plain downloads. |
+
+## Telemetry (optional)
+
+| Variable | Default | Description |
+|---|---|---|
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | unset (telemetry off) | OTLP/HTTP endpoint of a collector (Grafana Alloy, otel-collector, …). Use the collector's HTTP port (e.g. `4318`), not the gRPC one. When set, the app exports traces for every request, route handler and outgoing fetch. |
+| `OTEL_SERVICE_NAME` | `print-vault` | Service name shown in the tracing backend. |

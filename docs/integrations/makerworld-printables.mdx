@@ -1,0 +1,53 @@
+---
+title: MakerWorld & Printables
+description: Import models by URL, keep them in sync, and bulk-import collections
+---
+
+# MakerWorld & Printables import
+
+Paste a MakerWorld or Printables model URL into the import dialog to prefill
+the create form with the model's metadata, images and files.
+
+- **Printables** — metadata, images and files import anonymously.
+- **MakerWorld** — metadata and images import anonymously; `.3mf`
+  print-profile downloads require a connected
+  [Bambu Cloud account](/integrations/bambu-cloud).
+
+Imported models link back to their source, and files staged by an importer are
+badged with a cloud icon so they stay distinguishable from files you upload
+manually later.
+
+## Source sync
+
+The model page's **Sync from MakerWorld/Printables** button diffs the model's
+imported files against the platform's current file list and shows a preview of
+the concrete changes before applying. The contract: **imported files mirror
+upstream, everything else is local** — manual uploads, generated variants,
+images, title/description/tags and BOM are never touched. Files removed
+upstream are removed locally, which is safe because the pre-sync state is
+recorded as a version first. Unchanged files are skipped without downloading.
+
+Neither platform exposes revision history, so the model's version history
+doubles as the record of upstream changes.
+
+## Collection import
+
+Paste a `makerworld.com/…/collections/{id}` URL to import every model in the
+collection in the background into a new local collection (a connected
+[Bambu account](/integrations/bambu-cloud) is required, jobs are capped at
+200 designs, and one job runs per user at a time). Progress shows as a ring in
+the header with cancel; re-running a failed job resumes it —
+already-imported models are only linked, not duplicated.
+
+Imported collections link back to their source, and **Sync from MakerWorld**
+re-runs the job later: models added remotely import as new, everything already
+in the library is (re-)linked. Sync never deletes — models removed remotely
+stay, and local title/description edits are never overwritten.
+
+## Parametric models
+
+A parametric model's `.scad` source (Printables and MakerWorld parametric
+models) imports like any other file. With the optional
+[OpenSCAD service](/configuration#optional-services) configured, users can
+generate customized `.3mf` files from the model's customizer parameters;
+generated variants get print estimates and slicer deep links like any upload.

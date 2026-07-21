@@ -10,6 +10,7 @@ import {
   onshapeDocumentUrl,
   OnshapeError,
   parseOnshapeUrl,
+  planOnshapeSync,
   selectExportElements,
   type OnshapeExportElement,
 } from "@/lib/onshape/api";
@@ -98,6 +99,71 @@ test("eligibleExportElements keeps only Part Studio and Assembly tabs", () => {
     elements.map((e) => e.name),
     ["Part Studio 1", "Assembly 1"],
   );
+});
+
+test("eligibleExportElements carries the per-element microversion through", () => {
+  // The sync diff reads microversionId off the eligible tabs, so the filter
+  // must not drop it (it's the token that decides "did this tab change").
+  const [el] = eligibleExportElements([
+    { id: elementId(1), name: "PS", elementType: "PARTSTUDIO", microversionId: "mv-1" },
+  ]);
+  assert.equal(el.microversionId, "mv-1");
+});
+
+// One eligible tab carrying its current per-element microversion.
+const mvTab = (n: number, microversionId: string): OnshapeExportElement => ({
+  ...tab(n, "PARTSTUDIO"),
+  microversionId,
+});
+
+test("planOnshapeSync: only tabs whose microversion moved re-export", () => {
+  // The whole point of issue #70: a tab whose stored token still matches its
+  // current microversion is the export we already have — skip it; a tab whose
+  // element microversion moved must be re-exported.
+  const { changedIds, unchangedIds, deletedIds } = planOnshapeSync(
+    [
+      { elementId: elementId(1), microversion: "mv-1" }, // unchanged
+      { elementId: elementId(2), microversion: "mv-2-old" }, // edited upstream
+    ],
+    [mvTab(1, "mv-1"), mvTab(2, "mv-2-new")],
+  );
+  assert.deepEqual(changedIds, [elementId(2)]);
+  assert.deepEqual(unchangedIds, [elementId(1)]);
+  assert.deepEqual(deletedIds, []);
+});
+
+test("planOnshapeSync: a tab with no stored token can't be proven identical", () => {
+  // Imports predating issue #70 have no per-element token — re-export once
+  // (the fresh export stamps the token so later syncs can skip it).
+  const { changedIds, unchangedIds } = planOnshapeSync(
+    [{ elementId: elementId(1), microversion: null }],
+    [mvTab(1, "mv-1")],
+  );
+  assert.deepEqual(changedIds, [elementId(1)]);
+  assert.deepEqual(unchangedIds, []);
+});
+
+test("planOnshapeSync: a tab missing from the listing was deleted upstream", () => {
+  // A tab deleted in Onshape is dropped (the pre-sync state stays a version).
+  const { changedIds, deletedIds } = planOnshapeSync(
+    [
+      { elementId: elementId(1), microversion: "mv-1" },
+      { elementId: elementId(9), microversion: "mv-9" },
+    ],
+    [mvTab(1, "mv-1")],
+  );
+  assert.deepEqual(changedIds, []);
+  assert.deepEqual(deletedIds, [elementId(9)]);
+});
+
+test("planOnshapeSync: unknown current microversion re-exports (can't skip blind)", () => {
+  // If the listing omits microversionId we can't prove the tab is unchanged,
+  // so we conservatively re-export rather than silently keep a stale file.
+  const { changedIds } = planOnshapeSync(
+    [{ elementId: elementId(1), microversion: "mv-1" }],
+    [{ ...tab(1, "PARTSTUDIO") }], // no microversionId
+  );
+  assert.deepEqual(changedIds, [elementId(1)]);
 });
 
 test("selectExportElements: explicit selection wins over the pinned tab", () => {
