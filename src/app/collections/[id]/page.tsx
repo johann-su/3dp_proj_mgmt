@@ -16,6 +16,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ModelCard, type ModelCardData } from "@/components/model-card";
 import { ShareButton } from "@/components/share-button";
+import { Markdown } from "@/components/markdown";
 import { CollectionSyncButton } from "./collection-sync-button";
 import { DeleteCollectionButton } from "./delete-collection-button";
 
@@ -120,9 +121,9 @@ export default async function CollectionPage({
             </a>
           )}
           {collection.description && (
-            <p className="mt-3 whitespace-pre-wrap text-sm max-w-2xl">
+            <Markdown className="mt-3 max-w-2xl">
               {collection.description}
-            </p>
+            </Markdown>
           )}
         </div>
         {/* Editing (edit + sync) is open to any signed-in user; deletion
