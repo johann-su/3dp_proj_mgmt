@@ -26,7 +26,10 @@ Slicing runs in the background after upload (`after()` in the model actions,
 `src/lib/slicer.ts`); results land on `model_files` (`slice_status`,
 `print_time_seconds`, `filament_grams`, …) together with the hardware the
 project was set up for (`printer_info`: printer model, nozzle, build plate,
-used filaments), which the model page shows per file. Slicer-derived numbers
+used filaments, and physical bed size — the latter parsed from the embedded
+`printable_area`/`bed_shape` polygon, or a known-model lookup, and used to draw
+the 3D preview's plate at real dimensions, issue #80), which the model page
+shows per file. Slicer-derived numbers
 are still approximations (PrusaSlicer's time estimator, not the printer's
 firmware) and shown with a `~` prefix; files PrusaSlicer cannot slice are
 flagged on the model page so the uploader notices a broken or unprintable file.

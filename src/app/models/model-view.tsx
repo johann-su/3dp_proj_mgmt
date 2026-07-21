@@ -15,6 +15,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { ImageGallery } from "@/components/image-gallery";
+import type { ViewerFile } from "@/components/model-viewer";
 import { Markdown } from "@/components/markdown";
 import { ShareButton } from "@/components/share-button";
 import {
@@ -53,8 +54,9 @@ export type ModelViewData = {
   onshapeWvm: string | null;
   makerworldUrl: string | null;
   images: Array<{ src: string }>;
-  // Previewable .3mf files for the gallery's interactive 3D view (issue #35).
-  modelFiles: Array<{ filename: string; src: string }>;
+  // Previewable .3mf files for the gallery's interactive 3D view (issue #35),
+  // each carrying its real bed size for the plate reference (issue #80).
+  modelFiles: ViewerFile[];
   bom: BomItemInput[];
   printFiles: PrintFileData[];
   pdfFiles: PdfFileData[];

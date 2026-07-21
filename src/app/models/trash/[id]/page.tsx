@@ -6,6 +6,7 @@ import { models } from "@/db/schema";
 import { getSession, signInRedirect } from "@/lib/auth";
 import { canActAsOwner } from "@/lib/roles";
 import { fileSrc } from "@/lib/file-token";
+import { resolveBedSizeMm } from "@/lib/printer-beds";
 import { get3mfSliceInfo } from "@/lib/threemf-remote";
 import { fileExtension } from "@/lib/file-kind";
 import { formatDate } from "@/lib/format";
@@ -138,7 +139,11 @@ export default async function TrashPreviewPage({
     images: images.map((img) => ({ src: fileSrc(img.id) })),
     modelFiles: printFiles
       .filter((f) => f.filename.toLowerCase().endsWith(".3mf"))
-      .map((f) => ({ filename: f.filename, src: fileSrc(f.id) })),
+      .map((f) => ({
+        filename: f.filename,
+        src: fileSrc(f.id),
+        bed: resolveBedSizeMm(f.printerInfo),
+      })),
     bom: model.bomItems,
     // Generated variants nest under their .scad source, like the model page —
     // they come back with the model on restore, so a preview should show them.

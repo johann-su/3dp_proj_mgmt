@@ -6,6 +6,7 @@ import { db } from "@/db";
 import { categories, models, modelVersions } from "@/db/schema";
 import { getSession, signInRedirect } from "@/lib/auth";
 import { versionFileSrc } from "@/lib/file-token";
+import { resolveBedSizeMm } from "@/lib/printer-beds";
 import { get3mfSliceInfo } from "@/lib/threemf-remote";
 import { fileExtension } from "@/lib/file-kind";
 import { formatDate } from "@/lib/format";
@@ -120,7 +121,11 @@ export default async function ModelVersionPreviewPage({
     images: images.map((img) => ({ src: img.src })),
     modelFiles: printFiles
       .filter((f) => f.filename.toLowerCase().endsWith(".3mf"))
-      .map((f) => ({ filename: f.filename, src: f.src })),
+      .map((f) => ({
+        filename: f.filename,
+        src: f.src,
+        bed: resolveBedSizeMm(f.printerInfo),
+      })),
     bom: snapshot.bom,
     printFiles: printFiles.map((file, i) => {
       const info = sliceInfos[i];
