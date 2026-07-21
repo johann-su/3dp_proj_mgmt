@@ -1,0 +1,38 @@
+---
+title: Bambu Cloud
+description: Per-user Bambu account connection for MakerWorld file downloads
+---
+
+# Bambu Cloud
+
+MakerWorld's `.3mf` file downloads require a Bambu Cloud login, so each user
+who wants to import MakerWorld files connects their own Bambu account under
+**Settings → Bambu Cloud**. No instance-wide configuration is needed to turn
+the feature on.
+
+A connection unlocks, for that user:
+
+- `.3mf` print-profile downloads during
+  [MakerWorld imports](/integrations/makerworld-printables) (without a
+  connection, only metadata and images import)
+- [MakerWorld collection import](/integrations/makerworld-printables#collection-import)
+  and collection sync
+- re-syncing previously imported MakerWorld files and parametric `.scad`
+  sources
+
+## Connecting
+
+Sign in on the settings page with your Bambu account email and password. If
+Bambu challenges the login, the form walks through it: an **email verification
+code** or a **TOTP two-factor code** may be requested. Alternatively, a
+`token` cookie copied from a logged-in MakerWorld browser session can be
+pasted directly.
+
+## How tokens are stored
+
+The resulting access token is stored **encrypted at rest** (AES-256-GCM),
+keyed by
+[`BAMBU_TOKEN_SECRET`](/configuration#integrations-optional) — which falls
+back to `BETTER_AUTH_SECRET` when unset. Rotating the key forces users to
+reconnect their accounts. At import time the token is only used to exchange
+each print profile for a short-lived download URL.

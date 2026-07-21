@@ -12,6 +12,9 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Standalone docs-site package (own Next version, own tsconfig) — not
+    // part of the app's lint run.
+    "nextra/**",
   ]),
 ]);
 

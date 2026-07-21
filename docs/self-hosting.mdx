@@ -1,0 +1,60 @@
+---
+title: Self-hosting
+description: Run your own Print Vault instance with Docker Compose
+---
+
+# Self-hosting
+
+## What you need
+
+- **Docker** (with Compose)
+- An **S3-compatible storage** (AWS S3, MinIO, [Garage](https://garagehq.deuxfleurs.fr/), …)
+  with a bucket whose credentials have read/write access — model files, images
+  and documents are stored there, not on the local disk
+
+Postgres, the [slicer service](/configuration#optional-services) (print
+estimates) and the [OpenSCAD service](/configuration#optional-services)
+(parametric models) are all part of `compose.yml`, so they come up with the
+stack.
+
+## Start the stack
+
+The `app` service in `compose.yml` builds a production image (Next.js
+standalone output) that applies database migrations and seeds the category
+list on boot:
+
+```sh
+export BETTER_AUTH_SECRET=$(openssl rand -base64 32)
+export BETTER_AUTH_URL=https://your-domain.example
+export S3_ENDPOINT=https://your-s3-endpoint
+export S3_ACCESS_KEY_ID=… S3_SECRET_ACCESS_KEY=… S3_BUCKET=models
+docker compose --profile app up -d --build
+```
+
+The app listens on port `3000`; put your reverse proxy in front of it and set
+`BETTER_AUTH_URL` to the public URL it serves (no trailing slash) — sessions,
+signed file URLs and OAuth redirect URIs are all derived from it.
+
+See [Configuration](/configuration) for the full environment-variable
+reference, including optional [OIDC single sign-on](/sso) and the
+[Onshape](/integrations/onshape) integration.
+
+### Note for Garage users
+
+`S3_REGION` must match the `s3_api.s3_region` value of your Garage config
+(default `garage`), and the access key needs
+`garage bucket allow --read --write <bucket> --key <key>`.
+
+## First admin
+
+Every account starts as a plain user. Set `INITIAL_ADMIN_EMAIL` to your
+account's email to bootstrap the first admin: while the database has no admin
+at all, that account is promoted at sign-up or on its next visit to any
+settings page. See [User roles](/roles) for what admins and moderators can do.
+
+## Closing sign-up
+
+Once your accounts exist, set `DISABLE_SIGNUP=true` to turn off
+self-registration (the `/sign-up` page and the email/password sign-up API).
+[OIDC single sign-on](/sso) still creates users on first login — who may
+authenticate is then the identity provider's call.

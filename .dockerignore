@@ -1,0 +1,13 @@
+# Shared by every image built with the repo root as context (the app image and
+# nextra/Dockerfile — the docs build needs docs/ and nextra/ in the context, so
+# don't exclude those wholesale). slicer/ and openscad/ use their own contexts.
+.git
+node_modules
+.next
+out
+testData
+nextra/node_modules
+nextra/.next
+nextra/out
+.env*
+!.env.example

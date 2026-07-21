@@ -1,0 +1,42 @@
+---
+title: OIDC single sign-on
+description: Optional OIDC SSO setup, provider notes and IdP-group role mapping
+---
+
+# OIDC single sign-on
+
+Set `OIDC_ISSUER`, `OIDC_CLIENT_ID` and `OIDC_CLIENT_SECRET` to show an SSO
+button below the email/password form on the sign-in page
+(`OIDC_PROVIDER_NAME` customizes the button label).
+
+- The issuer must serve `/.well-known/openid-configuration` (a full discovery
+  URL is also accepted).
+- Register the client with the redirect URI
+  `{BETTER_AUTH_URL}/api/auth/oauth2/callback/oidc`.
+
+Users are created on first SSO login, and an SSO login with the same email
+links to an existing email/password account. With
+[`DISABLE_SIGNUP=true`](/configuration#accounts--sign-up), SSO still creates
+users on first login — who may authenticate is the identity provider's call.
+
+## Authentik
+
+The issuer is **per application**, not the domain root — use
+`https://<host>/application/o/<app-slug>/` (shown as "OpenID Configuration
+Issuer" in the provider settings). A wrong issuer is logged at server start
+with the exact discovery URL that failed.
+
+## Roles from IdP groups (optional)
+
+Set `OIDC_ADMIN_GROUP` (and/or `OIDC_MODERATOR_GROUP`) to the exact group
+names your IdP sends in the OIDC `groups` claim — e.g.
+`OIDC_ADMIN_GROUP=homelab-admins` with an Authentik group of that name
+(Authentik includes the claim with the standard `profile` scope).
+
+While configured, group membership is **authoritative on every SSO login**:
+members of the group get the role, and a user in neither mapped group is
+(re)set to a plain user — so manage SSO users' roles in the IdP rather than
+on **Settings → Users**. If the IdP stops sending the `groups` claim entirely,
+stored roles are left untouched.
+
+See [User roles](/roles) for what each role may do.
