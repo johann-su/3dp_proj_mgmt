@@ -97,8 +97,12 @@ export function ModelView({ data }: { data: ModelViewData }) {
   } = data;
 
   return (
-    <div className="grid gap-8 lg:grid-cols-[1fr_400px]">
-      <div className="min-w-0">
+    // On mobile the columns fold into a single flow reordered with `order`:
+    // header first (order-1), then the gallery (order-2), then the description
+    // that trails it, then the downloads (order-3). On `lg` the two grid
+    // columns take over and `order-none` restores document order.
+    <div className="flex flex-col gap-8 lg:grid lg:grid-cols-[1fr_400px]">
+      <div className="order-2 min-w-0 lg:order-none">
         <ImageGallery
           images={images}
           title={title}
@@ -163,118 +167,129 @@ export function ModelView({ data }: { data: ModelViewData }) {
         </div>
       </div>
 
-      <div className="min-w-0 space-y-4">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight break-words">
-            {title || "Untitled model"}
-          </h1>
-          <p className="text-sm text-muted-foreground mt-1">
-            by {author} · {formatDate(createdAt)}
-          </p>
-          {sourceUrl && sourceName && (
-            <a
-              href={sourceUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center gap-1 text-sm text-primary hover:underline mt-1"
-            >
-              <ExternalLink className="size-3.5" />
-              Imported from {sourceName}
-            </a>
+      {/* The right column on `lg`. On mobile it dissolves (display:contents)
+          so its two blocks become siblings of the gallery: the metadata
+          header floats above it (order-1) and the downloads below the
+          description (order-3). */}
+      <div className="contents lg:flex lg:min-w-0 lg:flex-col lg:gap-4">
+        <div className="order-1 min-w-0 space-y-4 lg:order-none">
+          <div>
+            <h1 className="text-2xl font-bold tracking-tight break-words">
+              {title || "Untitled model"}
+            </h1>
+            <p className="text-sm text-muted-foreground mt-1">
+              by {author} · {formatDate(createdAt)}
+            </p>
+            {sourceUrl && sourceName && (
+              <a
+                href={sourceUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1 text-sm text-primary hover:underline mt-1"
+              >
+                <ExternalLink className="size-3.5" />
+                Imported from {sourceName}
+              </a>
+            )}
+          </div>
+
+          {onshapeWvm !== null && sourceUrl && (
+            <div className="flex flex-wrap items-center gap-2">
+              <Button asChild variant="outline" size="sm">
+                <a href={sourceUrl} target="_blank" rel="noopener noreferrer">
+                  <SquarePen className="size-4" />
+                  Edit in Onshape
+                </a>
+              </Button>
+              {isLoggedIn &&
+                modelId &&
+                (onshapeWvm === "v" ? (
+                  <span className="text-xs text-muted-foreground">
+                    Pinned to an Onshape version
+                  </span>
+                ) : (
+                  <OnshapeSyncButton modelId={modelId} />
+                ))}
+            </div>
+          )}
+
+          {(platform === "makerworld" || platform === "printables") &&
+            isLoggedIn &&
+            modelId &&
+            sourceName && (
+              <div className="flex flex-wrap items-center gap-2">
+                <SourceSyncButton modelId={modelId} sourceName={sourceName} />
+              </div>
+            )}
+
+          {(category || tags.length > 0) && (
+            <div className="flex flex-wrap gap-1.5">
+              {category &&
+                (category.slug ? (
+                  <Link href={`/?category=${category.slug}`}>
+                    <Badge>{category.name}</Badge>
+                  </Link>
+                ) : (
+                  <Badge>{category.name}</Badge>
+                ))}
+              {tags.map((tag) =>
+                tag.id ? (
+                  <Link
+                    key={tag.id}
+                    href={`/?q=${encodeURIComponent(tag.name)}`}
+                  >
+                    <Badge variant="secondary">{tag.name}</Badge>
+                  </Link>
+                ) : (
+                  <Badge key={tag.name} variant="secondary">
+                    {tag.name}
+                  </Badge>
+                ),
+              )}
+            </div>
+          )}
+
+          {isLoggedIn && modelId && (
+            <AddToCollection
+              modelId={modelId}
+              collections={collectionOptions}
+            />
           )}
         </div>
 
-        {onshapeWvm !== null && sourceUrl && (
-          <div className="flex flex-wrap items-center gap-2">
-            <Button asChild variant="outline" size="sm">
-              <a href={sourceUrl} target="_blank" rel="noopener noreferrer">
-                <SquarePen className="size-4" />
-                Edit in Onshape
-              </a>
-            </Button>
-            {isLoggedIn &&
-              modelId &&
-              (onshapeWvm === "v" ? (
-                <span className="text-xs text-muted-foreground">
-                  Pinned to an Onshape version
-                </span>
-              ) : (
-                <OnshapeSyncButton modelId={modelId} />
-              ))}
-          </div>
-        )}
+        <div className="order-3 min-w-0 space-y-4 lg:order-none">
+          <PrintFilesCard
+            printFiles={printFiles}
+            sourceName={sourceName}
+            makerworldUrl={makerworldUrl}
+            slicerConfigured={slicerConfigured}
+            modelId={modelId}
+          />
 
-        {(platform === "makerworld" || platform === "printables") &&
-          isLoggedIn &&
-          modelId &&
-          sourceName && (
-            <div className="flex flex-wrap items-center gap-2">
-              <SourceSyncButton modelId={modelId} sourceName={sourceName} />
-            </div>
+          {pdfFiles.length > 0 && <DocumentsCard pdfFiles={pdfFiles} />}
+
+          {isLoggedIn && modelId && history && history.length > 0 && (
+            <HistoryPanel modelId={modelId} entries={history} />
           )}
 
-        {(category || tags.length > 0) && (
-          <div className="flex flex-wrap gap-1.5">
-            {category &&
-              (category.slug ? (
-                <Link href={`/?category=${category.slug}`}>
-                  <Badge>{category.name}</Badge>
-                </Link>
-              ) : (
-                <Badge>{category.name}</Badge>
-              ))}
-            {tags.map((tag) =>
-              tag.id ? (
-                <Link
-                  key={tag.id}
-                  href={`/?q=${encodeURIComponent(tag.name)}`}
-                >
-                  <Badge variant="secondary">{tag.name}</Badge>
-                </Link>
-              ) : (
-                <Badge key={tag.name} variant="secondary">
-                  {tag.name}
-                </Badge>
-              ),
-            )}
-          </div>
-        )}
-
-        {isLoggedIn && modelId && (
-          <AddToCollection modelId={modelId} collections={collectionOptions} />
-        )}
-
-        <PrintFilesCard
-          printFiles={printFiles}
-          sourceName={sourceName}
-          makerworldUrl={makerworldUrl}
-          slicerConfigured={slicerConfigured}
-          modelId={modelId}
-        />
-
-        {pdfFiles.length > 0 && <DocumentsCard pdfFiles={pdfFiles} />}
-
-        {isLoggedIn && modelId && history && history.length > 0 && (
-          <HistoryPanel modelId={modelId} entries={history} />
-        )}
-
-        {isLoggedIn && modelId && (
-          <>
-            <Separator />
-            <div className="flex items-center gap-2">
-              <ShareButton />
-              <Button asChild variant="outline" size="sm">
-                <Link href={`/models/${modelId}/edit`}>
-                  <Pencil className="size-4" />
-                  Edit model
-                </Link>
-              </Button>
-              {/* Editing is open to all; deleting stays with the owner and
-                  moderators/admins (canManage). */}
-              {canManage && <DeleteModelButton modelId={modelId} />}
-            </div>
-          </>
-        )}
+          {isLoggedIn && modelId && (
+            <>
+              <Separator />
+              <div className="flex items-center gap-2">
+                <ShareButton />
+                <Button asChild variant="outline" size="sm">
+                  <Link href={`/models/${modelId}/edit`}>
+                    <Pencil className="size-4" />
+                    Edit model
+                  </Link>
+                </Button>
+                {/* Editing is open to all; deleting stays with the owner and
+                    moderators/admins (canManage). */}
+                {canManage && <DeleteModelButton modelId={modelId} />}
+              </div>
+            </>
+          )}
+        </div>
       </div>
     </div>
   );
