@@ -1,0 +1,179 @@
+---
+title: Development
+description: Repository layout, branching and releases, issue tracking, and setting up a local dev environment
+---
+
+# Development
+
+This page is for contributors working *on* Print Vault (as opposed to
+[self-hosting](/self-hosting) a release). It covers the repository, how
+branching and releases work, and how to get a dev environment running on your
+machine.
+
+## Repository
+
+The source lives at
+**[github.com/johann-su/3dp_proj_mgmt](https://github.com/johann-su/3dp_proj_mgmt)**.
+
+It's a single repo holding a few distinct pieces:
+
+| Path | What it is |
+|---|---|
+| `src/` | The Next.js app (App Router) — the whole product. |
+| `slicer/` | The headless PrusaSlicer [print-estimate](/features/slicing) service — a zero-dependency Node HTTP wrapper. Its own compose container. |
+| `openscad/` | The headless OpenSCAD render service for [parametric models](/features/parametric). Its own compose container. |
+| `docs/` | These operator/user docs, authored as `.mdx`. |
+| `nextra/` | The standalone site that publishes `docs/` — a separate npm package with its own (older) Next version, deployed separately. |
+| `drizzle/` | SQL migrations. |
+
+Two files are worth reading before you write code:
+
+- **[`AGENTS.md`](https://github.com/johann-su/3dp_proj_mgmt/blob/dev/AGENTS.md)**
+  (also symlinked as `CLAUDE.md`) — the contributor guide: testing philosophy,
+  code-organization rules, and the cross-cutting architecture rules that apply
+  to almost any change (access control, versioning, logging).
+- **[`docs/architecture/`](https://github.com/johann-su/3dp_proj_mgmt/tree/dev/docs/architecture)**
+  — per-subsystem design notes holding the non-obvious contracts (Onshape's
+  meters-not-mm exports, the slicer deep-link quirks, the source-sync diff).
+  These are developer-facing and deliberately **excluded from this docs site** —
+  read them in the repo. Each subsystem's file says what to update when you
+  change its behavior.
+
+## Branching & releases
+
+Three kinds of branches, by intent:
+
+- **`dev`** — the day-to-day integration branch. Small changes land here, and
+  it's the base you branch from and open pull requests against.
+- **`feature/<name>`** — a branch for a substantial new feature, so the work
+  stays isolated until it's ready (the existing `feature/model-versioning`,
+  `feature/smart-collections`, `feature/onshape-integration`, … branches are the
+  pattern). Reference the tracking issue in the name where it helps
+  (e.g. `feat/36-openscad-parametric`). Merge back into `dev` via PR.
+- **`main`** — the release branch. **Merging `dev` into `main` triggers an
+  automatic deploy** of the app to [Dokploy](https://dokploy.com/). Treat `main`
+  as "what's in production" — only merge it when `dev` is release-ready.
+
+The **docs site deploys separately** from the app (its own image from
+`nextra/Dockerfile`, its own subdomain), so a docs-only change doesn't ship the
+app and vice versa.
+
+## Issue tracking
+
+Work is tracked as **GitHub issues** on the repo. Feature branches and the
+architecture notes reference issue numbers (you'll see `issue #46`, `#55`, `#70`
+sprinkled through `docs/architecture/` and code comments), so an issue number is
+the thread that ties a design note, its branch, and its PR together. Open an
+issue before a substantial feature so the branch has something to reference.
+
+## Continuous integration
+
+[GitHub Actions](https://github.com/johann-su/3dp_proj_mgmt/blob/dev/.github/workflows/ci.yml)
+runs on every push to `main`/`dev` and on **every pull request**. It's a fast,
+dependency-free gate on Node 22:
+
+- `npm test` — the unit suite (`src/**/*.test.ts` plus the slicer/openscad
+  service tests). No database or network needed.
+- `npx tsc --noEmit` — a full type-check.
+
+A newer push to the same branch or PR cancels the in-flight run. Run both
+locally before pushing to avoid a red build.
+
+## Setting up a local dev environment
+
+### Requirements
+
+- **Node 22+**
+- **Docker** (for Postgres and the slicer/OpenSCAD service containers)
+- An **S3-compatible storage** (AWS S3, MinIO, Garage, …) with a bucket whose
+  credentials have read/write access. **Object storage is not part of the
+  compose stack** — you bring your own and point `S3_*` at it.
+
+### First-time setup
+
+```sh
+cp .env.example .env       # then fill in BETTER_AUTH_SECRET and your S3 settings
+docker compose up -d       # starts Postgres (:5432), the slicer (:8000) and openscad (:8001) services
+npm install
+npm run db:migrate         # apply SQL migrations from ./drizzle + seed categories
+```
+
+Generate the auth secret with `openssl rand -base64 32`. Every environment
+variable is documented on the [Configuration](/configuration) page.
+
+### Day to day
+
+Only Postgres and the two service containers run in Docker; `npm run dev` runs
+Next.js **directly on the host** (not in a container) and connects to them over
+`localhost`. The containers aren't started for you, so bring them up each time
+you come back to the project:
+
+```sh
+docker compose up -d       # no-op if the containers are already running
+npm run dev                # http://localhost:3000
+```
+
+`docker compose down` stops the containers again. `docker compose ps` shows
+what's running.
+
+### Notes & gotchas
+
+- **`ECONNREFUSED` from a Drizzle query on startup** (e.g. `select … from
+  "categories"`) or a Better Auth session lookup means **Postgres isn't up** —
+  run `docker compose up -d` and restart the dev server.
+- **The app service isn't run in dev.** `compose.yml`'s `app` service sits behind
+  the `app` profile (`docker compose --profile app up`) and is only for running
+  the *built* app in a container — a full production-like stack. Day-to-day dev
+  uses `npm run dev` on the host instead.
+- **Garage users:** `S3_REGION` must match your Garage config's
+  `s3_api.s3_region` (default `garage`), and the access key needs
+  `garage bucket allow --read --write <bucket> --key <key>`.
+
+## Database & migrations
+
+The schema is Drizzle ORM in `src/db/schema.ts`, migrated with SQL files in
+`drizzle/`:
+
+- Edit `src/db/schema.ts`, then **`npm run db:generate`** to produce a new
+  migration file from the diff.
+- **`npm run db:migrate`** applies pending migrations (and seeds the fixed
+  category list). This is the safe, reviewable path — the migration files are
+  committed.
+- **`npm run db:push`** syncs the schema to the database directly *without* a
+  migration file. Handy for fast iteration during development; don't rely on it
+  for anything that needs to reproduce on another machine.
+
+## Testing
+
+Tests run on **Node's built-in test runner** (`node:test` + `node:assert/strict`)
+via `tsx` — there is no Vitest or Jest. Run the whole suite with **`npm test`**.
+
+Tests are **co-located** next to the code as `*.test.ts` (service tests are
+`*.test.mjs` next to the service). The suite's job is to answer *"did this change
+break a behavior that already worked?"* and to document the tricky,
+non-obvious contracts — so tests assert on **observable behavior** (the parsed
+result, the translated config, the round-tripped CSV), not internal structure.
+Unit tests use **no database or network**: build any bytes a function needs in
+memory, or inject the reader. The full philosophy and conventions are in
+[`AGENTS.md`](https://github.com/johann-su/3dp_proj_mgmt/blob/dev/AGENTS.md).
+
+## Working on the docs site
+
+The docs you're reading are `.mdx` files in `docs/`, published by the standalone
+Nextra app in `nextra/` (its own npm package — deliberately not a workspace
+member, so its Next version never clashes with the app's). It reaches the
+content through the `nextra/content` symlink, which points at `docs/`, so a
+feature PR can update its docs in the same commit.
+
+```sh
+cd nextra && npm install && npm run dev   # serves docs/ on http://localhost:3002
+```
+
+`docs/architecture/` is dev-facing and excluded from the built site. Build the
+deployable static image from the repo root with
+`docker build -f nextra/Dockerfile -t print-vault-docs .`. Because `nextra/` is
+excluded from the root tsconfig and ESLint, run its checks separately with
+`cd nextra && npm run build`.
+
+> A change to operator-visible behavior or an environment variable should update
+> the matching `docs/*.mdx` page in the same PR.

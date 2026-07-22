@@ -18,43 +18,29 @@ with the owner (and [moderators/admins](/roles)).
 
 ## Features
 
-- **Model management** — upload one or more `.3mf` files per model; title,
-  description, images, and printer tags auto-fill from embedded file metadata
-- **Catalog** — browsable homepage grid with collections; dedicated model
-  detail page with per-file downloads
-- **Search** — fuzzy (typo-tolerant) matching across models and collections,
-  with filters (type, uploader, printer, filament, nozzle diameter, print
-  time) and sort
-- **Collections** — user-organized groups of models with an "Add to
-  collection" action on model pages
-- **Bill of Materials** — per-model item list (name, quantity, optional
-  link/image); CSV upload in the creation wizard and download via the model
-  page
-- **PDF documents** — attach build instructions or manuals; viewed inline in
-  the browser and downloadable
-- **Markdown descriptions** — GitHub-flavored markdown; raw HTML is never
-  rendered
-- **Platform import** — import metadata, images and files from
-  [MakerWorld and Printables](/integrations/makerworld-printables), including
-  whole MakerWorld collections
-- **Onshape integration** — [import models from Onshape
-  documents](/integrations/onshape) via OAuth2, sync when the document
-  changes, or pin an immutable version snapshot
-- **Print estimates** — an optional headless-slicer service estimates print
-  time and filament use from uploaded `.3mf` files
-- **Parametric OpenSCAD models** — upload or import a `.scad` source and
-  generate customized `.3mf` files from its customizer parameters via the
-  optional headless OpenSCAD service
-- **Open in slicer** — open files directly in OrcaSlicer or Bambu Studio as an
-  alternative to downloading
-- **Authentication** — email/password with optional [OIDC single
-  sign-on](/sso); all pages require sign-in
-- **User roles** — [moderators and admins](/roles) for cleanup and user
-  management
+The [Features](/features) section is a per-feature deep dive — how each one
+works and what to know when you rely on it. In brief:
+
+- **[Model management](/features/models)** — upload one or more `.3mf` files per model; title, description, images, and printer tags auto-fill from embedded file metadata
+- **[Catalog](/features/catalog-and-search)** — browsable homepage grid with collections; dedicated model detail page with per-file downloads
+- **[Search](/features/catalog-and-search#search)** — fuzzy (typo-tolerant) Postgres trigram matching across models and collections, with filters (type, uploader, printer, filament, nozzle diameter, print time) and sort
+- **[Collections](/features/collections)** — user-organized groups of models with an "Add to collection" action on model pages
+    - **[Smart Collections](/features/collections#smart-collections)** — membership defined by rules and evaluated live as a stored query, instead of hand-picked
+- **[Bill of Materials](/features/bill-of-materials)** — per-model item list (name, quantity, optional link/image); CSV upload in the creation wizard and download via the model page
+- **[PDF documents](/features/models#pdf-documents)** — attach build instructions or manuals; viewed inline in the browser and downloadable
+- **[Markdown descriptions](/features/models#markdown-descriptions)** — GitHub-flavored markdown; raw HTML is never rendered
+- **Platform import** — import metadata, images and files from [MakerWorld and Printables](/integrations/makerworld-printables), including whole MakerWorld collections
+- **Onshape integration** — [import models from Onshape documents](/integrations/onshape) via OAuth2, sync when the document changes, or pin an immutable version snapshot
+- **[Print estimates](/features/slicing)** — an optional headless-slicer service estimates print time and filament use from uploaded `.3mf` files
+- **[Parametric OpenSCAD models](/features/parametric)** — upload or import a `.scad` source and generate customized `.3mf` files from its customizer parameters via the optional headless OpenSCAD service
+- **[Open in slicer](/features/slicing#open-in-slicer)** — open files directly in OrcaSlicer or Bambu Studio as an alternative to downloading
+- **Authentication** — email/password with optional [OIDC single sign-on](/sso); all pages require sign-in
+- **User roles** — [moderators and admins](/roles) for cleanup and user management
+- **[Model versioning](/features/versioning)** — editing a model snapshots its previous state, which can be restored later; defensive against losing data, as this may be the only place it exists
 
 ## Where to go next
 
+- [Features](/features) — a deep dive into how each feature works
 - [Self-hosting](/self-hosting) — run your own instance with Docker Compose
 - [Configuration](/configuration) — every environment variable in one place
-- [Integrations](/integrations) — connect Onshape, Bambu Cloud, MakerWorld
-  and Printables
+- [Integrations](/integrations) — connect Onshape, Bambu Cloud, MakerWorld and Printables

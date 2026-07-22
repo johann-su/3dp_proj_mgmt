@@ -1,0 +1,87 @@
+---
+title: Print estimates & open in slicer
+description: Where print-time and filament numbers come from, why they are approximate, and the slicer deep links
+---
+
+# Print estimates & open in slicer
+
+Two slicer-related features live on the model page: **print estimates** (how
+long a file takes and how much filament it uses) and **open in slicer** (hand a
+file straight to Bambu Studio or OrcaSlicer).
+
+## Print estimates
+
+Estimates come from **two** sources, depending on whether the file was already
+sliced:
+
+- **Already-sliced files carry their own numbers.** A `.3mf` exported from Bambu
+  Studio or OrcaSlicer embeds per-plate print-time and filament predictions in
+  its `Metadata/slice_info.config`. Print Vault reads these **directly out of
+  S3** without a full download — it uses ranged GETs against the zip's index to
+  pull only the bytes it needs.
+- **Unsliced files are sliced on the server.** A `.3mf` with no embedded
+  predictions is sent to the optional **slicer service** — a thin wrapper around
+  the headless PrusaSlicer CLI — which slices it and parses the print time and
+  filament use out of the resulting G-code.
+
+The estimate shown is the **total across all plates** in a multi-plate project.
+
+### How server-side slicing picks settings
+
+The slicer service honors the settings **embedded in the file** rather than
+guessing: Bambu/Orca project settings are translated to their PrusaSlicer
+equivalents (machine limits, speeds, accelerations, layer height, infill, and
+the filament of the extruder the objects actually use). A file with no settings
+falls back to a generic **0.4 mm nozzle / PLA** profile. For safety, only a
+whitelist of settings keys is copied across, so a crafted archive can't smuggle
+in post-processing scripts, and the virtual bed is made huge so that multi-plate
+Bambu projects (whose coordinates extend well past a physical bed) still slice.
+
+### Things to know about estimates
+
+- **They are approximations, and shown with a `~` prefix.** Server-side numbers
+  come from PrusaSlicer's time estimator, not your printer's firmware, so treat
+  them as ballpark figures.
+- **Unsliceable files are flagged.** If PrusaSlicer can't slice a file, the
+  model page marks it — a useful signal that the file may be broken or
+  unprintable, not silently missing an estimate.
+- **The build plate is drawn at real size.** Alongside the estimate, the file's
+  hardware context is recorded (printer model, nozzle, build plate, filaments,
+  and the physical bed dimensions parsed from the file or a known-printer
+  lookup) and used to render the 3D preview's plate at true dimensions.
+- **Slicing runs in the background** after upload, so it never blocks saving a
+  model; the estimate appears once slicing finishes.
+- **Some files are skipped:** legacy `.step` files (from before Onshape imports
+  switched to `.3mf`) and files uploaded before the feature existed.
+- **The service is optional.** Without `SLICER_URL`
+  ([configuration](/configuration#optional-services)), unsliced files simply
+  show no estimate and stay pending — already-sliced files still show their
+  embedded numbers, since those don't need the service.
+
+## Open in slicer
+
+For any `.3mf`, the file menu offers **Open in OrcaSlicer** and **Open in Bambu
+Studio** as an alternative to downloading — a one-click handoff via each app's
+custom URL scheme. The link is token-authenticated (the slicer apps fetch it
+themselves, without your browser's session cookie), so it works without exposing
+the file publicly.
+
+A few realities are worth knowing, because they come from how the two apps
+behave, not from Print Vault:
+
+- **Deep links are `.3mf`-only.** Bambu Studio rejects other filenames, so
+  `.scad` and `.step` files show a plain download button instead.
+- **The "not from a trusted site" prompt is expected.** Bambu Studio only
+  auto-trusts MakerWorld and a few CDN hosts; a link from your self-hosted
+  instance triggers a one-time prompt you can click through. That's the app's
+  domain allowlist, and there's nothing to configure away.
+- **Cold-launch behavior differs between the apps.** If the target app **isn't
+  already running**, Bambu Studio handles the link correctly once it starts, but
+  **OrcaSlicer only opens to its home screen** — its handoff event arrives
+  before it's ready to receive it (an upstream macOS issue). Launch OrcaSlicer
+  first, then click the link, and it works. Bambu Studio also needs its network
+  agent loaded before it can pull the model.
+
+The two apps register different URL schemes and parse the links differently, so
+Print Vault builds a different link for each — that complexity is handled for
+you; you just click the button.

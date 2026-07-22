@@ -1,0 +1,133 @@
+---
+title: Models & files
+description: How models are created, the file types accepted, .3mf metadata auto-fill, and model content
+---
+
+# Models & files
+
+A **model** is the core unit of the catalog — the equivalent of a MakerWorld or
+Printables "thing." It bundles one or more printable files with metadata
+(title, description, category, tags), preview images, optional PDF manuals, and
+an optional [bill of materials](/features/bill-of-materials). Everything lives
+in your own Postgres database and S3-compatible object storage; the app streams
+files to and from S3 on your behalf, so the storage endpoint never has to be
+reachable from a browser.
+
+## Creating a model
+
+The create wizard collects the title, description, category and tags, the
+files, images, an optional PDF, and an optional BOM, then saves the model in a
+single transaction. You reach it three ways:
+
+- **Upload** files directly (see the file types below).
+- **Import by URL** from [MakerWorld or
+  Printables](/integrations/makerworld-printables) — metadata, images and files
+  are fetched server-side and staged into the same form for you to review
+  before saving.
+- **Import from [Onshape](/integrations/onshape)** — pick the document tabs and
+  a branch/version; each tab is exported to a `.3mf` file.
+
+Whichever path you use, the model is created live in one step (imports prefill
+the form as a draft first). Bulk
+[collection imports](/integrations/makerworld-printables#collection-import) are
+the exception — dozens of models at once skip the form and insert directly in a
+background job.
+
+## File types
+
+Print Vault is built around **`.3mf`** — a zip container that carries geometry,
+slicer settings, and preview thumbnails in one file, which is what makes the
+metadata auto-fill below possible. STL support was deliberately removed; the
+container format keeps ingestion simple. The accepted extensions:
+
+| Kind | Extensions | Notes |
+|---|---|---|
+| Model files | `.3mf`, `.step` / `.stp`, `.scad` | `.3mf` is primary. `.step` exists for Onshape exports. `.scad` is [parametric OpenSCAD](/features/parametric) source. |
+| Images | `.png`, `.jpg` / `.jpeg`, `.webp`, `.gif` | Preview images. `.gif` may be animated. |
+| Documents | `.pdf` | Build instructions / manuals. |
+
+Extensions are validated **server-side** on upload, and the stored content type
+is always derived from the (allowlisted) extension — never from anything the
+browser sends. This matters because images are served inline from the app's own
+origin, so a file that claimed to be `text/html` would otherwise be stored
+cross-site scripting. File routes also send `X-Content-Type-Options: nosniff`.
+Renaming an uploaded file always keeps its original extension, so a rename can't
+change what kind of file it is treated as.
+
+A single model can hold **multiple model files** — e.g. several plates or part
+variants — each downloaded individually, each with its own
+[print estimate](/features/slicing) and its own download counter.
+
+## `.3mf` metadata auto-fill
+
+When you select a `.3mf` file in the create form, Print Vault unpacks it **in
+your browser** and prefills the form from the embedded metadata — nothing is
+uploaded yet, so this is instant and works offline of the server:
+
+- **Title and description** from `3D/3dmodel.model`.
+- **Printer name** from the embedded slicer settings
+  (`Metadata/project_settings.config` / `slice_info.config`).
+- **Preview images** — plate thumbnails and auxiliary images
+  (`Metadata/plate_*.png`, `Auxiliaries/`, embedded thumbnails).
+
+All of it is just a starting point — every field stays editable before you
+save. Files sliced in Bambu Studio or OrcaSlicer also carry per-plate print-time
+and filament predictions, which Print Vault reads later for
+[estimates](/features/slicing).
+
+## Imported-file badges
+
+Every file staged by an *importer* — from any of the three platforms, whether a
+single-model or a collection job, or an Onshape sync — is flagged as imported
+and badged with a **cloud icon** on the model page and edit form. This keeps
+files that mirror an upstream source visually distinct from files you upload
+manually to the same model later. The flag is more than cosmetic: it is what
+[source sync](/integrations/makerworld-printables#source-sync) uses to decide
+which files it owns (imported files mirror upstream; everything else is left
+alone), and it is carried through [version snapshots](/features/versioning).
+
+## The model page
+
+The model page shows the image gallery (with a 3D preview for `.3mf` files — its
+build plate is drawn at your printer's **real bed dimensions**, read from the
+file's embedded bed shape or a known-printer lookup), the file list with
+per-file downloads and [print estimates](/features/slicing), the description,
+any PDF manuals, and the BOM. From here you can also
+[open files directly in a slicer](/features/slicing#open-in-slicer),
+[customize a parametric model](/features/parametric), add the model to a
+[collection](/features/collections), view its
+[version history](/features/versioning), and — via **Share** — copy a link to
+the page (which, because the catalog is private, opens for other signed-in users
+at this exact page).
+
+## Markdown descriptions
+
+Descriptions (for both models and collections) are rendered as **GitHub-flavored
+markdown** — headings, lists, links, tables, code. Raw HTML embedded in a
+description is **never rendered**; it is escaped and shown as text. That's a
+deliberate safety boundary, not a limitation to work around: it means a
+description imported from an external platform can't inject markup or scripts
+into your instance.
+
+## PDF documents
+
+Attach build instructions or a manual as a `.pdf`. It's viewed **inline** in the
+browser on the model page and can be downloaded. Like every other file it
+streams through the app from S3, so it inherits the same access control — a PDF
+is as private as the model it belongs to.
+
+## Who can do what
+
+Access control is coarse on purpose: a self-hosted instance serves a trusted
+group, and shared editing is worth more than fine-grained permissions.
+
+- **Signed in = full read access.** There is no per-model visibility; the whole
+  catalog is private and every signed-in user sees all of it.
+- **Editing is collaborative.** Any signed-in user can edit any model — change
+  fields, add/remove/rename files, generate variants, run a sync.
+- **Deleting is owner-scoped.** Deleting a model is limited to its owner and to
+  [moderators/admins](/roles). Deletion is a soft delete into a
+  [trash bin](/features/versioning#trash), not an immediate purge, so an
+  accidental delete is recoverable.
+
+See [access control](/roles) for the full role breakdown.

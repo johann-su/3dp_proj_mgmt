@@ -1,0 +1,87 @@
+---
+title: Versioning & trash
+description: How every edit snapshots a model, what it duplicates in S3 versus the database, restore, previews and the trash bin
+---
+
+# Versioning & trash
+
+For a self-hosted instance, the catalog may be the **only** place a given file
+or its metadata exists — there's no MakerWorld to re-download from. So Print
+Vault is deliberately defensive about losing data: **every model mutation is
+versioned**, and deletion is a recoverable trash bin, not an immediate purge.
+
+## What gets versioned
+
+Every *completed* model mutation — create, edit, [Onshape sync](/integrations/onshape),
+[source sync](/integrations/makerworld-printables#source-sync), or a revert —
+appends a **version**: a full JSON snapshot of the model's mutable state at that
+moment. The snapshot captures the title, description, category, tags, the
+[BOM](/features/bill-of-materials), and the **ordered file list including each
+file's storage key**.
+
+Models that predate the feature aren't migrated up front; the first time you
+edit one, its pre-edit state is captured lazily as a baseline version, so you
+never lose the "before" of your first edit.
+
+## What that duplicates — and what it doesn't
+
+This is the part worth understanding, because it explains why history is cheap:
+
+- **The database duplicates only *state*, not files.** A version is a JSON
+  snapshot — a few kilobytes of title/description/tags/BOM plus a list of file
+  references. It does **not** copy file bytes.
+- **S3 objects are shared across versions, never duplicated.** The `model_files`
+  table always means *"the live files only"* — there are no historical file
+  rows cluttering it. When you remove a file, its database row is deleted but
+  its **S3 object is kept**, because earlier snapshots still reference that
+  storage key. Editing a model therefore doesn't re-upload or copy anything in
+  object storage; multiple versions point at the same underlying objects.
+
+The consequence: keeping deep history costs almost nothing in storage. The only
+thing that ever deletes bytes from S3 is **pruning** (below) removing an object
+that *no* remaining version references.
+
+## History, preview and restore
+
+The model page has a **History panel** listing versions. Each entry links to a
+read-only **version preview** at `/models/{id}/versions/{versionId}` — the same
+model view you're used to, reconstructed entirely from the snapshot (files,
+images, PDFs, title, description, tags, category, BOM), with every editing
+control disabled. Historical files no longer have a live row, so their bytes are
+served from the snapshot by storage key rather than by file id.
+
+**Restore** (available to any signed-in user, like editing) rolls the model back
+to a chosen version by re-inserting the file rows from that snapshot. Restoring
+*appends a new version* rather than rewriting history — so a restore is itself
+undoable, and the timeline is always append-only.
+
+Because neither MakerWorld nor Printables exposes revision history, for imported
+models the **version history doubles as the record of upstream changes** — each
+sync that changes something leaves a version behind.
+
+## Caps and pruning
+
+History is capped at **30 versions per model**. When a new version pushes past
+the cap, the oldest is pruned — and pruning deletes an S3 object **only** if no
+remaining snapshot and no live file row still references it. Nothing a current
+version points at is ever removed.
+
+Two things are deliberately **excluded from snapshots**: generated
+[OpenSCAD variants](/features/parametric) (they're additive, individually
+deletable, and cheap to regenerate — their bytes *are* deleted when their
+`.scad` source or the variant itself is removed).
+
+## Trash
+
+Deleting a model is a **soft delete**: it's moved to a trash bin, not purged.
+Every listing across the app — homepage, search, smart collections, collection
+membership — hides trashed models, so a deleted model disappears everywhere as
+expected.
+
+The **`/models/trash`** page restores a model (undo the delete) or purges it
+permanently. You see your own trashed models there;
+[moderators and admins](/roles) see the whole instance's trash. Trash is not
+kept forever: loading the trash page also purges anything that has been in the
+trash longer than the retention window (**30 days** by default) — a lazy sweep
+with no background scheduler, so a purge only happens when someone visits the
+page.

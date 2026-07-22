@@ -1,0 +1,58 @@
+---
+title: Features
+description: A deep dive into what Print Vault does and how each feature works
+---
+
+# Features
+
+This section is a feature-by-feature deep dive: not just *what* each feature
+does, but *how* it works under the hood and the things worth knowing when you
+rely on it — where data lives, what is approximate, what a sync will and won't
+touch, and where a feature quietly turns off when its optional service isn't
+configured.
+
+Two facts shape almost everything below:
+
+- **The whole catalog is private.** Every page requires sign-in, so a link you
+  share only opens for other signed-in users on the instance — but it does open
+  *at the page you shared*: sign-in preserves the destination and lands them
+  there afterwards. See [access control](/features/models#who-can-do-what).
+- **Editing is collaborative; deleting is owner-scoped.** Any signed-in user can
+  edit any model or collection (fields, files, variants, syncs). Destructive
+  actions — deleting a model or collection, removing a generated variant — stay
+  with the owner and with [moderators/admins](/roles).
+
+## In this section
+
+- **[Models & files](/features/models)** — creating models, the file types
+  Print Vault accepts, `.3mf` metadata auto-fill, imported-file badges, markdown
+  descriptions and PDF manuals.
+- **[Bill of materials](/features/bill-of-materials)** — per-model parts lists,
+  section grouping, and CSV import/export.
+- **[Catalog & search](/features/catalog-and-search)** — the homepage feed,
+  typo-tolerant Postgres trigram search, filters, categories and the
+  view/download counters.
+- **[Collections & smart collections](/features/collections)** — hand-picked
+  groups, and rule-based collections that are evaluated live as a stored query.
+- **[Versioning & trash](/features/versioning)** — how every edit snapshots the
+  model, what that duplicates in S3 versus the database, restore/preview, and
+  the trash bin.
+- **[Print estimates & open in slicer](/features/slicing)** — where print-time
+  and filament numbers come from, why they carry a `~`, and the slicer deep
+  links.
+- **[Parametric OpenSCAD models](/features/parametric)** — the `.scad`
+  customizer, the live preview, and generating stored `.3mf` variants.
+
+## Related pages
+
+Some capabilities have their own top-level docs:
+
+- **[Integrations](/integrations)** — importing from
+  [MakerWorld & Printables](/integrations/makerworld-printables),
+  [Onshape](/integrations/onshape), and connecting a
+  [Bambu Cloud](/integrations/bambu-cloud) account.
+- **[User roles](/roles)** — what plain users, moderators and admins may do.
+- **[OIDC single sign-on](/sso)** — SSO sign-in and driving roles from IdP
+  groups.
+- **[Configuration](/configuration)** — every environment variable, including
+  the optional services (slicer, OpenSCAD) that gate some features below.
