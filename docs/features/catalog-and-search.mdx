@@ -1,0 +1,84 @@
+---
+title: Catalog & search
+description: The homepage feed, typo-tolerant Postgres trigram search, filters, categories and counters
+---
+
+# Catalog & search
+
+Browsing is split between a **homepage feed** (the grid you land on) and a
+dedicated **`/search` page**. Both are powered entirely by Postgres — there is
+**no separate search engine** (Elasticsearch, Meilisearch, …) to run. That's a
+deliberate choice to keep a self-hosted instance to one database, and it's
+enough because fuzzy matching is done in Postgres itself.
+
+## Homepage feed
+
+The homepage is a single ranked listing over a `models UNION ALL collections`
+projection: models and collections share the same grid. A **category filter**
+and a **sort control** (newest, oldest, recently updated, most viewed, most
+downloaded) drive it, and results are keyset-paginated (a cursor that encodes
+the sort value, so paging stays stable as new content is added). The search box
+on the homepage just submits your query to `/search`.
+
+## Search
+
+`/search` runs **one** keyset-paginated SQL query over the same
+`models UNION ALL collections` projection. Matching is the interesting part:
+
+- **Fuzzy, typo-tolerant matching** uses Postgres's `pg_trgm` extension —
+  specifically `strict_word_similarity`, which scores the best
+  *word-boundary-aligned* trigram match. This is what lets a short query like
+  `tlon` match the word **Talon** inside a longer title. (The whole-string
+  `similarity()` would score even an exact word buried in a long title below the
+  default threshold — that was the original bug this replaced.)
+- It is **OR'd with an `ILIKE` substring fallback**, so a plain substring always
+  matches even when it's too short or too dissimilar to clear the trigram
+  threshold.
+- **Relevance ranking** uses the same word-similarity score.
+- **What each type matches on:** models match on **title, description, and their
+  tags**; collections match on **title and description** only.
+
+GIN trigram indexes back the whole thing (created by the search migration) and
+also accelerate the `ILIKE` fallback.
+
+### Filters
+
+Filters narrow by **type** (models / collections), **uploader**, **printer**,
+**filament**, **nozzle diameter**, and a **print-time bucket**. The printer /
+filament / nozzle / print-time filters read the per-file slicer metadata, so
+they only apply to models — **applying any model-only filter drops collections
+from the results** entirely (a collection has no printer to match).
+
+### Sort
+
+Sort by **relevance** (the default when there's a query; falls back to newest
+without one), **newest**, **oldest**, **most viewed**, or **most downloaded**.
+Each sort carries its own self-describing keyset cursor. "Most downloaded" sums
+each model's per-file download counts — collections have nothing to sum, so like
+the model-only filters it becomes model-only and degrades to newest for a
+collections-only search.
+
+## Categories
+
+Categories are a **fixed, seeded taxonomy** — imports never invent new ones,
+which is what stops the category list from sprawling into near-duplicates. Each
+category carries a list of **keywords**, and a model's category is *suggested*
+by matching those keywords against the model's title, tags, and — the strongest
+signal — the **source platform's own category names** (MakerWorld's category
+list, Printables' category path both feed in during import). The keyword lists
+embed a mapping of MakerWorld's taxonomy onto this one, so an imported model
+lands in an existing category instead of creating a new one.
+
+**No model stays uncategorized.** The create form preselects the live
+suggestion; the fallback is **"Other"** (which has no keywords on purpose — it
+is only ever the fallback). The bulk collection importer and the server actions
+apply the same fallback, so every model always has a category.
+
+## View and download counts
+
+Views and downloads are **fire-and-forget counters**: a model's or collection's
+view count is bumped on page load, and a file's download count is bumped when
+it's downloaded. They feed the "most viewed" / "most downloaded" sorts. Being
+fire-and-forget, they're best-effort popularity signals rather than an audit
+log — an occasional missed increment (e.g. a request that errored after the
+page rendered) is expected and harmless.

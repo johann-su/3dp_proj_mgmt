@@ -1,0 +1,75 @@
+---
+title: Parametric OpenSCAD models
+description: The .scad customizer, live preview, and generating stored .3mf variants
+---
+
+# Parametric OpenSCAD models
+
+A model can carry an OpenSCAD **`.scad` source** as one of its files — uploaded
+directly, or imported (Printables serves `.scad` anonymously; MakerWorld's comes
+through the Bambu-login-gated raw-files download). When the optional **OpenSCAD
+service** is configured, that source becomes interactive: viewers can adjust its
+parameters and generate customized `.3mf` files, the same idea as MakerWorld's
+or Thingiverse's Customizer.
+
+## The customizer
+
+A `.scad` file gets a **"Customize"** button (for any signed-in viewer) that
+opens a full-page customizer: a **parameter rail** beside a **live 3D preview**.
+
+- **The parameters come from the source itself.** The rail is built by parsing
+  the OpenSCAD **customizer comments** in the `.scad` file — the
+  `// [Dropdown]`, `/* [Section] */`, `/* [Hidden] */` annotations OpenSCAD's
+  own Customizer uses. Parameters marked hidden stay hidden; annotations Print
+  Vault doesn't recognize degrade to a plain input rather than being dropped.
+  (The source is the only schema — the platform APIs don't expose the parameter
+  definitions separately.)
+- **The preview updates live.** As you change a parameter, the customizer asks
+  the service to render an STL and shows it in a three.js viewport. The preview
+  is **ephemeral** — nothing is stored, changes are debounced, and stale renders
+  are dropped — so you can dial in values freely before committing to anything.
+
+## Generating a variant
+
+**"Generate .3mf"** renders the current parameter set through the OpenSCAD
+service and **stores the result** as a new file on the model — a *generated
+variant*, nested under its `.scad` source in the file list.
+
+Why store it rather than just download it? Because only stored files get
+[print estimates](/features/slicing) and [slicer deep
+links](/features/slicing#open-in-slicer) — a generated variant behaves like any
+other uploaded `.3mf` from there on.
+
+Things to know:
+
+- **Identical parameter sets are deduplicated** — generating the same
+  configuration twice reuses the existing variant instead of piling up copies.
+- **Variants are capped at 20 per source.**
+- **Any signed-in user can generate a variant** (it's a shared render on the
+  model). A variant can be **deleted** by whoever generated it or by the model's
+  owner.
+- **Variants are excluded from [version snapshots](/features/versioning)** — they
+  are additive and cheap to regenerate, so they aren't part of the model's
+  history, and their bytes are deleted when the variant or its `.scad` source is
+  removed.
+- Renders are recentered onto the plate automatically (OpenSCAD centers geometry
+  on the origin), so a generated `.3mf` slices without manual repositioning.
+
+## Limitations and safety
+
+- **Single-file projects only.** A `.scad` that pulls in other files via
+  `import()`, `surface()`, or an `include`/`use` outside the bundled libraries
+  is **rejected** — multi-file OpenSCAD projects aren't supported. The service
+  ships common libraries (BOSL2, MCAD) so sources that depend on those still
+  render.
+- **Parameter values are sandboxed.** Values only reach OpenSCAD as a
+  parameter-set JSON (never spliced into the command line), and they're clamped
+  against the parsed schema before rendering — a value can't escape its declared
+  range or type.
+- **The render service is resource-bounded.** OpenSCAD/CGAL can consume
+  unbounded memory on a pathological model, so the service runs non-root with a
+  hard timeout and memory/process limits; a runaway render fails cleanly instead
+  of taking the box down.
+- **The whole feature is optional.** Without `OPENSCAD_URL`
+  ([configuration](/configuration#optional-services)), the Customize button and
+  the customizer UI simply don't appear, and `.scad` files are plain downloads.

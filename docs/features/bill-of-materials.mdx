@@ -1,0 +1,48 @@
+---
+title: Bill of materials
+description: Per-model parts lists with section grouping and CSV import/export
+---
+
+# Bill of materials
+
+A model can carry a **bill of materials (BOM)** — the non-printed parts a build
+needs: screws, inserts, magnets, electronics, and so on. Each item has a
+**name**, a **quantity**, and optional **link** and **image** URLs. Items can be
+grouped under **section headings** ("Hardware", "Electronics", …); ungrouped
+items are allowed too.
+
+The BOM is edited in the create wizard and on the model page (collaboratively,
+like any other model field), and downloaded as CSV from the model page.
+
+## Limits and validation
+
+- A BOM holds at most **200 items**.
+- **Names** are capped at 200 characters; **quantities** are free-form text
+  (e.g. `4`, `2 × M3`) capped at 50 characters and default to `1` when left
+  blank. Section headings are capped at 100 characters.
+- **Link and image URLs must be `http(s)`** — any other scheme is rejected when
+  saving, so a `javascript:` or `file:` URL can't slip into a rendered link.
+- Blank rows are skipped rather than causing an error, so a stray empty line in
+  an imported CSV is harmless.
+
+## CSV import and export
+
+The create wizard accepts a **CSV upload** to populate the BOM, and the model
+page offers a **CSV download** of the current list. The download always writes a
+`name,quantity,link,image` header with CRLF line endings and proper quoting.
+
+Import is forgiving about shape:
+
+- The **first row may be a header**. Column names are matched
+  case-insensitively through a set of aliases — `name`/`item`/`part`,
+  `quantity`/`qty`/`amount`/`count`, `link`/`url`, and
+  `image`/`image_url`/`picture`. If no cell in the first row looks like a known
+  header, the file is treated as having no header row and columns are read
+  positionally as `name, quantity, link, image`.
+- A leading UTF-8 byte-order mark is stripped, and the parser handles quoted
+  fields, escaped quotes, and newlines inside fields (RFC 4180).
+
+**CSV is a flat format: it does not carry section grouping.** Sections you
+create in the editor are preserved in the model itself, but exporting to CSV
+drops them and importing a CSV produces an ungrouped list. Round-trip the data
+through the editor if you need the grouping to survive.
