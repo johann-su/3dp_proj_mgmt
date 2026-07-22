@@ -1,0 +1,318 @@
+---
+title: API reference
+description: The HTTP endpoints under /api that the web app exposes — auth, file upload/download, platform import, model sync, and OpenSCAD customization
+---
+
+# API reference
+
+This page documents the HTTP endpoints Print Vault exposes under `/api`. They
+are the same endpoints the browser UI calls — **not a separate, stable public
+API**. There is no versioning guarantee and no API-key mechanism: treat them as
+internal to the app and expect them to change alongside it.
+
+A few conventions hold across the whole surface:
+
+- **Base URL.** Every path below is relative to your deployment's public origin
+  (`BETTER_AUTH_URL`, e.g. `https://models.example.com`) — so
+  `POST /api/import` means `POST https://models.example.com/api/import`.
+- **Authentication is by session cookie.** Almost every endpoint requires a
+  signed-in [session](/roles) and returns `401 {"error":"Unauthorized"}`
+  without one — the whole catalog is private. The only alternative credential
+  is the **signed file token** accepted by the file-serving routes (for the
+  cookie-less consumers: the image optimizer and slicer deep links); it is
+  minted by the app, not something a client requests. There is no way to
+  authenticate a programmatic client other than carrying a real session cookie.
+- **JSON in and out.** Request and response bodies are JSON unless noted (file
+  uploads send raw bytes; downloads and the STL preview return binary; the BOM
+  export returns CSV). Errors are `{ "error": "<message>" }` with a matching
+  status code.
+- **This is not the whole surface.** Most mutations — creating and editing
+  models and collections, trash and restore, user roles, connecting Bambu/
+  Onshape accounts — run through **Next.js Server Actions**, not REST routes,
+  so they don't appear here. This page covers the `/api/*` routes only.
+
+## Authentication
+
+### `GET|POST /api/auth/*`
+
+All authentication is delegated to [Better Auth](https://www.better-auth.com/),
+which mounts its own handler under this catch-all: email/password sign-up and
+sign-in, sign-out, the session endpoint, and the [OIDC single sign-on](/sso)
+authorize/callback when configured. Request and response shapes are Better
+Auth's own; the app does not add routes here. Self-registration can be turned
+off with `DISABLE_SIGNUP` (see [Configuration](/configuration)).
+
+## File uploads & downloads
+
+### `POST /api/upload`
+
+Stages a single uploaded file into S3 under an unguessable `uploads/…` key and
+returns a descriptor. This is the first half of the create/edit flow — the
+returned `key` is later committed to a model by a server action. The upload is
+**streamed**, so large `.3mf` files never buffer in memory.
+
+- **Query params** — `filename` (required) and `kind` (required, one of
+  `model` | `image` | `pdf`).
+- **Body** — the raw file bytes.
+- The extension must be allowed for the `kind` (e.g. an image `kind` rejects a
+  `.3mf`); the served content type is derived from the extension, never the
+  request header.
+
+| Status | Meaning |
+|---|---|
+| `200` | `{ key, filename, size, contentType, kind }` |
+| `400` | Missing `filename`/`kind`, a disallowed extension, or an empty body |
+| `401` | Not signed in |
+
+### `GET /api/uploads/preview?key=<key>`
+
+Serves a **staged image** (an `uploads/…` object) so the create form can show a
+thumbnail of a file imported by URL before the model exists. Restricted to
+images with a well-formed staging key — it is deliberately not a general S3
+proxy. Returns the image inline, or `404` for a non-image, malformed key, or
+missing object.
+
+### `GET /api/files/<id>`
+
+Serves a stored model file, image, or PDF by its file `id` (a UUID). This is the
+main download/serve route.
+
+- **Auth** — a **session cookie** *or* a signed file token via `?token=<token>`.
+- **Query params** — `token` (optional; the cookie-less credential) and
+  `download=1` (optional; forces an attachment download of an otherwise-inline
+  image/PDF).
+- Model files are always sent as an attachment; images and PDFs stream inline
+  unless `download=1`. The content type comes from the file's allowlisted
+  extension (never a stored value) and downloads are counted as a metric.
+
+| Status | Meaning |
+|---|---|
+| `200` | The file bytes, with `Content-Disposition` and `Content-Type` set |
+| `401` | No session and no valid token |
+| `404` | Bad UUID or unknown file |
+
+### `GET /api/files/<id>/<token>/<filename>`
+
+The same file as `/api/files/<id>`, addressed with the token as a **path
+segment** and a trailing filename. This form exists for **slicer deep links**
+(OrcaSlicer, Bambu Studio), which download the URL without cookies and derive a
+real `.3mf` name from the last path segment — and which don't strip the query
+string, so the token can't live in `?token=`. The `id` UUID is authoritative;
+the `filename` is cosmetic. See
+[Open in slicer](/features/slicing#open-in-slicer).
+
+### `GET /api/files/versions/<versionId>/<index>`
+
+Serves one file of a **version snapshot** (see [Versioning](/features/versioning))
+for the version-preview page. Historical files have no stable `id`, so they are
+addressed as `(version row, index into that snapshot's file list)` — both
+immutable. Auth mirrors `/api/files/<id>` (session cookie or `?token=`);
+`download=1` forces an attachment. Snapshot views are **not** counted as
+downloads. Returns `404` for a non-positive/out-of-range index or unknown
+version.
+
+## Platform import
+
+See [MakerWorld & Printables](/integrations/makerworld-printables) and
+[Onshape](/integrations/onshape) for what these importers do; the contracts here
+are just the HTTP shapes.
+
+### `POST /api/import`
+
+Imports a **single model** from a MakerWorld, Printables, or Onshape URL. It
+resolves and stages the files, then returns a *draft* the create form
+pre-fills — nothing is saved to the catalog until the user completes the form.
+The route is multi-phase to handle confirmation prompts and Onshape's tab
+picker; the client re-POSTs with extra fields as prompted.
+
+**Request body**
+
+| Field | Type | Notes |
+|---|---|---|
+| `url` | string | Required. A MakerWorld, Printables, or Onshape model URL (tracking query params are stripped). |
+| `confirm` | boolean | Set on the re-POST after the user agrees to import a model with many files. |
+| `onshapeElements` | string[] | Onshape only: the element (tab) ids picked in the selection dialog. |
+| `onshapeWvm` / `onshapeWvmId` | string | Onshape only: a branch (`w`) or version (`v`) and its id, overriding the URL's pin. |
+
+**Responses** — all `200` unless the URL is unusable; the body's shape tells the
+client which phase it's in:
+
+- **Draft** (the success case) — `{ source, sourceUrl, title, description, tags,
+  categories, files, bom, warnings, onshapeMicroversion }`.
+- **Needs confirmation** — `{ needsConfirmation: true, fileCount, title }` when
+  the model has a lot of files. Re-POST with `confirm: true`.
+- **Needs Onshape selection** — `{ needsOnshapeSelection: true, title, tabs,
+  maxTabs, branches, selected }` for a multi-tab or multi-branch document
+  (`maxTabs` is the server-side export cap, currently **8**). Re-POST with
+  `onshapeElements` (and optionally a branch).
+
+| Status | Meaning |
+|---|---|
+| `400` | Invalid/unsupported URL, or a MakerWorld *collection* link (use the collection import) |
+| `401` | Not signed in |
+| `502` | The source platform rejected the request (`ImportError` — message is safe to show) |
+| `500` | Unexpected import failure |
+
+### `POST /api/import/collection`
+
+Starts a **background import of a whole MakerWorld collection**. It validates the
+URL and the user's Bambu connection, creates a local collection plus an
+`import_jobs` row, kicks off the runner, and returns immediately — progress is
+polled from `GET /api/import-jobs`.
+
+- **Body** — `{ url }` (a MakerWorld collection URL).
+- **`200`** — `{ jobId, collectionId, title, total }`.
+- **`400`** invalid URL · **`401`** not signed in · **`502`** platform error ·
+  **`500`** unexpected failure. A validation failure from the job starter (e.g.
+  no Bambu account) comes back as `{ error }` with its own status.
+
+### `GET /api/import-jobs`
+
+Returns the signed-in user's **3 most recent import jobs**, newest first —
+polled by the header progress indicator. On each poll it also self-heals:
+`running` jobs whose runner has gone silent for over 10 minutes (a server
+restart) are marked `failed`.
+
+- **`200`** — `{ jobs: [{ id, status, sourceUrl, collectionId, total,
+  completed, failed, skipped, currentItem, error, warnings, createdAt }] }`.
+  `status` is one of `running` | `completed` | `failed` | `canceled`.
+- **`401`** not signed in.
+
+### `POST /api/import-jobs/<id>/cancel`
+
+Flags a **running** job as `canceled`; its runner notices between designs and
+stops. Models imported so far are kept. Only the job's owner can cancel it.
+
+- **`200`** — `{ ok: true }`.
+- **`404`** — no *running* job with that id owned by the caller · **`401`** not
+  signed in.
+
+## Models
+
+### `GET /api/models/<id>/bom`
+
+Downloads a model's [bill of materials](/features/bill-of-materials) as a **CSV**
+file (`Content-Disposition: attachment`, filename derived from the model title).
+Reached from a download link on the model page, so it requires the session
+cookie. Returns `404` for a bad UUID, an unknown model, or a model with an empty
+BOM; `401` when not signed in.
+
+### `POST /api/models/<id>/customize`
+
+Renders a [parametric OpenSCAD](/features/parametric) `.scad` file with the
+submitted customizer values and stores the result as a generated `.3mf`
+**variant** of that file. Open to any signed-in user (the variant lands on the
+owner's model); the generator is recorded so a non-owner can later delete their
+own variants. Re-submitting an identical parameter set returns the existing
+variant instead of re-rendering.
+
+- **Body** — `{ fileId, values }` where `fileId` is the `.scad` file and
+  `values` is a map of customizer parameter → value (coerced against the file's
+  parsed schema).
+
+| Status | Meaning |
+|---|---|
+| `200` | `{ status: "created", fileId, filename }` or `{ status: "exists", fileId, filename }` |
+| `400` | Not a `.scad` file of this model, no customizer parameters, or a bad body |
+| `401` | Not signed in |
+| `404` | Model not found |
+| `409` | This source already has the max **20** generated variants — delete one first |
+| `422` | The `.scad` references external files, is too large, or OpenSCAD rejected it |
+| `502` | The OpenSCAD service failed or is unavailable |
+
+### `DELETE /api/models/<id>/customize`
+
+Deletes **one generated variant** (never the `.scad` source itself). The model
+owner (or a [moderator/admin](/roles)) can delete any variant; anyone else only
+the variants they generated.
+
+- **Body** — `{ fileId }` (the variant to delete).
+- **`200`** `{ status: "deleted" }` · **`400`** not a generated variant of this
+  model · **`403`** not allowed · **`404`** model not found · **`401`** not
+  signed in.
+
+### `POST /api/models/<id>/customize/preview`
+
+Renders the same `.scad` + `values` as `customize` but streams the result
+straight back as **binary STL** (`application/octet-stream`, `no-store`) for the
+customize page's 3D preview. Nothing is stored — previews don't count against the
+variant cap or leave S3 objects behind. Errors match `customize`
+(`400`/`401`/`404`/`422`/`502`).
+
+### `POST /api/models/<id>/onshape-sync`
+
+Re-exports the model's [Onshape](/integrations/onshape) source and replaces the
+files that came from Onshape, keeping the pre-sync state as a version. Open to
+any signed-in user (uses **their own** Onshape connection). Two-phase: a POST
+with no `addElementIds` is the **preview**; when the document has gained tabs the
+model doesn't carry, it answers `needs-selection` and the client re-POSTs with
+the picked tabs (an empty array declines).
+
+- **Body** — `{ addElementIds? }` (the new tabs to add on the apply POST).
+
+| Status | Body / meaning |
+|---|---|
+| `200` | `{ status: "up-to-date", message }`, `{ status: "needs-selection", newTabs, microversionChanged, maxAdd }`, or `{ status: "updated", files, warnings }` |
+| `400` | Not linked to an Onshape document, or no connected Onshape account |
+| `401` | Not signed in |
+| `404` | Model not found |
+| `502` | Onshape API/export error |
+| `500` | Unexpected sync failure |
+
+Version pins (`/v/…`) are immutable and always answer `up-to-date`.
+
+### `POST /api/models/<id>/source-sync`
+
+Syncs a model imported from **MakerWorld or Printables** against the platform's
+current file list. Imported files mirror upstream; manual files and all metadata
+are left untouched. Two-phase like Onshape sync: POST without `confirm` returns a
+**preview** of the plan; POST `{ confirm: true }` downloads the new/changed files
+and applies it, keeping the pre-sync state as a version.
+
+- **Body** — `{ confirm? }`.
+
+| Status | Body / meaning |
+|---|---|
+| `200` | `{ status: "up-to-date", message }`, `{ status: "preview", source, toImport, toReplace, toRemove }`, or `{ status: "updated", imported, updated, removed, warnings }` |
+| `400` | Not linked to a MakerWorld/Printables source, or MakerWorld files need a connected Bambu account |
+| `401` | Not signed in |
+| `404` | Model not found |
+| `502` | Every download failed, or a platform error |
+| `500` | Unexpected sync failure |
+
+## Collections
+
+### `POST /api/collections/<id>/sync`
+
+Re-runs a [collection](/features/collections) import against its stored MakerWorld
+source URL. Designs added remotely since the last run import as new models;
+everything already in the library is just re-linked into the collection. **Nothing
+is deleted** — models removed from the remote collection stay local. Open to any
+signed-in user (uses their own Bambu connection); like the collection import it
+runs in the background and returns a job to poll.
+
+- **`200`** — `{ jobId, total }`.
+- **`400`** the collection wasn't imported from MakerWorld · **`404`** collection
+  not found · **`401`** not signed in · **`502`**/**`500`** platform/unexpected
+  error.
+
+## Onshape OAuth
+
+These two routes implement the "Sign in with Onshape" flow (see
+[Onshape integration](/integrations/onshape)). They are browser redirects, not
+JSON endpoints, and are inert unless `ONSHAPE_CLIENT_ID`/`ONSHAPE_CLIENT_SECRET`
+are configured.
+
+### `GET /api/onshape/authorize`
+
+Starts the flow: stores a CSRF `state` in a short-lived cookie and redirects the
+signed-in user to Onshape's consent screen. Redirects to `/sign-in` when not
+signed in, or to `/settings/onshape?error=not-configured` when OAuth isn't set
+up.
+
+### `GET /api/onshape/callback`
+
+Onshape's registered redirect target. Verifies the `state` cookie, exchanges the
+`code` for tokens, and stores them **encrypted** for the signed-in user, then
+redirects to `/settings/onshape`. On failure it redirects there with an `?error=`
+code (`denied`, `state-mismatch`, `connect-failed`, `not-configured`).

@@ -9,6 +9,7 @@ const meta = {
   roles: "User roles",
   integrations: "Integrations",
   development: "Development",
+  "api-reference": "API reference",
   // Dev/agent architecture notes (see AGENTS.md), not operator docs. Hidden
   // here, and nextra/app/[[...mdxPath]]/page.tsx drops the routes from the
   // static export entirely.
