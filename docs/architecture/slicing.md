@@ -76,11 +76,30 @@ Preset bed sizes resolve through the shared `KNOWN_BED_SIZES` lookup
 (`src/lib/printer-beds.ts`) — extend that map, not the presets, when a new
 machine appears.
 
-Once a model's files span more than one printer, the model page's Files card
-(`PrintFilesCard` in `model-file-cards.tsx`) shows a chip row (All + one chip
-per distinct `printer_info.model`, shortened via `shortPrinterLabel`) that
-filters the list to the profiles for one machine — the MakerWorld-style
-"which printer is this profile for" selector. Single-printer models show no
+The dialog's Printers list also manages **printer derivatives**: copies of the
+source `.3mf` patched for other machines, added/removed immediately via `POST`
+/ `DELETE` on the same route. A derivative is named
+`derivativeFilename(source, model, nozzle)` (`fuselage_p1s_04.3mf`; the name
+doubles as the one-per-printer+nozzle duplicate check, capped at 20 per
+source) and is stored as a **generated file** (`generated_from_id` → source),
+deliberately reusing the customizer-variant lifecycle: nested rendering under
+the source (model page and wizard list), FK-cascade removal with the source
+(`updateModel` already deletes generated S3 objects), excluded from version
+snapshots, bytes deleted immediately on removal. The two kinds are told apart
+by `generated_params_hash` (set on scad variants, null on derivatives) —
+scad-variant deletion keeps the customize route's owner-or-generator gate,
+while derivative deletion is open to any session like the rest of editing.
+Derivatives never carry derivatives of their own, and the wizard keeps
+generated files out of its dirty/order/removal bookkeeping entirely
+(`model-form-state.ts` filters on `generatedFromId`).
+
+Once a model's profiles span more than one printer, the model page's Files
+card (`PrintFilesCard` in `model-file-cards.tsx`) shows a chip row (All + one
+chip per distinct `printer_info.model` across files *and* their nested
+generated files, shortened via `shortPrinterLabel`) that filters the list to
+the profiles for one machine — the MakerWorld-style "which printer is this
+profile for" selector. A source file stays visible while any of its
+derivatives matches the selected printer. Single-printer models show no
 chips.
 
 ## "Open in slicer" deep links

@@ -229,12 +229,14 @@ export const modelFiles = pgTable("model_files", {
   filamentGrams: real("filament_grams"),
   sliceError: text("slice_error"),
   printerInfo: jsonb("printer_info").$type<PrinterInfo>(),
-  // Set on a .3mf rendered from a parametric .scad file (see
-  // src/app/api/models/[id]/customize): the source file row, the customizer
-  // values used, and a hash of those values so re-generating an identical
-  // parameter set returns the existing file instead of re-rendering. The FK
-  // cascade removes variant rows with their source, but S3 objects must be
-  // deleted explicitly (updateModel/deleteModel handle that).
+  // Set on generated files: a .3mf rendered from a parametric .scad file
+  // (see src/app/api/models/[id]/customize) or a printer derivative — a copy
+  // of a .3mf patched for another machine (issue #79; the printer-info
+  // route). generatedParams/-Hash are customizer-only (the values used + a
+  // hash so identical parameter sets reuse the existing file); a null hash on
+  // a generated file marks it as a printer derivative. The FK cascade removes
+  // generated rows with their source, but S3 objects must be deleted
+  // explicitly (updateModel/deleteModel handle that).
   generatedFromId: uuid("generated_from_id").references(
     (): AnyPgColumn => modelFiles.id,
     { onDelete: "cascade" },

@@ -25,10 +25,11 @@ version row + snapshot index (both immutable), authenticated like
 deliberately under `/api/files/**` so `images.localPatterns` keeps covering it.
 
 Versions are capped (`VERSION_CAP`, 30/model); pruning deletes only S3 objects
-no remaining snapshot or live row references. Generated OpenSCAD variants are
-excluded from snapshots on purpose (additive, individually deletable, cheap to
-regenerate) — their bytes *are* deleted when their `.scad` source or the
-variant itself is removed. Models predating the feature get their pre-edit
+no remaining snapshot or live row references. Generated files — OpenSCAD
+variants and printer derivatives (issue #79, copies of a `.3mf` patched for
+another machine) — are excluded from snapshots on purpose (additive,
+individually deletable, cheap to regenerate) — their bytes *are* deleted when
+their source file or the generated file itself is removed. Models predating the feature get their pre-edit
 state recorded lazily on the next mutation (`ensureBaselineVersion`) — no data
 migration.
 

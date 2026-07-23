@@ -5,7 +5,7 @@
 // All state lives in ModelForm (model-form.tsx); these components only
 // receive entries and callbacks.
 
-import { useRef, useState } from "react";
+import { Fragment, useRef, useState } from "react";
 import {
   ChevronDown,
   ChevronLeft,
@@ -16,15 +16,18 @@ import {
   GripVertical,
   ImageIcon,
   Pencil,
+  Printer,
   X,
 } from "lucide-react";
 import type { UploadedFile } from "@/app/models/actions";
 import type { PrinterInfo } from "@/db/schema";
+import { shortPrinterLabel } from "@/lib/printer-presets";
 import { ModelFileEditDialog } from "./model-file-edit-dialog";
 import {
   IMAGE_ACCEPT,
   MODEL_ACCEPT,
   splitExtension,
+  type DerivativeFile,
   type ExistingFile,
   type ImageEntry,
   type ModelFileEntry,
@@ -367,6 +370,8 @@ export function ModelFilePicker({
   onReorder,
   printerEditModelId,
   onPrinterInfoSaved,
+  onDerivativeAdded,
+  onDerivativeRemoved,
 }: {
   entries: ModelFileEntry[];
   onAdd: (files: File[]) => void;
@@ -379,6 +384,8 @@ export function ModelFilePicker({
   // yet — renaming still works there via the same dialog.
   printerEditModelId?: string;
   onPrinterInfoSaved?: (key: string, info: PrinterInfo, size: number) => void;
+  onDerivativeAdded?: (key: string, derivative: DerivativeFile) => void;
+  onDerivativeRemoved?: (key: string, derivativeId: string) => void;
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [draggedKey, setDraggedKey] = useState<string | null>(null);
@@ -413,23 +420,47 @@ export function ModelFilePicker({
       {entries.length > 0 && (
         <ul className="grid gap-1">
           {entries.map((entry, i) => (
-            <ModelFileRow
-              key={entry.key}
-              entry={entry}
-              isFirst={i === 0}
-              isLast={i === entries.length - 1}
-              dragging={draggedKey === entry.key}
-              onDragStart={() => setDraggedKey(entry.key)}
-              onDragEnd={() => setDraggedKey(null)}
-              onDragEnter={() => {
-                if (draggedKey && draggedKey !== entry.key) {
-                  onReorder(draggedKey, entry.key);
-                }
-              }}
-              onMove={(direction) => onMove(entry.key, direction)}
-              onRemove={() => onRemove(entry.key)}
-              onEdit={() => setEditKey(entry.key)}
-            />
+            <Fragment key={entry.key}>
+              <ModelFileRow
+                entry={entry}
+                isFirst={i === 0}
+                isLast={i === entries.length - 1}
+                dragging={draggedKey === entry.key}
+                onDragStart={() => setDraggedKey(entry.key)}
+                onDragEnd={() => setDraggedKey(null)}
+                onDragEnter={() => {
+                  if (draggedKey && draggedKey !== entry.key) {
+                    onReorder(draggedKey, entry.key);
+                  }
+                }}
+                onMove={(direction) => onMove(entry.key, direction)}
+                onRemove={() => onRemove(entry.key)}
+                onEdit={() => setEditKey(entry.key)}
+              />
+              {/* Generated files (printer derivatives, scad variants) nest
+                  under their source, mirroring the model page. Managed from
+                  the source row's edit dialog, so no per-row actions here. */}
+              {entry.type === "existing" &&
+                entry.derivatives.map((derivative) => (
+                  <li
+                    key={derivative.id}
+                    className="ml-7 flex min-w-0 items-center gap-2 rounded-md border px-3 py-1.5 text-sm"
+                  >
+                    <Printer className="size-3.5 shrink-0 text-muted-foreground" />
+                    <span className="truncate">{derivative.filename}</span>
+                    {derivative.printerInfo?.model && (
+                      <span className="shrink-0 text-xs text-muted-foreground">
+                        {shortPrinterLabel(derivative.printerInfo.model)}
+                        {derivative.printerInfo.nozzleDiameterMm != null &&
+                          ` · ${derivative.printerInfo.nozzleDiameterMm} mm`}
+                      </span>
+                    )}
+                    <span className="text-muted-foreground ml-auto shrink-0">
+                      {formatBytes(derivative.size)}
+                    </span>
+                  </li>
+                ))}
+            </Fragment>
           ))}
         </ul>
       )}
@@ -445,6 +476,7 @@ export function ModelFilePicker({
                 modelId: printerEditModelId,
                 fileId: editEntry.id,
                 current: editEntry.printerInfo,
+                derivatives: editEntry.derivatives,
               }
               : undefined
           }
@@ -452,6 +484,12 @@ export function ModelFilePicker({
           onRename={(name) => onRename(editEntry.key, name)}
           onPrinterSaved={(info, size) =>
             onPrinterInfoSaved?.(editEntry.key, info, size)
+          }
+          onDerivativeAdded={(derivative) =>
+            onDerivativeAdded?.(editEntry.key, derivative)
+          }
+          onDerivativeRemoved={(derivativeId) =>
+            onDerivativeRemoved?.(editEntry.key, derivativeId)
           }
         />
       )}

@@ -349,14 +349,16 @@ export function PrintFilesCard({
   modelId: string | null;
 }) {
   const [open, setOpen] = useState(true);
-  // A model may carry one profile per printer (several .3mf files, each set
-  // up for a different machine — issue #79); the chip row filters the list by
-  // the printer a file targets. Only shown once the files actually span more
-  // than one printer, so single-printer models stay uncluttered.
+  // A model may carry one profile per printer (several .3mf files, or
+  // printer derivatives nested under one file — issue #79); the chip row
+  // filters the list by the printer a profile targets. Only shown once the
+  // profiles actually span more than one printer, so single-printer models
+  // stay uncluttered.
   const [printerFilter, setPrinterFilter] = useState<string | null>(null);
   const printerModels = [
     ...new Set(
       printFiles
+        .flatMap((f) => [f, ...(f.variants ?? [])])
         .map((f) => f.printer?.model)
         .filter((m): m is string => m !== undefined),
     ),
@@ -364,9 +366,14 @@ export function PrintFilesCard({
   const hasUnassigned = printFiles.some((f) => !f.printer?.model);
   const showPrinterFilter =
     printerModels.length >= 2 || (printerModels.length === 1 && hasUnassigned);
+  // A file stays visible when it or one of its nested derivatives targets the
+  // selected printer; the derivative list narrows to the matching ones.
+  const matchesFilter = (f: PrintFileData) => f.printer?.model === printerFilter;
   const visibleFiles =
     showPrinterFilter && printerFilter !== null
-      ? printFiles.filter((f) => f.printer?.model === printerFilter)
+      ? printFiles
+          .filter((f) => matchesFilter(f) || f.variants?.some(matchesFilter))
+          .map((f) => ({ ...f, variants: f.variants?.filter(matchesFilter) }))
       : printFiles;
 
   const filterChip = (label: string, value: string | null) => {

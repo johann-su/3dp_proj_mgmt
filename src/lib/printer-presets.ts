@@ -33,3 +33,22 @@ export const DEFAULT_NOZZLE_MM = 0.4;
 export function shortPrinterLabel(model: string): string {
   return model.replace(/^bambu\s*lab\s+/i, "").trim() || model;
 }
+
+// Filename for a printer derivative (a copy of a .3mf patched for another
+// machine): "fuselage.3mf" + P1S/0.4 → "fuselage_p1s_04.3mf". The suffix uses
+// the short label so siblings stay tellable-apart at a glance, and doubles as
+// the duplicate check — one derivative per printer+nozzle per source file.
+export function derivativeFilename(
+  sourceFilename: string,
+  model: string,
+  nozzleDiameterMm?: number,
+): string {
+  const base = sourceFilename.replace(/\.3mf$/i, "");
+  const slug = shortPrinterLabel(model)
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "");
+  const nozzle =
+    nozzleDiameterMm !== undefined ? `_${String(nozzleDiameterMm).replace(".", "")}` : "";
+  return `${base}_${slug}${nozzle}.3mf`.slice(0, 255);
+}
