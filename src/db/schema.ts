@@ -353,6 +353,26 @@ export const modelTags = pgTable(
   (t) => [primaryKey({ columns: [t.modelId, t.tagId] })],
 );
 
+// Per-user "likes"/favorites: a signed-in user can like any model for quick
+// access from /models/liked. Like collection_models, membership is a join row
+// keyed by (user, model); the row's created_at orders the liked list (most
+// recently liked first). Cascades with either side, so deleting a user or a
+// model drops its likes. Trashed models keep their like rows but are hidden
+// from the listing (the /models/liked query filters deleted_at IS NULL).
+export const modelLikes = pgTable(
+  "model_likes",
+  {
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    modelId: uuid("model_id")
+      .notNull()
+      .references(() => models.id, { onDelete: "cascade" }),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (t) => [primaryKey({ columns: [t.userId, t.modelId] })],
+);
+
 export const collections = pgTable("collections", {
   id: uuid("id").primaryKey().defaultRandom(),
   title: text("title").notNull(),
@@ -440,7 +460,13 @@ export const modelsRelations = relations(models, ({ one, many }) => ({
   bomItems: many(bomItems),
   modelTags: many(modelTags),
   collectionModels: many(collectionModels),
+  likes: many(modelLikes),
   versions: many(modelVersions),
+}));
+
+export const modelLikesRelations = relations(modelLikes, ({ one }) => ({
+  model: one(models, { fields: [modelLikes.modelId], references: [models.id] }),
+  user: one(user, { fields: [modelLikes.userId], references: [user.id] }),
 }));
 
 export const modelVersionsRelations = relations(modelVersions, ({ one }) => ({

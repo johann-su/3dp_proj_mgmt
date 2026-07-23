@@ -9,6 +9,7 @@ import {
   CloudDownload,
   FolderOpen,
   FolderPlus,
+  Heart,
   Home,
   LogOut,
   Plus,
@@ -47,6 +48,7 @@ const browseItems = [
   { href: "/search", label: "Search", icon: Search },
   { href: "/models/mine", label: "My Models", icon: Box, auth: true },
   { href: "/collections/mine", label: "My Collections", icon: FolderOpen, auth: true },
+  { href: "/models/liked", label: "Liked", icon: Heart, auth: true },
   { href: "/models/trash", label: "Trash", icon: Trash2, auth: true },
 ];
 

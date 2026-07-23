@@ -32,6 +32,7 @@ import {
 } from "./model-file-cards";
 import { AddToCollection, type CollectionOption } from "./[id]/add-to-collection";
 import { DeleteModelButton } from "./[id]/delete-model-button";
+import { LikeButton } from "./[id]/like-button";
 import { HistoryPanel, type ModelHistoryEntry } from "./[id]/history-panel";
 import { OnshapeSyncButton } from "./[id]/onshape-sync-button";
 import { SourceSyncButton } from "./[id]/source-sync-button";
@@ -65,6 +66,8 @@ export type ModelViewData = {
   // moderator/admin (see canActAsOwner).
   canManage: boolean;
   isLoggedIn: boolean;
+  // Whether the current viewer has liked this model (false in the previews).
+  liked?: boolean;
   collectionOptions: CollectionOption[];
   slicerConfigured: boolean;
   // Edit history, newest first (absent in the create-wizard preview).
@@ -93,6 +96,7 @@ export function ModelView({ data }: { data: ModelViewData }) {
     modelId,
     canManage,
     isLoggedIn,
+    liked,
     collectionOptions,
     slicerConfigured,
     history,
@@ -278,6 +282,7 @@ export function ModelView({ data }: { data: ModelViewData }) {
             <>
               <Separator />
               <div className="flex items-center gap-2">
+                <LikeButton modelId={modelId} initialLiked={liked ?? false} />
                 <ShareButton />
                 <Button asChild variant="outline" size="sm">
                   <Link href={`/models/${modelId}/edit`}>

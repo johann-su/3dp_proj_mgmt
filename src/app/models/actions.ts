@@ -8,6 +8,7 @@ import { db } from "@/db";
 import {
   bomItems,
   modelFiles,
+  modelLikes,
   models,
   modelTags,
   modelVersions,
@@ -583,5 +584,43 @@ export async function revertModelVersion(
 
   revalidatePath("/");
   revalidatePath(`/models/${modelId}`);
+  return {};
+}
+
+// Like/unlike a model for the current user. A like is per-user metadata, not a
+// model mutation, so it deliberately skips the versioning machinery — no
+// snapshot, no S3 bookkeeping. Any signed-in user may like any (non-trashed)
+// model; the liked list lives at /models/liked.
+export async function toggleModelLike(input: {
+  modelId: string;
+  liked: boolean;
+}): Promise<{ error?: string }> {
+  const session = await getSession();
+  if (!session) return { error: "You must be signed in" };
+
+  const model = await db.query.models.findFirst({
+    where: eq(models.id, input.modelId),
+    columns: { id: true, deletedAt: true },
+  });
+  if (!model || model.deletedAt) return { error: "Model not found" };
+
+  if (input.liked) {
+    await db
+      .insert(modelLikes)
+      .values({ userId: session.user.id, modelId: input.modelId })
+      .onConflictDoNothing();
+  } else {
+    await db
+      .delete(modelLikes)
+      .where(
+        and(
+          eq(modelLikes.userId, session.user.id),
+          eq(modelLikes.modelId, input.modelId),
+        ),
+      );
+  }
+
+  revalidatePath(`/models/${input.modelId}`);
+  revalidatePath("/models/liked");
   return {};
 }
