@@ -96,11 +96,13 @@ generated files out of its dirty/order/removal bookkeeping entirely
 Once a model's profiles span more than one printer, the model page's Files
 card (`PrintFilesCard` in `model-file-cards.tsx`) shows a chip row (All + one
 chip per distinct `printer_info.model` across files *and* their nested
-generated files, shortened via `shortPrinterLabel`) that filters the list to
-the profiles for one machine — the MakerWorld-style "which printer is this
-profile for" selector. A source file stays visible while any of its
-derivatives matches the selected printer. Single-printer models show no
-chips.
+generated files, shortened via `shortPrinterLabel`) — the MakerWorld-style
+"which printer is this profile for" selector. "All" keeps the card uncrowded:
+originals render in full, their printer derivatives as compact one-line rows
+(name, printer, download — no slicing detail; scad variants keep full rows). A
+selected chip flattens the list to exactly that printer's profiles as
+full-detail rows, without their source as context. Single-printer models show
+no chips.
 
 ## "Open in slicer" deep links
 

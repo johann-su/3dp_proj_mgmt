@@ -265,6 +265,10 @@ export default async function ModelPage({
                 .map(([key, value]) => `${key} = ${value}`)
                 .join(", ") || "default parameters"
             : null,
+          // Generated file without customizer params = per-printer copy of
+          // its source (issue #79); the Files card renders those compactly.
+          printerDerivative:
+            file.generatedFromId !== null && file.generatedParamsHash === null,
           // Owner and moderators/admins may delete any variant; anyone else
           // only the ones they generated (generatedBy). Matches the DELETE
           // route's check.

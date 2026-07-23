@@ -70,6 +70,11 @@ export type PrintFileData = {
   // variants generated from this file.
   customizer?: ScadParameterGroup[] | null;
   variants?: PrintFileData[];
+  // A per-printer copy of its source .3mf (issue #79) — rendered compactly
+  // under the source on the default view, and as a full row when its
+  // printer's chip is selected. Scad variants (paramsSummary set) keep full
+  // nested rows.
+  printerDerivative?: boolean;
   // On a generated variant: the customizer values it was rendered with.
   paramsSummary?: string | null;
   // On a generated variant: whether the current viewer may delete it (the
@@ -333,6 +338,48 @@ function PrintFileRow({
   );
 }
 
+// One-line row for a printer derivative on the default ("All") view: name,
+// printer and download only — the full slicing detail lives on its printer's
+// chip view, keeping the card uncrowded.
+function CompactFileRow({
+  file,
+  deletable,
+}: {
+  file: PrintFileData;
+  deletable?: { modelId: string };
+}) {
+  return (
+    <div className="flex min-w-0 items-center gap-2 border rounded-md px-3 py-1.5">
+      <Printer className="size-3.5 shrink-0 text-muted-foreground" />
+      <span className="truncate text-sm">{file.filename}</span>
+      {file.printer?.model && (
+        <span className="shrink-0 text-xs text-muted-foreground">
+          {shortPrinterLabel(file.printer.model)}
+          {file.printer.nozzleDiameterMm != null &&
+            ` · ${file.printer.nozzleDiameterMm} mm`}
+        </span>
+      )}
+      <span className="ml-auto shrink-0 text-xs text-muted-foreground">
+        {formatBytes(file.size)}
+      </span>
+      {deletable && file.id && (
+        <DeleteVariantButton
+          modelId={deletable.modelId}
+          fileId={file.id}
+          filename={file.filename}
+        />
+      )}
+      {file.id && file.downloadToken && (
+        <FileDownloadMenu
+          fileId={file.id}
+          token={file.downloadToken}
+          filename={file.filename}
+        />
+      )}
+    </div>
+  );
+}
+
 export function PrintFilesCard({
   printFiles,
   sourceName,
@@ -366,15 +413,17 @@ export function PrintFilesCard({
   const hasUnassigned = printFiles.some((f) => !f.printer?.model);
   const showPrinterFilter =
     printerModels.length >= 2 || (printerModels.length === 1 && hasUnassigned);
-  // A file stays visible when it or one of its nested derivatives targets the
-  // selected printer; the derivative list narrows to the matching ones.
+  // A selected chip shows exactly that printer's profiles — originals and
+  // derivatives alike, flattened to full-detail rows without their source as
+  // context. "All" shows the originals in full with their derivatives as
+  // compact one-liners.
   const matchesFilter = (f: PrintFileData) => f.printer?.model === printerFilter;
-  const visibleFiles =
+  const filteredProfiles =
     showPrinterFilter && printerFilter !== null
-      ? printFiles
-          .filter((f) => matchesFilter(f) || f.variants?.some(matchesFilter))
-          .map((f) => ({ ...f, variants: f.variants?.filter(matchesFilter) }))
-      : printFiles;
+      ? printFiles.flatMap((f) => [f, ...(f.variants ?? [])]).filter(matchesFilter)
+      : null;
+  const isGenerated = (f: PrintFileData) =>
+    !!f.printerDerivative || f.paramsSummary != null;
 
   const filterChip = (label: string, value: string | null) => {
     const active = printerFilter === value;
@@ -425,50 +474,85 @@ export function PrintFilesCard({
                 )}
               </div>
             )}
-            {visibleFiles.map((file, index) => (
-              <div key={file.id ?? `${file.filename}-${index}`} className="grid gap-2">
-                <PrintFileRow
-                  file={file}
-                  sourceName={sourceName}
-                  makerworldUrl={makerworldUrl}
-                  slicerConfigured={slicerConfigured}
-                />
-                {file.customizer &&
-                  file.customizer.length > 0 &&
-                  modelId &&
-                  file.id && (
-                    <Button asChild size="lg">
-                      <Link href={`/models/${modelId}/customize/${file.id}`}>
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img
-                          src="/customize.svg"
-                          alt=""
-                          className="size-6 dark:invert-0 invert"
-                        />
-                        Customize
-                      </Link>
-                    </Button>
-                  )}
-                {file.variants && file.variants.length > 0 && (
-                  <div className="grid gap-2 border-l-2 pl-3 ml-1">
-                    {file.variants.map((variant) => (
+            {filteredProfiles !== null
+              ? filteredProfiles.map((file, index) => (
+                  <PrintFileRow
+                    key={file.id ?? `${file.filename}-${index}`}
+                    file={file}
+                    sourceName={sourceName}
+                    makerworldUrl={makerworldUrl}
+                    slicerConfigured={slicerConfigured}
+                    deletable={
+                      isGenerated(file) && file.deletableByViewer && modelId
+                        ? { modelId }
+                        : undefined
+                    }
+                  />
+                ))
+              : printFiles.map((file, index) => {
+                  const scadVariants =
+                    file.variants?.filter((v) => !v.printerDerivative) ?? [];
+                  const derivatives =
+                    file.variants?.filter((v) => v.printerDerivative) ?? [];
+                  return (
+                    <div
+                      key={file.id ?? `${file.filename}-${index}`}
+                      className="grid gap-2"
+                    >
                       <PrintFileRow
-                        key={variant.id ?? variant.filename}
-                        file={variant}
+                        file={file}
                         sourceName={sourceName}
                         makerworldUrl={makerworldUrl}
                         slicerConfigured={slicerConfigured}
-                        deletable={
-                          variant.deletableByViewer && modelId
-                            ? { modelId }
-                            : undefined
-                        }
                       />
-                    ))}
-                  </div>
-                )}
-              </div>
-            ))}
+                      {file.customizer &&
+                        file.customizer.length > 0 &&
+                        modelId &&
+                        file.id && (
+                          <Button asChild size="lg">
+                            <Link href={`/models/${modelId}/customize/${file.id}`}>
+                              {/* eslint-disable-next-line @next/next/no-img-element */}
+                              <img
+                                src="/customize.svg"
+                                alt=""
+                                className="size-6 dark:invert-0 invert"
+                              />
+                              Customize
+                            </Link>
+                          </Button>
+                        )}
+                      {(scadVariants.length > 0 || derivatives.length > 0) && (
+                        <div className="grid gap-2 border-l-2 pl-3 ml-1">
+                          {scadVariants.map((variant) => (
+                            <PrintFileRow
+                              key={variant.id ?? variant.filename}
+                              file={variant}
+                              sourceName={sourceName}
+                              makerworldUrl={makerworldUrl}
+                              slicerConfigured={slicerConfigured}
+                              deletable={
+                                variant.deletableByViewer && modelId
+                                  ? { modelId }
+                                  : undefined
+                              }
+                            />
+                          ))}
+                          {derivatives.map((derivative) => (
+                            <CompactFileRow
+                              key={derivative.id ?? derivative.filename}
+                              file={derivative}
+                              deletable={
+                                derivative.deletableByViewer && modelId
+                                  ? { modelId }
+                                  : undefined
+                              }
+                            />
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
           </CardContent>
         </CollapsibleContent>
       </Card>

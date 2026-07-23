@@ -41,6 +41,7 @@ function existingModelEntry(id: string, filename: string): ModelFileEntry {
     filename,
     size: 10,
     printerInfo: null,
+    derivatives: [],
   };
 }
 
