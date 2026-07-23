@@ -2,7 +2,13 @@ import { notFound, redirect } from "next/navigation";
 import { after } from "next/server";
 import { and, asc, eq, inArray } from "drizzle-orm";
 import { db } from "@/db";
-import { collectionModels, collections, models, modelVersions } from "@/db/schema";
+import {
+  collectionModels,
+  collections,
+  modelLikes,
+  models,
+  modelVersions,
+} from "@/db/schema";
 import { buildSnapshot, summarizeVersionChange } from "@/lib/version-snapshot";
 import { getSession, signInRedirect } from "@/lib/auth";
 import { canActAsOwner } from "@/lib/roles";
@@ -193,6 +199,15 @@ export default async function ModelPage({
     }));
   }
 
+  // Whether the current viewer has liked this model, for the Like button.
+  const liked = !!(await db.query.modelLikes.findFirst({
+    where: and(
+      eq(modelLikes.userId, session.user.id),
+      eq(modelLikes.modelId, model.id),
+    ),
+    columns: { modelId: true },
+  }));
+
   const data: ModelViewData = {
     title: model.title,
     description: model.description,
@@ -277,6 +292,7 @@ export default async function ModelPage({
     modelId: model.id,
     canManage,
     isLoggedIn: !!session,
+    liked,
     collectionOptions,
     slicerConfigured,
     history,

@@ -28,7 +28,9 @@ Slicing runs in the background after upload (`after()` in the model actions,
 project was set up for (`printer_info`: printer model, nozzle, build plate,
 used filaments, and physical bed size — the latter parsed from the embedded
 `printable_area`/`bed_shape` polygon, or a known-model lookup, and used to draw
-the 3D preview's plate at real dimensions, issue #80), which the model page
+the 3D preview's plate at real dimensions, issue #80; the preview's plate-size
+dropdown can swap in any of the `BED_PRESETS` in `src/lib/printer-beds.ts` to
+check fit against another printer), which the model page
 shows per file. Slicer-derived numbers
 are still approximations (PrusaSlicer's time estimator, not the printer's
 firmware) and shown with a `~` prefix; files PrusaSlicer cannot slice are
