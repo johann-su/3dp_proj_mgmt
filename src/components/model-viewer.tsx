@@ -4,8 +4,19 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { ThreeMFLoader } from "three/addons/loaders/3MFLoader.js";
-import { Loader2, Maximize2, Minimize2, TriangleAlert } from "lucide-react";
+import {
+  ChevronDown,
+  Loader2,
+  Maximize2,
+  Minimize2,
+  TriangleAlert,
+} from "lucide-react";
 import { parsePlateLayout } from "@/lib/threemf-plates";
+import {
+  BED_PRESET_GROUPS,
+  bedForChoice,
+  defaultBedChoice,
+} from "@/lib/printer-beds";
 import { cn } from "@/lib/utils";
 import {
   Tooltip,
@@ -147,13 +158,19 @@ export function ModelViewer({
   const [fileIndex, setFileIndex] = useState(0);
   const [plateIndex, setPlateIndex] = useState(0);
   const [plateNames, setPlateNames] = useState<string[]>([]);
-  // The real plate the geometry sits on, for the size-reference badge; null
-  // when the file has no printer info and the bed is footprint-derived.
-  const [bedInfo, setBedInfo] = useState<{
-    x: number;
-    y: number;
-    oversized: boolean;
-  } | null>(null);
+  // Which build plate the picker is showing: "file" (the config's own bed,
+  // the default), "auto" (footprint square), or a BED_PRESETS id. Mirrored on a
+  // ref so showPlate can read it without re-running the load effect.
+  const [bedChoice, setBedChoice] = useState(() =>
+    defaultBedChoice(files[0]?.bed ?? null),
+  );
+  const bedChoiceRef = useRef(bedChoice);
+  // Tracks which file the picker was last reset for, so switching files snaps
+  // the picker back to that file's own bed (see the render-time reset below).
+  const [choiceForFile, setChoiceForFile] = useState(fileIndex);
+  // Whether the geometry overflows the currently drawn real plate — drives the
+  // picker's warning styling. Always false for the footprint-square fallback.
+  const [oversized, setOversized] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   // Expand the viewport to a full-screen overlay, like the image lightbox. The
@@ -181,10 +198,10 @@ export function ModelViewer({
     // Draw the file's real bed when we know it (.3mf X→world X, Y→world Z), so
     // the plate is a true size reference; otherwise fall back to a square just
     // larger than the plate's footprint (10 mm cells, min 100 mm).
-    const realBed = bedRef.current;
+    const realBed = bedForChoice(bedChoiceRef.current, bedRef.current);
     // A small tolerance keeps a print that exactly fills the bed from tripping
     // the overflow flag.
-    const oversized =
+    const isOversized =
       !!realBed && (size.x > realBed.x + 1 || size.z > realBed.y + 1);
     let bedX: number;
     let bedZ: number;
@@ -195,11 +212,13 @@ export function ModelViewer({
       const footprint = Math.max(size.x, size.z);
       bedX = bedZ = Math.max(100, Math.ceil((footprint * 1.25) / 20) * 20);
     }
-    setBedInfo(realBed ? { x: realBed.x, y: realBed.y, oversized } : null);
+    setOversized(isOversized);
 
     disposeObject(r.bed);
     r.bed.clear();
-    r.bed.add(makeBedGrid(bedX, bedZ, oversized ? GRID_WARN_COLOR : GRID_COLOR));
+    r.bed.add(
+      makeBedGrid(bedX, bedZ, isOversized ? GRID_WARN_COLOR : GRID_COLOR),
+    );
 
     // Frame the whole bed, not just the geometry, so a small print reads as
     // small on a large plate (the point of the real-bed reference).
@@ -213,6 +232,13 @@ export function ModelViewer({
     r.controls.update();
     r.frame();
   }, []);
+
+  // Mirror the picked plate onto a ref so the dependency-free showPlate can read
+  // it (the same pattern as bedRef/platesRef). The onChange handler also sets
+  // this synchronously so its own showPlate call sees the new plate immediately.
+  useEffect(() => {
+    bedChoiceRef.current = bedChoice;
+  }, [bedChoice]);
 
   // Scene lifecycle: created once on mount, torn down on unmount.
   useEffect(() => {
@@ -422,8 +448,19 @@ export function ModelViewer({
     };
   }, [railWidth]);
 
+  // Switching files snaps the picker back to that file's own bed — a preset
+  // picked for the last file shouldn't carry over to one sliced for a different
+  // printer. Done during render (React's "adjust state on prop change" pattern)
+  // rather than in an effect. bedChoiceRef follows via its sync effect, which
+  // lands well before the load effect's async showPlate reads it.
+  if (choiceForFile !== fileIndex) {
+    setChoiceForFile(fileIndex);
+    setBedChoice(defaultBedChoice(files[fileIndex]?.bed ?? null));
+  }
+
   const multiFile = files.length > 1;
   const multiPlate = plateNames.length > 1;
+  const fileBed = files[fileIndex]?.bed ?? null;
 
   return (
     <div
@@ -516,23 +553,51 @@ export function ModelViewer({
         </div>
       )}
 
-      {/* Real build-plate size reference (issue #80): the plate the file was
-          sliced for, flagged when the geometry overflows it. */}
-      {bedInfo && !loading && !error && (
-        <div className="pointer-events-none absolute bottom-2 left-1/2 z-10 -translate-x-1/2">
+      {/* Build-plate picker + size reference (issue #80): defaults to the plate
+          the file was sliced for, and lets you check the model against another
+          common bed. Turns red and warns when the geometry overflows it. */}
+      {!loading && !error && (
+        <div className="absolute bottom-2 left-1/2 z-10 -translate-x-1/2">
           <div
+            title={oversized ? "Model is larger than this plate" : undefined}
             className={cn(
-              "flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium shadow-sm backdrop-blur",
-              bedInfo.oversized
+              "flex items-center gap-1 rounded-full py-1 pl-2.5 pr-1.5 text-xs font-medium shadow-sm backdrop-blur",
+              oversized
                 ? "bg-destructive/90 text-destructive-foreground"
                 : "bg-background/80 text-muted-foreground",
             )}
           >
-            {bedInfo.oversized && <TriangleAlert className="size-3.5" />}
-            <span className="tabular-nums">
-              {bedInfo.oversized ? "Larger than the " : ""}
-              {bedInfo.x} × {bedInfo.y} mm plate
-            </span>
+            {oversized && <TriangleAlert className="size-3.5 shrink-0" />}
+            <div className="relative flex items-center">
+              <select
+                value={bedChoice}
+                onChange={(e) => {
+                  const value = e.target.value;
+                  bedChoiceRef.current = value;
+                  setBedChoice(value);
+                  showPlate(plateIndex);
+                }}
+                aria-label="Build plate size"
+                className="max-w-[min(60vw,16rem)] cursor-pointer appearance-none truncate rounded-full bg-transparent py-0.5 pr-5 tabular-nums focus-visible:outline-none"
+              >
+                {fileBed && (
+                  <option value="file">
+                    From file — {fileBed.x} × {fileBed.y} mm
+                  </option>
+                )}
+                <option value="auto">Fit to model</option>
+                {BED_PRESET_GROUPS.map(([group, presets]) => (
+                  <optgroup key={group} label={group}>
+                    {presets.map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.label} — {p.x} × {p.y} mm
+                      </option>
+                    ))}
+                  </optgroup>
+                ))}
+              </select>
+              <ChevronDown className="pointer-events-none absolute right-1 size-3.5 opacity-70" />
+            </div>
           </div>
         </div>
       )}

@@ -48,7 +48,11 @@ Bambu projects (whose coordinates extend well past a physical bed) still slice.
 - **The build plate is drawn at real size.** Alongside the estimate, the file's
   hardware context is recorded (printer model, nozzle, build plate, filaments,
   and the physical bed dimensions parsed from the file or a known-printer
-  lookup) and used to render the 3D preview's plate at true dimensions.
+  lookup) and used to render the 3D preview's plate at true dimensions. A
+  dropdown in the preview lets you swap in another common plate (A1 mini, the
+  X1/P1/A1 family, H2D, Prusa, Creality, Voron, …) to check whether the model
+  would fit a different printer; the plate turns red when the model overflows
+  it. The picker defaults to the printer the file was sliced for.
 - **Slicing runs in the background** after upload, so it never blocks saving a
   model; the estimate appears once slicing finishes.
 - **Some files are skipped:** legacy `.step` files (from before Onshape imports
