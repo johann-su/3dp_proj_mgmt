@@ -37,6 +37,41 @@ Legacy `.step` files (from before Onshape imports switched to 3MF) and files
 uploaded before this feature are skipped. The service is optional: without
 `SLICER_URL`, unsliced files simply show no estimates and stay `pending`.
 
+## Per-file printer overrides
+
+(issue #79) The model owner — `canActAsOwner`, deliberately *not* the
+collaborative any-session gate, because this rewrites the stored file's bytes —
+can override which printer a `.3mf` is meant for: the edit form's file list has
+a per-row "edit printer info" dialog (Bambu presets from
+`src/lib/printer-presets.ts` + custom fields, defaulting to the file's current
+`printer_info`). Saving hits `PATCH /api/models/[id]/printer-info`
+(`{ fileId, model, nozzleDiameterMm?, bedSizeMm? }`), which:
+
+- stores the profile on `model_files.printer_info` with **`override: true`** —
+  the marker `estimateFile` (`src/lib/slicer.ts`) checks so a re-slice never
+  replaces a manual choice with re-derived values, and the model page badges
+  as "manual";
+- patches the archive itself (`src/lib/threemf-printer.ts`, the same
+  unzip→mutate→zip pattern as `threemf-normalize.ts`): only the printer
+  identity keys (`printer_model`, `printer_settings_id`, `nozzle_diameter`,
+  `printable_area`/`bed_shape`) in `project_settings.config` or
+  `Slic3r_PE.config`, creating a minimal Bambu JSON when the archive embeds no
+  settings — so downloads, deep links and the slicer service's existing
+  whitelist translation all see the chosen printer, with no new override
+  channel in `slicer/server.mjs`;
+- writes the patched bytes to a **new** S3 key inside an
+  `ensureBaselineVersion`/`recordVersion` transaction: snapshot-referenced
+  bytes must stay immutable, and the `threemf-remote` parse cache is keyed by
+  object key. (A replaced *variant* archive's old key is deleted instead —
+  snapshots never reference variants.)
+- re-queues the file (`slice_status = "pending"`) so estimates reflect the new
+  profile. Files the patcher can't rewrite (not a ZIP, unparseable project
+  settings, > 256 MB) keep their bytes and get the DB-only override.
+
+Preset bed sizes resolve through the shared `KNOWN_BED_SIZES` lookup
+(`src/lib/printer-beds.ts`) — extend that map, not the presets, when a new
+machine appears.
+
 ## "Open in slicer" deep links
 
 `src/app/models/[id]/file-download-menu.tsx` hands a `.3mf` to Bambu Studio /

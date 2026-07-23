@@ -67,8 +67,12 @@ async function markFailed(file: FileRow, error: string) {
 async function estimateFile(file: FileRow, slicerUrl: string | undefined) {
   // The hardware the project was set up for (printer, nozzle, plate,
   // filament) is worth keeping even when estimation later fails or the
-  // slicer service is down.
-  const printerInfo = await get3mfPrinterInfo(file.s3Key, file.size);
+  // slicer service is down. A manually overridden profile (issue #79) stays
+  // as stored: re-deriving would drop the override marker, and the archive
+  // was already patched to match the user's choice anyway.
+  const printerInfo = file.printerInfo?.override
+    ? null
+    : await get3mfPrinterInfo(file.s3Key, file.size);
   if (printerInfo) {
     await db
       .update(modelFiles)

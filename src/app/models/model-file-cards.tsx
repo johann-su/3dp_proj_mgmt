@@ -18,6 +18,7 @@ import {
   HardDrive,
   Layers,
   Loader2,
+  PencilLine,
   Printer,
   Trash2,
   TriangleAlert,
@@ -225,6 +226,25 @@ function PrintFileRow({
               {file.printer.nozzleDiameterMm != null &&
                 ` · ${file.printer.nozzleDiameterMm} mm`}
             </span>
+            {file.printer.override && (
+              // Manually chosen profile (issue #79) — make clear this isn't
+              // what the file's own embedded settings say.
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Badge
+                    variant="outline"
+                    className="gap-1 px-1.5 py-0 text-[10px] font-normal text-muted-foreground"
+                  >
+                    <PencilLine className="size-2.5" />
+                    manual
+                  </Badge>
+                </TooltipTrigger>
+                <TooltipContent>
+                  Printer set by hand — overrides the file&apos;s embedded
+                  slicer settings
+                </TooltipContent>
+              </Tooltip>
+            )}
           </div>
         )}
         {(file.printer?.filamentTypes?.length ||

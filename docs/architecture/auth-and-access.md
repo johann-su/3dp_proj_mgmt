@@ -32,7 +32,9 @@ instance serves a trusted group and shared editing is worth more than the risk.
 **Destructive/owner-scoped actions stay owner-gated**: deleting a model
 (`deleteModel`, a soft delete into the owner's trash — see
 [versioning](./versioning.md)) or collection (`deleteCollection`); deleting a
-generated variant is owner-or-its-generator. When adding a mutation, follow
+generated variant is owner-or-its-generator; overriding a file's printer info
+(issue #79) is owner-gated too, because it rewrites the stored file's bytes
+rather than just metadata. When adding a mutation, follow
 this split — open editing to any session, gate only deletion/ownership transfer
 on `canActAsOwner(session.user, record.userId)` (owner, or a moderator/admin
 acting owner-equivalent — see the roles section below).

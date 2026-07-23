@@ -33,7 +33,15 @@ function existingFile(
 }
 
 function existingModelEntry(id: string, filename: string): ModelFileEntry {
-  return { key: id, type: "existing", id, imported: false, filename, size: 10 };
+  return {
+    key: id,
+    type: "existing",
+    id,
+    imported: false,
+    filename,
+    size: 10,
+    printerInfo: null,
+  };
 }
 
 function newModelEntry(filename: string): ModelFileEntry {

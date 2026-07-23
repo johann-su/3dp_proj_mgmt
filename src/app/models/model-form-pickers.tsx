@@ -16,9 +16,12 @@ import {
   GripVertical,
   ImageIcon,
   Pencil,
+  Printer,
   X,
 } from "lucide-react";
 import type { UploadedFile } from "@/app/models/actions";
+import type { PrinterInfo } from "@/db/schema";
+import { PrinterInfoDialog } from "./printer-info-dialog";
 import {
   IMAGE_ACCEPT,
   MODEL_ACCEPT,
@@ -34,6 +37,11 @@ import { formatBytes } from "@/lib/format";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 
 function FileRow({
   name,
@@ -235,6 +243,7 @@ function ModelFileRow({
   onMove,
   onRemove,
   onRename,
+  onEditPrinter,
 }: {
   entry: ModelFileEntry;
   isFirst: boolean;
@@ -246,6 +255,9 @@ function ModelFileRow({
   onMove: (direction: -1 | 1) => void;
   onRemove: () => void;
   onRename: (newName: string) => void;
+  // Opens the printer-info dialog (issue #79) — only set for stored .3mf
+  // rows when the viewer may override printer profiles.
+  onEditPrinter?: () => void;
 }) {
   const [editing, setEditing] = useState(false);
   const [draftBase, setDraftBase] = useState("");
@@ -338,6 +350,23 @@ function ModelFileRow({
       >
         <ChevronDown className="size-3.5" />
       </Button>
+      {onEditPrinter && (
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="size-6 shrink-0"
+              aria-label={`Edit printer info for ${entry.filename}`}
+              onClick={onEditPrinter}
+            >
+              <Printer className="size-3.5" />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>Edit printer info</TooltipContent>
+        </Tooltip>
+      )}
       {!editing && (
         <Button
           type="button"
@@ -374,6 +403,8 @@ export function ModelFilePicker({
   onRename,
   onMove,
   onReorder,
+  printerEditModelId,
+  onPrinterInfoSaved,
 }: {
   entries: ModelFileEntry[];
   onAdd: (files: File[]) => void;
@@ -381,9 +412,20 @@ export function ModelFilePicker({
   onRename: (key: string, name: string) => void;
   onMove: (key: string, direction: -1 | 1) => void;
   onReorder: (key: string, targetKey: string) => void;
+  // Enables the per-row "edit printer info" action (issue #79) on stored .3mf
+  // rows. Unset in create mode (no file rows yet) and for viewers who may not
+  // override printer profiles (owner-gated, unlike the rest of the form).
+  printerEditModelId?: string;
+  onPrinterInfoSaved?: (key: string, info: PrinterInfo, size: number) => void;
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [draggedKey, setDraggedKey] = useState<string | null>(null);
+  const [printerEditKey, setPrinterEditKey] = useState<string | null>(null);
+
+  const printerEditEntry = entries.find(
+    (entry): entry is ModelFileEntry & { type: "existing" } =>
+      entry.key === printerEditKey && entry.type === "existing",
+  );
 
   return (
     <div className="grid gap-2">
@@ -428,9 +470,30 @@ export function ModelFilePicker({
               onMove={(direction) => onMove(entry.key, direction)}
               onRemove={() => onRemove(entry.key)}
               onRename={(name) => onRename(entry.key, name)}
+              onEditPrinter={
+                printerEditModelId &&
+                entry.type === "existing" &&
+                entry.filename.toLowerCase().endsWith(".3mf")
+                  ? () => setPrinterEditKey(entry.key)
+                  : undefined
+              }
             />
           ))}
         </ul>
+      )}
+      {printerEditModelId && printerEditEntry && (
+        <PrinterInfoDialog
+          key={printerEditEntry.key}
+          modelId={printerEditModelId}
+          fileId={printerEditEntry.id}
+          filename={printerEditEntry.filename}
+          current={printerEditEntry.printerInfo}
+          onClose={() => setPrinterEditKey(null)}
+          onSaved={(info, size) => {
+            onPrinterInfoSaved?.(printerEditEntry.key, info, size);
+            setPrinterEditKey(null);
+          }}
+        />
       )}
     </div>
   );

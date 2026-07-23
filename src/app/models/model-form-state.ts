@@ -4,6 +4,7 @@
 // of React so it stays unit-testable (see model-form-state.test.ts).
 
 import type { FileOrderRef, UploadedFile } from "@/app/models/actions";
+import type { PrinterInfo } from "@/db/schema";
 import type { BomItemInput } from "@/lib/bom";
 
 export const MODEL_ACCEPT = ".3mf,.scad";
@@ -18,6 +19,10 @@ export type ExistingFile = {
   // Came with the model's source-platform import (model_files.imported) —
   // keeps the cloud badge visible in edit mode.
   imported: boolean;
+  // A .3mf's current printer profile (embedded/derived or a manual override) —
+  // prefills the "edit printer info" dialog (issue #79). Null/absent for
+  // images, PDFs and files without one.
+  printerInfo?: PrinterInfo | null;
 };
 
 // Prefilled values when editing; absent when creating a new model.
@@ -77,7 +82,7 @@ export type ModelFileEntry = {
   filename: string;
   size: number;
 } & (
-  | { type: "existing"; id: string; imported: boolean }
+  | { type: "existing"; id: string; imported: boolean; printerInfo: PrinterInfo | null }
   | { type: "staged"; staged: UploadedFile }
   | { type: "new"; file: File }
 );

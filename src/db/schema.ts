@@ -174,6 +174,11 @@ export type PrinterInfo = {
   // PrusaSlicer `bed_shape`), falling back to a known-model lookup when the
   // config lacks a usable shape. { x: 256, y: 256 }
   bedSizeMm?: { x: number; y: number };
+  // True when a user set this profile by hand (issue #79) instead of it being
+  // scraped from the file's embedded config. An override survives re-slicing —
+  // estimateFile (src/lib/slicer.ts) must not replace a flagged profile with a
+  // re-derived one — and the model page badges it as manually set.
+  override?: boolean;
 };
 
 export const modelFiles = pgTable("model_files", {
