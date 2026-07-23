@@ -40,6 +40,10 @@ import {
   SidebarMenuItem,
 } from "@/components/ui/sidebar";
 import { ThemeToggle } from "@/components/theme-toggle";
+import {
+  IMPORT_TYPES,
+  IMPORT_TYPE_ORDER,
+} from "@/app/models/import/import-types";
 
 type SessionUser = { name: string; email: string };
 
@@ -55,7 +59,6 @@ const browseItems = [
 const createItems = [
   { href: "/models/new", label: "New model", icon: Box },
   { href: "/collections/new", label: "New collection", icon: FolderPlus },
-  { href: "/models/import", label: "Import from URL", icon: CloudDownload },
 ];
 
 export function AppSidebar({ user }: { user: SessionUser | null }) {
@@ -126,6 +129,39 @@ export function AppSidebar({ user }: { user: SessionUser | null }) {
                     </SidebarMenuButton>
                   </SidebarMenuItem>
                 ))}
+                <SidebarMenuItem>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <SidebarMenuButton
+                        isActive={isActive("/models/import")}
+                        tooltip="Import from URL"
+                        className="data-[state=open]:bg-sidebar-accent"
+                      >
+                        <CloudDownload />
+                        <span>Import from URL</span>
+                      </SidebarMenuButton>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent side="right" align="start" className="w-64">
+                      <DropdownMenuLabel>Import from URL</DropdownMenuLabel>
+                      {IMPORT_TYPE_ORDER.map((type) => {
+                        const option = IMPORT_TYPES[type];
+                        return (
+                          <DropdownMenuItem key={type} asChild>
+                            <Link href={`/models/import?type=${type}`}>
+                              <option.icon className="mt-0.5 self-start" />
+                              <div className="grid gap-0.5">
+                                <span className="font-medium">{option.label}</span>
+                                <span className="text-xs text-muted-foreground">
+                                  Supported: {option.sources}
+                                </span>
+                              </div>
+                            </Link>
+                          </DropdownMenuItem>
+                        );
+                      })}
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </SidebarMenuItem>
               </SidebarMenu>
             </SidebarGroupContent>
           </SidebarGroup>
