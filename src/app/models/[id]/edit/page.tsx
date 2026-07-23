@@ -61,6 +61,8 @@ export default async function EditModelPage({
             size: file.size,
             kind: file.kind,
             imported: file.imported,
+            printerInfo: file.printerInfo ?? null,
+            generatedFromId: file.generatedFromId,
           })),
           createdAt: model.createdAt,
         }}

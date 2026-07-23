@@ -92,9 +92,13 @@ export function ModelForm({
   const [description, setDescription] = useState(model?.description ?? "");
   const [tags, setTags] = useState(model?.tags.join(", ") ?? "");
   const [modelFileEntries, setModelFileEntries] = useState<ModelFileEntry[]>(
-    () =>
-      (model?.files ?? [])
-        .filter((f) => f.kind === "model")
+    () => {
+      const files = model?.files ?? [];
+      // Generated files (scad variants, printer derivatives) don't become
+      // entries of their own — they nest under their source row and are
+      // managed immediately via their endpoints, not the form submit.
+      return files
+        .filter((f) => f.kind === "model" && !f.generatedFromId)
         .map((f) => ({
           key: f.id,
           type: "existing",
@@ -102,7 +106,17 @@ export function ModelForm({
           imported: f.imported,
           filename: f.filename,
           size: f.size,
-        })),
+          printerInfo: f.printerInfo ?? null,
+          derivatives: files
+            .filter((d) => d.kind === "model" && d.generatedFromId === f.id)
+            .map((d) => ({
+              id: d.id,
+              filename: d.filename,
+              size: d.size,
+              printerInfo: d.printerInfo ?? null,
+            })),
+        }));
+    },
   );
   const [existingPdfFiles, setExistingPdfFiles] = useState<ExistingFile[]>(
     () => model?.files.filter((f) => f.kind === "pdf") ?? [],
@@ -440,8 +454,10 @@ export function ModelForm({
           categoryId: categoryId || null,
           tags: tags.split(","),
           newFiles: uploaded,
+          // Generated files are never wizard entries, so they must not be
+          // read as "removed" — removing their source cascades them anyway.
           removedFileIds: model.files
-            .filter((f) => !keptIds.has(f.id))
+            .filter((f) => !f.generatedFromId && !keptIds.has(f.id))
             .map((f) => f.id),
           renamedFiles: modelFileEntries
             .filter((entry) => entry.type === "existing")
@@ -503,6 +519,42 @@ export function ModelForm({
               onRename={renameModelFile}
               onMove={moveModelFile}
               onReorder={reorderModelFile}
+              printerEditModelId={model?.id}
+              onPrinterInfoSaved={(key, info, size) =>
+                // The endpoint applied the change already; mirror it locally
+                // so reopening the dialog shows the new values (and the row
+                // the possibly re-zipped size).
+                setModelFileEntries((prev) =>
+                  prev.map((entry) =>
+                    entry.key === key && entry.type === "existing"
+                      ? { ...entry, printerInfo: info, size }
+                      : entry,
+                  ),
+                )
+              }
+              onDerivativeAdded={(key, derivative) =>
+                setModelFileEntries((prev) =>
+                  prev.map((entry) =>
+                    entry.key === key && entry.type === "existing"
+                      ? { ...entry, derivatives: [...entry.derivatives, derivative] }
+                      : entry,
+                  ),
+                )
+              }
+              onDerivativeRemoved={(key, derivativeId) =>
+                setModelFileEntries((prev) =>
+                  prev.map((entry) =>
+                    entry.key === key && entry.type === "existing"
+                      ? {
+                          ...entry,
+                          derivatives: entry.derivatives.filter(
+                            (d) => d.id !== derivativeId,
+                          ),
+                        }
+                      : entry,
+                  ),
+                )
+              }
             />
           )}
 

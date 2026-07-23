@@ -37,6 +37,79 @@ Legacy `.step` files (from before Onshape imports switched to 3MF) and files
 uploaded before this feature are skipped. The service is optional: without
 `SLICER_URL`, unsliced files simply show no estimates and stay `pending`.
 
+## Per-file printer overrides
+
+(issue #79) Any signed-in user (editing is collaborative — a model may carry
+one profile per printer, each maintained by whoever owns that machine; the
+mutation is versioned like any other edit) can override which printer a `.3mf`
+is meant for: the pencil on a row of the edit form's file list opens the "edit
+file" dialog (`model-file-edit-dialog.tsx`), which combines the rename field
+with a printer section (Bambu presets from `src/lib/printer-presets.ts` +
+custom fields, defaulting to the file's current `printer_info`; renames stay
+form state saved with the model, and untouched printer fields never call the
+endpoint, so a plain rename can't trigger a re-slice). Saving a printer change
+hits `PATCH /api/models/[id]/printer-info`
+(`{ fileId, model, nozzleDiameterMm?, bedSizeMm? }`), which:
+
+- stores the profile on `model_files.printer_info` with **`override: true`** —
+  the marker `estimateFile` (`src/lib/slicer.ts`) checks so a re-slice never
+  replaces a manual choice with re-derived values, and the model page badges
+  as "manual";
+- patches the archive itself (`src/lib/threemf-printer.ts`, the same
+  unzip→mutate→zip pattern as `threemf-normalize.ts`): only the printer
+  identity keys (`printer_model`, `printer_settings_id`, `nozzle_diameter`,
+  `printable_area`/`bed_shape`) in `project_settings.config` or
+  `Slic3r_PE.config`, creating a minimal Bambu JSON when the archive embeds no
+  settings — so downloads, deep links and the slicer service's existing
+  whitelist translation all see the chosen printer, with no new override
+  channel in `slicer/server.mjs`;
+- writes the patched bytes to a **new** S3 key inside an
+  `ensureBaselineVersion`/`recordVersion` transaction: snapshot-referenced
+  bytes must stay immutable, and the `threemf-remote` parse cache is keyed by
+  object key. (A replaced *variant* archive's old key is deleted instead —
+  snapshots never reference variants.)
+- re-queues the file (`slice_status = "pending"`) so estimates reflect the new
+  profile. Files the patcher can't rewrite (not a ZIP, unparseable project
+  settings, > 256 MB) keep their bytes and get the DB-only override.
+
+Preset bed sizes resolve through the shared `KNOWN_BED_SIZES` lookup
+(`src/lib/printer-beds.ts`) — extend that map, not the presets, when a new
+machine appears.
+
+The dialog's Printers list also manages **printer derivatives**: copies of the
+source `.3mf` patched for other machines, added/removed immediately via `POST`
+/ `DELETE` on the same route. Creating one also strips the per-plate
+prediction/weight entries from the copied `slice_info.config`
+(`stripPredictionXml`; the `<plate>` blocks stay, so plate counts survive) —
+those numbers describe the *original* machine, and both `estimateFile` and the
+model page's live ranged reads prefer embedded predictions — so every
+derivative gets a fresh slicer-service job with the patched config instead of
+inheriting the source's estimates. A derivative is named
+`derivativeFilename(source, model, nozzle)` (`fuselage_p1s_04.3mf`; the name
+doubles as the one-per-printer+nozzle duplicate check, capped at 20 per
+source) and is stored as a **generated file** (`generated_from_id` → source),
+deliberately reusing the customizer-variant lifecycle: nested rendering under
+the source (model page and wizard list), FK-cascade removal with the source
+(`updateModel` already deletes generated S3 objects), excluded from version
+snapshots, bytes deleted immediately on removal. The two kinds are told apart
+by `generated_params_hash` (set on scad variants, null on derivatives) —
+scad-variant deletion keeps the customize route's owner-or-generator gate,
+while derivative deletion is open to any session like the rest of editing.
+Derivatives never carry derivatives of their own, and the wizard keeps
+generated files out of its dirty/order/removal bookkeeping entirely
+(`model-form-state.ts` filters on `generatedFromId`).
+
+Once a model's profiles span more than one printer, the model page's Files
+card (`PrintFilesCard` in `model-file-cards.tsx`) shows a chip row (All + one
+chip per distinct `printer_info.model` across files *and* their nested
+generated files, shortened via `shortPrinterLabel`) — the MakerWorld-style
+"which printer is this profile for" selector. "All" keeps the card uncrowded:
+originals render in full, their printer derivatives as compact one-line rows
+(name, printer, download — no slicing detail; scad variants keep full rows). A
+selected chip flattens the list to exactly that printer's profiles as
+full-detail rows, without their source as context. Single-printer models show
+no chips.
+
 ## "Open in slicer" deep links
 
 `src/app/models/[id]/file-download-menu.tsx` hands a `.3mf` to Bambu Studio /

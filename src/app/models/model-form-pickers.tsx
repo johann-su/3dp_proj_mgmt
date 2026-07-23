@@ -5,7 +5,7 @@
 // All state lives in ModelForm (model-form.tsx); these components only
 // receive entries and callbacks.
 
-import { useRef, useState } from "react";
+import { Fragment, useRef, useState } from "react";
 import {
   ChevronDown,
   ChevronLeft,
@@ -16,13 +16,18 @@ import {
   GripVertical,
   ImageIcon,
   Pencil,
+  Printer,
   X,
 } from "lucide-react";
 import type { UploadedFile } from "@/app/models/actions";
+import type { PrinterInfo } from "@/db/schema";
+import { shortPrinterLabel } from "@/lib/printer-presets";
+import { ModelFileEditDialog } from "./model-file-edit-dialog";
 import {
   IMAGE_ACCEPT,
   MODEL_ACCEPT,
   splitExtension,
+  type DerivativeFile,
   type ExistingFile,
   type ImageEntry,
   type ModelFileEntry,
@@ -34,6 +39,11 @@ import { formatBytes } from "@/lib/format";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 
 function FileRow({
   name,
@@ -234,7 +244,7 @@ function ModelFileRow({
   onDragEnter,
   onMove,
   onRemove,
-  onRename,
+  onEdit,
 }: {
   entry: ModelFileEntry;
   isFirst: boolean;
@@ -245,18 +255,10 @@ function ModelFileRow({
   onDragEnter: () => void;
   onMove: (direction: -1 | 1) => void;
   onRemove: () => void;
-  onRename: (newName: string) => void;
+  // Opens the edit dialog (rename + printer info where applicable) —
+  // ModelFilePicker hosts it.
+  onEdit: () => void;
 }) {
-  const [editing, setEditing] = useState(false);
-  const [draftBase, setDraftBase] = useState("");
-  const [base, ext] = splitExtension(entry.filename);
-
-  function commit() {
-    setEditing(false);
-    const trimmed = draftBase.trim();
-    if (trimmed && trimmed !== base) onRename(`${trimmed}${ext}`);
-  }
-
   return (
     <li
       className={cn(
@@ -271,8 +273,8 @@ function ModelFileRow({
       onDrop={(e) => e.preventDefault()}
     >
       {/* Only the grip starts the drag, so dragging doesn't fight with
-          selecting text in the rename input. The up/down buttons below cover
-          reordering for keyboard/touch use, where dragging is impractical. */}
+          selecting the row's text. The up/down buttons below cover reordering
+          for keyboard/touch use, where dragging is impractical. */}
       <span
         draggable
         onDragStart={(e) => {
@@ -287,82 +289,74 @@ function ModelFileRow({
       </span>
       {(entry.type === "staged" ||
         (entry.type === "existing" && entry.imported)) && (
-        <CloudDownload className="size-3.5 text-primary shrink-0" />
-      )}
-      {editing ? (
-        <span className="flex min-w-0 flex-1 items-center gap-1.5">
-          <Input
-            autoFocus
-            aria-label={`New name for ${entry.filename}`}
-            value={draftBase}
-            onChange={(e) => setDraftBase(e.target.value)}
-            onBlur={commit}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") {
-                e.preventDefault();
-                commit();
-              } else if (e.key === "Escape") {
-                e.preventDefault();
-                setEditing(false);
-              }
-            }}
-            className="h-6 min-w-0 flex-1 px-1"
-          />
-          <span className="shrink-0 text-muted-foreground">{ext}</span>
-        </span>
-      ) : (
-        <span className="truncate">{entry.filename}</span>
-      )}
+          <CloudDownload className="size-3.5 text-primary shrink-0" />
+        )}
+      <span className="truncate">{entry.filename}</span>
       <span className="text-muted-foreground ml-auto shrink-0">
         {formatBytes(entry.size)}
       </span>
-      <Button
-        type="button"
-        variant="ghost"
-        size="icon"
-        className="size-6 shrink-0"
-        aria-label={`Move ${entry.filename} up`}
-        disabled={isFirst}
-        onClick={() => onMove(-1)}
-      >
-        <ChevronUp className="size-3.5" />
-      </Button>
-      <Button
-        type="button"
-        variant="ghost"
-        size="icon"
-        className="size-6 shrink-0"
-        aria-label={`Move ${entry.filename} down`}
-        disabled={isLast}
-        onClick={() => onMove(1)}
-      >
-        <ChevronDown className="size-3.5" />
-      </Button>
-      {!editing && (
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon"
-          className="size-6 shrink-0"
-          aria-label={`Rename ${entry.filename}`}
-          onClick={() => {
-            setDraftBase(base);
-            setEditing(true);
-          }}
-        >
-          <Pencil className="size-3.5" />
-        </Button>
-      )}
-      <Button
-        type="button"
-        variant="ghost"
-        size="icon"
-        className="size-6 shrink-0"
-        aria-label={`Remove ${entry.filename}`}
-        onClick={onRemove}
-      >
-        <X className="size-3.5" />
-      </Button>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            className="size-6 shrink-0"
+            aria-label={`Move ${entry.filename} up`}
+            disabled={isFirst}
+            onClick={() => onMove(-1)}
+          >
+            <ChevronUp className="size-3.5" />
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent>Move up</TooltipContent>
+      </Tooltip>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            className="size-6 shrink-0"
+            aria-label={`Move ${entry.filename} down`}
+            disabled={isLast}
+            onClick={() => onMove(1)}
+          >
+            <ChevronDown className="size-3.5" />
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent>Move down</TooltipContent>
+      </Tooltip>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            className="size-6 shrink-0"
+            aria-label={`Edit ${entry.filename}`}
+            onClick={onEdit}
+          >
+            <Pencil className="size-3.5" />
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent>Edit file</TooltipContent>
+      </Tooltip>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            className="size-6 shrink-0"
+            aria-label={`Remove ${entry.filename}`}
+            onClick={onRemove}
+          >
+            <X className="size-3.5" />
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent>Remove</TooltipContent>
+      </Tooltip>
     </li>
   );
 }
@@ -374,6 +368,10 @@ export function ModelFilePicker({
   onRename,
   onMove,
   onReorder,
+  printerEditModelId,
+  onPrinterInfoSaved,
+  onDerivativeAdded,
+  onDerivativeRemoved,
 }: {
   entries: ModelFileEntry[];
   onAdd: (files: File[]) => void;
@@ -381,9 +379,19 @@ export function ModelFilePicker({
   onRename: (key: string, name: string) => void;
   onMove: (key: string, direction: -1 | 1) => void;
   onReorder: (key: string, targetKey: string) => void;
+  // Enables the edit dialog's printer section (issue #79) on stored .3mf
+  // rows. Unset in create mode, where there are no file rows to save against
+  // yet — renaming still works there via the same dialog.
+  printerEditModelId?: string;
+  onPrinterInfoSaved?: (key: string, info: PrinterInfo, size: number) => void;
+  onDerivativeAdded?: (key: string, derivative: DerivativeFile) => void;
+  onDerivativeRemoved?: (key: string, derivativeId: string) => void;
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [draggedKey, setDraggedKey] = useState<string | null>(null);
+  const [editKey, setEditKey] = useState<string | null>(null);
+
+  const editEntry = entries.find((entry) => entry.key === editKey);
 
   return (
     <div className="grid gap-2">
@@ -412,25 +420,78 @@ export function ModelFilePicker({
       {entries.length > 0 && (
         <ul className="grid gap-1">
           {entries.map((entry, i) => (
-            <ModelFileRow
-              key={entry.key}
-              entry={entry}
-              isFirst={i === 0}
-              isLast={i === entries.length - 1}
-              dragging={draggedKey === entry.key}
-              onDragStart={() => setDraggedKey(entry.key)}
-              onDragEnd={() => setDraggedKey(null)}
-              onDragEnter={() => {
-                if (draggedKey && draggedKey !== entry.key) {
-                  onReorder(draggedKey, entry.key);
-                }
-              }}
-              onMove={(direction) => onMove(entry.key, direction)}
-              onRemove={() => onRemove(entry.key)}
-              onRename={(name) => onRename(entry.key, name)}
-            />
+            <Fragment key={entry.key}>
+              <ModelFileRow
+                entry={entry}
+                isFirst={i === 0}
+                isLast={i === entries.length - 1}
+                dragging={draggedKey === entry.key}
+                onDragStart={() => setDraggedKey(entry.key)}
+                onDragEnd={() => setDraggedKey(null)}
+                onDragEnter={() => {
+                  if (draggedKey && draggedKey !== entry.key) {
+                    onReorder(draggedKey, entry.key);
+                  }
+                }}
+                onMove={(direction) => onMove(entry.key, direction)}
+                onRemove={() => onRemove(entry.key)}
+                onEdit={() => setEditKey(entry.key)}
+              />
+              {/* Generated files (printer derivatives, scad variants) nest
+                  under their source, mirroring the model page. Managed from
+                  the source row's edit dialog, so no per-row actions here. */}
+              {entry.type === "existing" &&
+                entry.derivatives.map((derivative) => (
+                  <li
+                    key={derivative.id}
+                    className="ml-7 flex min-w-0 items-center gap-2 rounded-md border px-3 py-1.5 text-sm"
+                  >
+                    <Printer className="size-3.5 shrink-0 text-muted-foreground" />
+                    <span className="truncate">{derivative.filename}</span>
+                    {derivative.printerInfo?.model && (
+                      <span className="shrink-0 text-xs text-muted-foreground">
+                        {shortPrinterLabel(derivative.printerInfo.model)}
+                        {derivative.printerInfo.nozzleDiameterMm != null &&
+                          ` · ${derivative.printerInfo.nozzleDiameterMm} mm`}
+                      </span>
+                    )}
+                    <span className="text-muted-foreground ml-auto shrink-0">
+                      {formatBytes(derivative.size)}
+                    </span>
+                  </li>
+                ))}
+            </Fragment>
           ))}
         </ul>
+      )}
+      {editEntry && (
+        <ModelFileEditDialog
+          key={editEntry.key}
+          filename={editEntry.filename}
+          printer={
+            printerEditModelId &&
+              editEntry.type === "existing" &&
+              editEntry.filename.toLowerCase().endsWith(".3mf")
+              ? {
+                modelId: printerEditModelId,
+                fileId: editEntry.id,
+                current: editEntry.printerInfo,
+                derivatives: editEntry.derivatives,
+              }
+              : undefined
+          }
+          onClose={() => setEditKey(null)}
+          onRename={(name) => onRename(editEntry.key, name)}
+          onPrinterSaved={(info, size) =>
+            onPrinterInfoSaved?.(editEntry.key, info, size)
+          }
+          onDerivativeAdded={(derivative) =>
+            onDerivativeAdded?.(editEntry.key, derivative)
+          }
+          onDerivativeRemoved={(derivativeId) =>
+            onDerivativeRemoved?.(editEntry.key, derivativeId)
+          }
+        />
       )}
     </div>
   );

@@ -58,6 +58,45 @@ Bambu projects (whose coordinates extend well past a physical bed) still slice.
   show no estimate and stay pending — already-sliced files still show their
   embedded numbers, since those don't need the service.
 
+### Overriding a file's printer
+
+The hardware shown for a file normally comes from whatever slicer settings the
+`.3mf` happens to embed. When that's wrong — a file sliced for a machine you
+don't have, or one with no embedded settings at all — any signed-in user can
+set the printer per file (editing is collaborative, like the rest of the
+model): edit the model and use the pencil (edit) icon on a `.3mf` row in the
+file list. Besides renaming the file, the dialog offers the common Bambu Lab
+machines (which fill in the model name, nozzle size and build-plate size) plus
+a **Custom** option with free-form fields for anything else, and opens
+pre-filled with what the file currently reports.
+
+Where possible the choice is also written into the file itself, so downloads
+and "open in slicer" links carry the chosen printer too, and the file is
+re-sliced so its estimates match. A manually set profile is badged **manual**
+on the model page and survives future re-slices — it always wins over what the
+file's embedded settings say.
+
+### One profile per printer
+
+A model can carry profiles for several machines, in two ways:
+
+- **Separate `.3mf` files** — upload a profile for your printer, and someone
+  else can add one for theirs.
+- **Printer derivatives** — in the same edit dialog, the **Printers** list has
+  an **Add printer** button that creates a copy of the file patched for
+  another machine, named after it (e.g. `fuselage_p1s_04.3mf` for a P1S with a
+  0.4 mm nozzle). Derivatives appear indented below their original in the file
+  list and on the model page, and can be removed again from the same dialog.
+  Each derivative is sliced fresh for its machine — print time and filament
+  estimates are recalculated with the new printer's settings, never inherited
+  from the original.
+
+Once the profiles span more than one printer, the model page's Files card
+grows a selector row: **All** shows the originals in full with their
+derivatives as compact one-line rows (name, printer and download — the
+slicing details live one click away), and each printer chip shows exactly
+that machine's profiles with full details.
+
 ## Open in slicer
 
 For any `.3mf`, the file menu offers **Open in OrcaSlicer** and **Open in Bambu

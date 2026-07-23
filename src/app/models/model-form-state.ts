@@ -4,6 +4,7 @@
 // of React so it stays unit-testable (see model-form-state.test.ts).
 
 import type { FileOrderRef, UploadedFile } from "@/app/models/actions";
+import type { PrinterInfo } from "@/db/schema";
 import type { BomItemInput } from "@/lib/bom";
 
 export const MODEL_ACCEPT = ".3mf,.scad";
@@ -18,6 +19,26 @@ export type ExistingFile = {
   // Came with the model's source-platform import (model_files.imported) —
   // keeps the cloud badge visible in edit mode.
   imported: boolean;
+  // A .3mf's current printer profile (embedded/derived or a manual override) —
+  // prefills the "edit printer info" dialog (issue #79). Null/absent for
+  // images, PDFs and files without one.
+  printerInfo?: PrinterInfo | null;
+  // Set on generated files (scad variants, printer derivatives): the source
+  // file's row id. Generated files never become their own wizard entries —
+  // they render nested under their source and live outside the form's
+  // dirty/order/removal bookkeeping (managed immediately via their own
+  // endpoints instead).
+  generatedFromId?: string | null;
+};
+
+// A generated file shown nested under its source entry in the wizard's file
+// list: a scad variant or a printer derivative (issue #79). Display +
+// dialog-managed only; not part of the form submit.
+export type DerivativeFile = {
+  id: string;
+  filename: string;
+  size: number;
+  printerInfo: PrinterInfo | null;
 };
 
 // Prefilled values when editing; absent when creating a new model.
@@ -77,7 +98,13 @@ export type ModelFileEntry = {
   filename: string;
   size: number;
 } & (
-  | { type: "existing"; id: string; imported: boolean }
+  | {
+      type: "existing";
+      id: string;
+      imported: boolean;
+      printerInfo: PrinterInfo | null;
+      derivatives: DerivativeFile[];
+    }
   | { type: "staged"; staged: UploadedFile }
   | { type: "new"; file: File }
 );
@@ -187,12 +214,14 @@ export function formIsDirty(
 
   // Model files: a " new" marker for freshly added entries (can't collide —
   // existing markers always contain a ":"), otherwise the id + filename, so
-  // adds, removes, reorders and renames all read as dirty.
+  // adds, removes, reorders and renames all read as dirty. Generated files
+  // (scad variants, printer derivatives) are outside the form's bookkeeping —
+  // their dialog manages them immediately, so they never make the form dirty.
   const curModel = current.modelFileEntries.map((e) =>
     e.type === "existing" ? `${e.id}:${e.filename}` : " new",
   );
   const initModel = initial.files
-    .filter((f) => f.kind === "model")
+    .filter((f) => f.kind === "model" && !f.generatedFromId)
     .map((f) => `${f.id}:${f.filename}`);
   if (
     curModel.length !== initModel.length ||

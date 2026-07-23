@@ -33,7 +33,16 @@ function existingFile(
 }
 
 function existingModelEntry(id: string, filename: string): ModelFileEntry {
-  return { key: id, type: "existing", id, imported: false, filename, size: 10 };
+  return {
+    key: id,
+    type: "existing",
+    id,
+    imported: false,
+    filename,
+    size: 10,
+    printerInfo: null,
+    derivatives: [],
+  };
 }
 
 function newModelEntry(filename: string): ModelFileEntry {
@@ -118,6 +127,18 @@ test("formIsDirty: a pristine edit view is clean, create mode is always dirty", 
   assert.equal(formIsDirty(current, initial), false);
   // No baseline to compare against → any exit counts as a discard.
   assert.equal(formIsDirty(current, undefined), true);
+});
+
+test("formIsDirty ignores generated files (variants, printer derivatives)", () => {
+  // Generated files never become wizard entries — they're managed immediately
+  // via their own endpoints — so their presence in the loaded model must not
+  // make an untouched form read as dirty (issue #79).
+  const { current, initial } = pristineEditState();
+  initial.files.push({
+    ...existingFile("d1", "model", "clip_p1s_04.3mf"),
+    generatedFromId: "f1",
+  });
+  assert.equal(formIsDirty(current, initial), false);
 });
 
 test("formIsDirty: renaming an existing file reads as dirty", () => {

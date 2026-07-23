@@ -8,6 +8,11 @@ test("bedSizeForModel matches the P1S/X1 model strings the cards store", () => {
   assert.deepEqual(bedSizeForModel("Bambu Lab X1 Carbon"), { x: 256, y: 256 });
   // The A1 mini's narrower rule must win over the broader A1 → 256 rule.
   assert.deepEqual(bedSizeForModel("Bambu Lab A1 mini"), { x: 180, y: 180 });
+  // The H2 family is rectangular, and H2S differs from H2D.
+  assert.deepEqual(bedSizeForModel("Bambu Lab H2D"), { x: 350, y: 320 });
+  assert.deepEqual(bedSizeForModel("Bambu Lab H2S"), { x: 340, y: 320 });
+  assert.deepEqual(bedSizeForModel("Bambu Lab P2S"), { x: 256, y: 256 });
+  assert.deepEqual(bedSizeForModel("Bambu Lab X2D"), { x: 256, y: 256 });
   // Prusa MK-series is rectangular, not square.
   assert.deepEqual(bedSizeForModel("MK4S"), { x: 250, y: 210 });
 });
