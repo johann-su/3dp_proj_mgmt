@@ -104,6 +104,7 @@ async function prepareOverrideRequest(req: NextRequest, modelId: string) {
 async function patchArchive(
   file: { s3Key: string; size: number; filename: string },
   override: PrinterOverride,
+  options?: { stripPredictions?: boolean },
 ): Promise<Uint8Array | null> {
   if (file.size > MAX_PATCH_BYTES) return null;
   try {
@@ -111,7 +112,7 @@ async function patchArchive(
       new GetObjectCommand({ Bucket: S3_BUCKET, Key: file.s3Key }),
     );
     const bytes = object.Body ? await object.Body.transformToByteArray() : null;
-    return bytes ? applyPrinterOverride(bytes, override) : null;
+    return bytes ? applyPrinterOverride(bytes, override, options) : null;
   } catch (err) {
     reportError(`printer override could not patch ${file.filename}`, err);
     return null;
@@ -243,7 +244,11 @@ export async function POST(
     );
   }
 
-  const patched = await patchArchive(file, override);
+  // A derivative must not inherit the source's embedded time/filament
+  // predictions — they describe the ORIGINAL machine, and both the estimate
+  // pipeline and the model page's live reads prefer embedded numbers.
+  // Stripping them forces a fresh slicing job with the patched config.
+  const patched = await patchArchive(file, override, { stripPredictions: true });
   if (!patched) {
     return NextResponse.json(
       { error: "The file could not be prepared for another printer" },

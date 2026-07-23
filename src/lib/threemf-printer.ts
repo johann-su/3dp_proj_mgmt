@@ -20,6 +20,7 @@ export type PrinterOverride = {
 
 const PROJECT_SETTINGS_PATH = "Metadata/project_settings.config";
 const PRUSA_CONFIG_PATH = "Metadata/Slic3r_PE.config";
+const SLICE_INFO_PATH = "Metadata/slice_info.config";
 
 // Both slicers describe the bed as a polygon of "XxY" mm points; we write a
 // rectangle with the origin at 0/0 like the stock profiles do.
@@ -122,13 +123,32 @@ function minimalBambuSettings(override: PrinterOverride): string {
   return JSON.stringify(settings, null, 4);
 }
 
+// Removes the per-plate time/weight predictions from a slice_info.config
+// while keeping everything else (the <plate> blocks drive plate counts).
+// Exported for tests; applyPrinterOverride wires it to the archive.
+export function stripPredictionXml(xml: string): string {
+  return xml.replace(
+    /<metadata\s+key="(?:prediction|weight)"\s+value="[^"]*"\s*\/>\s*/g,
+    "",
+  );
+}
+
 // Returns a copy of the archive with the override applied, or null when the
 // archive couldn't be patched (not a ZIP, or its project settings entry holds
 // something we don't understand). A null result means "store the override in
 // the DB only" — never an error the caller should surface.
+//
+// stripPredictions is for printer *derivatives*: a derivative is a byte-copy
+// of its source, so it inherits the predictions the source's slicer wrote for
+// the ORIGINAL machine. Dropping them makes the copy honest — and makes the
+// estimate pipeline (which prefers embedded predictions, both when slicing
+// and when the model page reads them live from S3) fall through to a fresh
+// slicer run with the patched config. An in-place override (PATCH) keeps
+// them: they are that file's own numbers.
 export function applyPrinterOverride(
   data: Uint8Array,
   override: PrinterOverride,
+  { stripPredictions = false }: { stripPredictions?: boolean } = {},
 ): Uint8Array | null {
   let entries: Record<string, Uint8Array>;
   try {
@@ -144,23 +164,28 @@ export function applyPrinterOverride(
     Object.keys(entries).find((name) => name.toLowerCase() === path.toLowerCase());
 
   const bambuPath = entryNamed(PROJECT_SETTINGS_PATH);
+  const prusaPath = entryNamed(PRUSA_CONFIG_PATH);
   if (bambuPath) {
     const patched = patchBambuSettings(strFromU8(entries[bambuPath]), override);
     if (patched === null) return null;
     entries[bambuPath] = strToU8(patched);
-    return zipSync(entries);
-  }
-
-  const prusaPath = entryNamed(PRUSA_CONFIG_PATH);
-  if (prusaPath) {
+  } else if (prusaPath) {
     entries[prusaPath] = strToU8(
       patchPrusaIni(strFromU8(entries[prusaPath]), override),
     );
-    return zipSync(entries);
+  } else {
+    // No config at all — create one. Canonical casing: the slicer service
+    // reads this exact path with `unzip -p`, which matches case-sensitively.
+    entries[PROJECT_SETTINGS_PATH] = strToU8(minimalBambuSettings(override));
   }
 
-  // No config at all — create one. Canonical casing: the slicer service reads
-  // this exact path with `unzip -p`, which matches case-sensitively.
-  entries[PROJECT_SETTINGS_PATH] = strToU8(minimalBambuSettings(override));
+  if (stripPredictions) {
+    const slicePath = entryNamed(SLICE_INFO_PATH);
+    if (slicePath) {
+      entries[slicePath] = strToU8(
+        stripPredictionXml(strFromU8(entries[slicePath])),
+      );
+    }
+  }
   return zipSync(entries);
 }

@@ -14,7 +14,7 @@ const KNOWN_BED_SIZES: ReadonlyArray<readonly [RegExp, { x: number; y: number }]
     [/a1\s*mini/i, { x: 180, y: 180 }],
     [/\bh2d\b/i, { x: 350, y: 320 }], // Bambu H2D
     [/\bh2s\b/i, { x: 340, y: 320 }], // Bambu H2S
-    [/\b(?:x1|p1|p2s|a1)/i, { x: 256, y: 256 }], // Bambu X1(C/E)/P1(P/S)/P2S/A1
+    [/\b(?:x1|p1|p2s|a1|x2d)/i, { x: 256, y: 256 }], // Bambu X1(C/E)/P1(P/S)/P2S/A1/X2D
     [/\bmk[234]s?\b/i, { x: 250, y: 210 }], // Prusa MK2/MK3/MK4 (incl. S)
     [/\b(?:core\s*one|coreone)\b/i, { x: 250, y: 220 }], // Prusa CORE One
     [/prusa[^a-z]*mini|\bmini\b/i, { x: 180, y: 180 }], // Prusa Mini

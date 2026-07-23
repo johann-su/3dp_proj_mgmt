@@ -78,7 +78,13 @@ machine appears.
 
 The dialog's Printers list also manages **printer derivatives**: copies of the
 source `.3mf` patched for other machines, added/removed immediately via `POST`
-/ `DELETE` on the same route. A derivative is named
+/ `DELETE` on the same route. Creating one also strips the per-plate
+prediction/weight entries from the copied `slice_info.config`
+(`stripPredictionXml`; the `<plate>` blocks stay, so plate counts survive) —
+those numbers describe the *original* machine, and both `estimateFile` and the
+model page's live ranged reads prefer embedded predictions — so every
+derivative gets a fresh slicer-service job with the patched config instead of
+inheriting the source's estimates. A derivative is named
 `derivativeFilename(source, model, nozzle)` (`fuselage_p1s_04.3mf`; the name
 doubles as the one-per-printer+nozzle duplicate check, capped at 20 per
 source) and is stored as a **generated file** (`generated_from_id` → source),

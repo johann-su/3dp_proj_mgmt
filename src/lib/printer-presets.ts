@@ -20,6 +20,7 @@ export const BAMBU_PRINTER_MODELS = [
   "Bambu Lab X1E",
   "Bambu Lab H2S",
   "Bambu Lab H2D",
+  "Bambu Lab X2D",
 ] as const;
 
 // The hotend sizes Bambu sells; every machine ships with 0.4.

@@ -123,6 +123,48 @@ test("an archive without slicer settings gets a minimal Bambu config", async () 
   assert.deepEqual(data?.printerInfo?.bedSizeMm, { x: 256, y: 256 });
 });
 
+test("stripPredictions drops inherited estimates but keeps the plate list", async () => {
+  // A printer derivative is a byte-copy of its source, so it would inherit
+  // the predictions sliced for the ORIGINAL machine. Creating a derivative
+  // strips them (forcing a fresh slicer estimate for the new printer), while
+  // plate blocks stay so plate counts survive. A plain override keeps the
+  // file's own predictions untouched.
+  const sliceInfo = `<config>
+  <plate>
+    <metadata key="index" value="1"/>
+    <metadata key="prediction" value="3600"/>
+    <metadata key="weight" value="12.5"/>
+  </plate>
+  <plate>
+    <metadata key="prediction" value="1800"/>
+    <metadata key="weight" value="7.5"/>
+  </plate>
+</config>`;
+  const zip = zipSync({
+    "Metadata/slice_info.config": strToU8(sliceInfo),
+    "Metadata/project_settings.config": strToU8(
+      JSON.stringify({ printer_model: "Bambu Lab X1 Carbon" }),
+    ),
+  });
+  const override = { model: "Bambu Lab P2S", nozzleDiameterMm: 0.8 };
+
+  const derivative = applyPrinterOverride(zip, override, {
+    stripPredictions: true,
+  });
+  assert.ok(derivative);
+  const stripped = readerFor(derivative);
+  const strippedData = await readSliceData(stripped.readRange, stripped.size);
+  assert.equal(strippedData?.sliceInfo?.printTimeSeconds, null);
+  assert.equal(strippedData?.sliceInfo?.filamentGrams, null);
+  assert.equal(strippedData?.sliceInfo?.plateCount, 2);
+
+  const inPlace = applyPrinterOverride(zip, override);
+  assert.ok(inPlace);
+  const kept = readerFor(inPlace);
+  const keptData = await readSliceData(kept.readRange, kept.size);
+  assert.equal(keptData?.sliceInfo?.printTimeSeconds, 5400);
+});
+
 test("applyPrinterOverride leaves archives it can't understand alone", () => {
   // Not a ZIP at all → null (caller stores the override in the DB only).
   assert.equal(
