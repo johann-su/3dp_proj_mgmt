@@ -8,7 +8,6 @@ import { listFeed } from "@/lib/list-queries";
 import { FeedGrid } from "@/components/feed-grid";
 import { FeedSort } from "@/components/feed-sort";
 import { SearchBar } from "@/components/search-bar";
-import { Badge } from "@/components/ui/badge";
 
 export const dynamic = "force-dynamic";
 
@@ -24,23 +23,18 @@ export default async function HomePage({
   const { category, sort: rawSort } = await searchParams;
   const sort = parseFeedSort(rawSort);
 
-  const allCategories = await db.query.categories.findMany({
-    orderBy: (c, { asc }) => asc(c.name),
-  });
-  const activeCategory = allCategories.find((c) => c.slug === category);
+  // No category picker on the homepage itself — this only serves deep links
+  // from a model's category badge (see model-view.tsx), which still filters.
+  const activeCategory = category
+    ? await db.query.categories.findFirst({
+        where: (c, { eq }) => eq(c.slug, category),
+      })
+    : undefined;
 
   const { items, nextCursor } = await listFeed({
     categoryId: activeCategory?.id,
     sort,
   });
-
-  function categoryHref(slug?: string) {
-    const params = new URLSearchParams();
-    if (slug) params.set("category", slug);
-    if (sort !== "newest") params.set("sort", sort);
-    const qs = params.toString();
-    return qs ? `/?${qs}` : "/";
-  }
 
   return (
     <div className="mx-auto max-w-6xl px-4 py-8">
@@ -51,21 +45,8 @@ export default async function HomePage({
         </p>
       </div>
 
-      <SearchBar />
-
       <div className="flex flex-wrap items-center justify-between gap-4 mb-8">
-        <div className="flex flex-wrap gap-2">
-          <Link href={categoryHref()}>
-            <Badge variant={activeCategory ? "outline" : "default"}>All</Badge>
-          </Link>
-          {allCategories.map((c) => (
-            <Link key={c.id} href={categoryHref(c.slug)}>
-              <Badge variant={activeCategory?.id === c.id ? "default" : "outline"}>
-                {c.name}
-              </Badge>
-            </Link>
-          ))}
-        </div>
+        <SearchBar />
         <FeedSort sort={sort} category={category} />
       </div>
 

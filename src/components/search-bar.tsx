@@ -34,7 +34,7 @@ export function SearchBar() {
   }, []);
 
   return (
-    <form action="/search" className="flex gap-2 mb-4 max-w-md">
+    <form action="/search" className="flex w-full max-w-md gap-2">
       <div className="relative flex-1">
         <Input
           ref={inputRef}
