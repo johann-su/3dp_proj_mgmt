@@ -6,7 +6,6 @@ import { GetObjectCommand } from "@aws-sdk/client-s3";
 import { db } from "@/db";
 import { modelFiles, models, type PrinterInfo } from "@/db/schema";
 import { getSession } from "@/lib/auth";
-import { canActAsOwner } from "@/lib/roles";
 import { s3, S3_BUCKET } from "@/lib/s3";
 import { stageBuffer } from "@/lib/storage";
 import { reportError } from "@/lib/telemetry";
@@ -61,11 +60,10 @@ export async function PATCH(
   if (!model || model.deletedAt) {
     return NextResponse.json({ error: "Model not found" }, { status: 404 });
   }
-  // Owner-gated (unlike regular collaborative edits): the override rewrites
-  // the stored file's bytes, which only the uploader should decide.
-  if (!canActAsOwner(session.user, model.userId)) {
-    return NextResponse.json({ error: "Not allowed" }, { status: 403 });
-  }
+  // Like the rest of editing, open to any signed-in user (collaborative
+  // library): several people may each maintain the profile for their own
+  // printer on the same model. The mutation is versioned, so it stays
+  // revertable like any other edit.
 
   const body = (await req.json().catch(() => null)) as {
     fileId?: string;

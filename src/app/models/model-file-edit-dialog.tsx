@@ -1,8 +1,8 @@
 "use client";
 
 // The per-row "edit file" dialog of the wizard's model file list: rename the
-// file and — for stored .3mf files, when the viewer may (owner-gated, issue
-// #79) — override the printer it's meant for. The two parts persist
+// file and — for stored .3mf files (issue #79) — override the printer it's
+// meant for. The two parts persist
 // differently on purpose: the name is form state applied with the model's
 // "Save changes" (like the old inline rename), while a printer change is
 // saved immediately through PATCH /api/models/[id]/printer-info, because it
@@ -49,7 +49,7 @@ export function ModelFileEditDialog({
   onPrinterSaved,
 }: {
   filename: string;
-  // Present only when the printer may be edited (stored .3mf + owner). The
+  // Present only when the printer may be edited (a stored .3mf). The
   // dialog opens reflecting the file's current profile, not blank.
   printer?: { modelId: string; fileId: string; current: PrinterInfo | null };
   onClose: () => void;

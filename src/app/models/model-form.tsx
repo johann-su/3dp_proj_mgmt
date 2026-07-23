@@ -76,14 +76,10 @@ export function ModelForm({
   categories,
   userName,
   model,
-  printerInfoEditable,
 }: {
   categories: Category[];
   userName: string;
   model?: ModelFormInitial;
-  // Whether the viewer may override a .3mf's printer info (issue #79) —
-  // owner-gated, unlike the rest of the (collaborative) form.
-  printerInfoEditable?: boolean;
 }) {
   const router = useRouter();
   const cancelHref = model ? `/models/${model.id}` : "/models/mine";
@@ -508,9 +504,7 @@ export function ModelForm({
               onRename={renameModelFile}
               onMove={moveModelFile}
               onReorder={reorderModelFile}
-              printerEditModelId={
-                model && printerInfoEditable ? model.id : undefined
-              }
+              printerEditModelId={model?.id}
               onPrinterInfoSaved={(key, info, size) =>
                 // The endpoint applied the change already; mirror it locally
                 // so reopening the dialog shows the new values (and the row

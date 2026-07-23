@@ -3,7 +3,6 @@ import { eq } from "drizzle-orm";
 import { db } from "@/db";
 import { models } from "@/db/schema";
 import { getSession, signInRedirect } from "@/lib/auth";
-import { canActAsOwner } from "@/lib/roles";
 import { ModelForm } from "../../model-form";
 
 export const dynamic = "force-dynamic";
@@ -43,9 +42,6 @@ export default async function EditModelPage({
       <ModelForm
         categories={categories}
         userName={session.user.name}
-        // Printer-info overrides rewrite the stored file, so they stay
-        // owner-gated (issue #79) while the rest of the form is collaborative.
-        printerInfoEditable={canActAsOwner(session.user, model.userId)}
         model={{
           id: model.id,
           title: model.title,

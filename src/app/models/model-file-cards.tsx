@@ -26,6 +26,7 @@ import {
 } from "lucide-react";
 import type { PrinterInfo } from "@/db/schema";
 import type { ScadParameterGroup } from "@/lib/scad-params";
+import { shortPrinterLabel } from "@/lib/printer-presets";
 import { formatBytes, formatDuration, formatGrams } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
@@ -348,6 +349,42 @@ export function PrintFilesCard({
   modelId: string | null;
 }) {
   const [open, setOpen] = useState(true);
+  // A model may carry one profile per printer (several .3mf files, each set
+  // up for a different machine — issue #79); the chip row filters the list by
+  // the printer a file targets. Only shown once the files actually span more
+  // than one printer, so single-printer models stay uncluttered.
+  const [printerFilter, setPrinterFilter] = useState<string | null>(null);
+  const printerModels = [
+    ...new Set(
+      printFiles
+        .map((f) => f.printer?.model)
+        .filter((m): m is string => m !== undefined),
+    ),
+  ];
+  const hasUnassigned = printFiles.some((f) => !f.printer?.model);
+  const showPrinterFilter =
+    printerModels.length >= 2 || (printerModels.length === 1 && hasUnassigned);
+  const visibleFiles =
+    showPrinterFilter && printerFilter !== null
+      ? printFiles.filter((f) => f.printer?.model === printerFilter)
+      : printFiles;
+
+  const filterChip = (label: string, value: string | null) => {
+    const active = printerFilter === value;
+    return (
+      <Button
+        key={value ?? "all"}
+        type="button"
+        size="sm"
+        variant={active ? "default" : "outline"}
+        className="h-7 shrink-0 rounded-full px-3 text-xs"
+        aria-pressed={active}
+        onClick={() => setPrinterFilter(active ? null : value)}
+      >
+        {label}
+      </Button>
+    );
+  };
 
   return (
     <Collapsible open={open} onOpenChange={setOpen} asChild>
@@ -373,7 +410,15 @@ export function PrintFilesCard({
         </CardHeader>
         <CollapsibleContent>
           <CardContent className="grid gap-2">
-            {printFiles.map((file, index) => (
+            {showPrinterFilter && (
+              <div className="flex items-center gap-1.5 overflow-x-auto pb-1">
+                {filterChip("All", null)}
+                {printerModels.map((model) =>
+                  filterChip(shortPrinterLabel(model), model),
+                )}
+              </div>
+            )}
+            {visibleFiles.map((file, index) => (
               <div key={file.id ?? `${file.filename}-${index}`} className="grid gap-2">
                 <PrintFileRow
                   file={file}

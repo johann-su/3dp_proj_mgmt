@@ -25,3 +25,11 @@ export const BAMBU_PRINTER_MODELS = [
 // The hotend sizes Bambu sells; every machine ships with 0.4.
 export const BAMBU_NOZZLE_SIZES_MM = [0.2, 0.4, 0.6, 0.8] as const;
 export const DEFAULT_NOZZLE_MM = 0.4;
+
+// Chip label for the model page's printer filter: stored printer_model
+// strings are verbose ("Bambu Lab X1 Carbon"), and the vendor prefix carries
+// no information in a row of chips. Prusa's printer_model values are already
+// short (MK4S, MINI, XL), so only the Bambu prefix needs stripping.
+export function shortPrinterLabel(model: string): string {
+  return model.replace(/^bambu\s*lab\s+/i, "").trim() || model;
+}

@@ -39,16 +39,16 @@ uploaded before this feature are skipped. The service is optional: without
 
 ## Per-file printer overrides
 
-(issue #79) The model owner — `canActAsOwner`, deliberately *not* the
-collaborative any-session gate, because this rewrites the stored file's bytes —
-can override which printer a `.3mf` is meant for: the pencil on a row of the
-edit form's file list opens the "edit file" dialog
-(`model-file-edit-dialog.tsx`), which combines the rename field with a printer
-section (Bambu presets from `src/lib/printer-presets.ts` + custom fields,
-defaulting to the file's current `printer_info`; renames stay form state saved
-with the model, and untouched printer fields never call the endpoint, so a
-plain rename can't trigger a re-slice). Saving a printer change hits
-`PATCH /api/models/[id]/printer-info`
+(issue #79) Any signed-in user (editing is collaborative — a model may carry
+one profile per printer, each maintained by whoever owns that machine; the
+mutation is versioned like any other edit) can override which printer a `.3mf`
+is meant for: the pencil on a row of the edit form's file list opens the "edit
+file" dialog (`model-file-edit-dialog.tsx`), which combines the rename field
+with a printer section (Bambu presets from `src/lib/printer-presets.ts` +
+custom fields, defaulting to the file's current `printer_info`; renames stay
+form state saved with the model, and untouched printer fields never call the
+endpoint, so a plain rename can't trigger a re-slice). Saving a printer change
+hits `PATCH /api/models/[id]/printer-info`
 (`{ fileId, model, nozzleDiameterMm?, bedSizeMm? }`), which:
 
 - stores the profile on `model_files.printer_info` with **`override: true`** —
@@ -75,6 +75,13 @@ plain rename can't trigger a re-slice). Saving a printer change hits
 Preset bed sizes resolve through the shared `KNOWN_BED_SIZES` lookup
 (`src/lib/printer-beds.ts`) — extend that map, not the presets, when a new
 machine appears.
+
+Once a model's files span more than one printer, the model page's Files card
+(`PrintFilesCard` in `model-file-cards.tsx`) shows a chip row (All + one chip
+per distinct `printer_info.model`, shortened via `shortPrinterLabel`) that
+filters the list to the profiles for one machine — the MakerWorld-style
+"which printer is this profile for" selector. Single-printer models show no
+chips.
 
 ## "Open in slicer" deep links
 

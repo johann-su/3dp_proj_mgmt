@@ -286,24 +286,12 @@ function ModelFileRow({
       </span>
       {(entry.type === "staged" ||
         (entry.type === "existing" && entry.imported)) && (
-        <CloudDownload className="size-3.5 text-primary shrink-0" />
-      )}
+          <CloudDownload className="size-3.5 text-primary shrink-0" />
+        )}
       <span className="truncate">{entry.filename}</span>
       <span className="text-muted-foreground ml-auto shrink-0">
         {formatBytes(entry.size)}
       </span>
-      <Button
-        type="button"
-        variant="ghost"
-        size="icon"
-        className="size-6 shrink-0"
-        aria-label={`Move ${entry.filename} up`}
-        disabled={isFirst}
-        onClick={() => onMove(-1)}
-      >
-        <ChevronUp className="size-3.5" />
-      </Button>
-      
       <Tooltip>
         <TooltipTrigger asChild>
           <Button
@@ -311,13 +299,30 @@ function ModelFileRow({
             variant="ghost"
             size="icon"
             className="size-6 shrink-0"
-            aria-label={`Edit ${entry.filename}`}
-            onClick={onEdit}
+            aria-label={`Move ${entry.filename} up`}
+            disabled={isFirst}
+            onClick={() => onMove(-1)}
           >
-            <Pencil className="size-3.5" />
+            <ChevronUp className="size-3.5" />
           </Button>
         </TooltipTrigger>
-        <TooltipContent>Edit file</TooltipContent>
+        <TooltipContent>Move up</TooltipContent>
+      </Tooltip>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            className="size-6 shrink-0"
+            aria-label={`Move ${entry.filename} down`}
+            disabled={isLast}
+            onClick={() => onMove(1)}
+          >
+            <ChevronDown className="size-3.5" />
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent>Move down</TooltipContent>
       </Tooltip>
       <Tooltip>
         <TooltipTrigger asChild>
@@ -369,9 +374,9 @@ export function ModelFilePicker({
   onRename: (key: string, name: string) => void;
   onMove: (key: string, direction: -1 | 1) => void;
   onReorder: (key: string, targetKey: string) => void;
-  // Enables the per-row "edit printer info" action (issue #79) on stored .3mf
-  // rows. Unset in create mode (no file rows yet) and for viewers who may not
-  // override printer profiles (owner-gated, unlike the rest of the form).
+  // Enables the edit dialog's printer section (issue #79) on stored .3mf
+  // rows. Unset in create mode, where there are no file rows to save against
+  // yet — renaming still works there via the same dialog.
   printerEditModelId?: string;
   onPrinterInfoSaved?: (key: string, info: PrinterInfo, size: number) => void;
 }) {
@@ -434,13 +439,13 @@ export function ModelFilePicker({
           filename={editEntry.filename}
           printer={
             printerEditModelId &&
-            editEntry.type === "existing" &&
-            editEntry.filename.toLowerCase().endsWith(".3mf")
+              editEntry.type === "existing" &&
+              editEntry.filename.toLowerCase().endsWith(".3mf")
               ? {
-                  modelId: printerEditModelId,
-                  fileId: editEntry.id,
-                  current: editEntry.printerInfo,
-                }
+                modelId: printerEditModelId,
+                fileId: editEntry.id,
+                current: editEntry.printerInfo,
+              }
               : undefined
           }
           onClose={() => setEditKey(null)}
