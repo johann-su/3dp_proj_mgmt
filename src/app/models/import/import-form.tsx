@@ -1,11 +1,12 @@
 "use client";
 
-import { useState } from "react";
+import { Fragment, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { Box, Boxes, CloudDownload, HelpCircle } from "lucide-react";
 import { IMPORT_DRAFT_KEY } from "@/app/models/import-draft";
+import { IMPORT_TYPES, type ImportType } from "./import-types";
 import type { OnshapeBranchPick, OnshapeImportTab } from "@/lib/import/onshape";
 import type { OnshapeBranchChoice } from "@/lib/onshape/api";
 import {
@@ -54,21 +55,79 @@ function defaultOnshapeSelection(tabs: OnshapeImportTab[], maxTabs: number): str
   return preselected.slice(0, maxTabs).map((t) => t.id);
 }
 
-// MakerWorld collection URLs get a whole-collection background import instead
-// of the single-model draft flow. Mirrors parseMakerworldCollectionUrl.
-function isMakerworldCollectionUrl(raw: string): boolean {
-  try {
-    const url = new URL(raw);
-    return (
-      /(^|\.)makerworld\.com$/.test(url.hostname) &&
-      /\/collections\/\d+/.test(url.pathname)
-    );
-  } catch {
-    return false;
-  }
-}
+// The "What gets imported?" reference, split per source so each import type
+// shows only its relevant sources (see HELP_SECTIONS_BY_TYPE).
+const HELP_SECTIONS: Record<string, React.ReactNode> = {
+  printables: (
+    <section className="grid gap-1.5">
+      <h3 className="font-medium">Printables</h3>
+      <p className="text-muted-foreground">
+        Metadata, images and model files import directly — no connected account
+        needed.
+      </p>
+    </section>
+  ),
+  makerworld: (
+    <section className="grid gap-1.5">
+      <h3 className="font-medium">MakerWorld</h3>
+      <p className="text-muted-foreground">
+        Metadata and images always import. The <code>.3mf</code> files import
+        too once you{" "}
+        <Link href="/settings/bambu" className="underline">
+          connect your Bambu account
+        </Link>
+        . Without a connection, download the <code>.3mf</code> yourself and
+        upload it instead — the metadata is read from the file automatically.
+      </p>
+    </section>
+  ),
+  collection: (
+    <section className="grid gap-1.5">
+      <h3 className="font-medium">MakerWorld collections</h3>
+      <p className="text-muted-foreground">
+        A <code>makerworld.com/…/collections/…</code> link imports every model
+        in the collection in the background, into a new collection here.
+        Requires a connected Bambu account; progress shows in the top-right
+        corner.
+      </p>
+    </section>
+  ),
+  onshape: (
+    <>
+      <section className="grid gap-1.5">
+        <h3 className="font-medium">Onshape</h3>
+        <p className="text-muted-foreground">
+          Paste a document link (<code>cad.onshape.com/documents/…</code>), pick
+          the Part Studio/Assembly tabs to import, and each exports as its own{" "}
+          <code>.3mf</code> file. Requires{" "}
+          <Link href="/settings/onshape" className="underline">
+            signing in with your Onshape account
+          </Link>
+          .
+        </p>
+      </section>
+      <section className="grid gap-1.5">
+        <p className="text-muted-foreground">
+          To keep several parameterizations of one design, put each on its own
+          branch or version (choose it in the import dialog) and import them as
+          separate models — or derive configured Part Studios into separate
+          tabs. Editing Variable Studio values in place between imports
+          doesn&apos;t stick: the next sync re-exports the branch&apos;s current
+          state.
+        </p>
+      </section>
+    </>
+  ),
+};
 
-export function ImportForm() {
+const HELP_SECTIONS_BY_TYPE: Record<ImportType, string[]> = {
+  model: ["printables", "makerworld"],
+  collection: ["collection"],
+  cad: ["onshape"],
+};
+
+export function ImportForm({ type }: { type: ImportType }) {
+  const config = IMPORT_TYPES[type];
   const router = useRouter();
   const [fetching, setFetching] = useState(false);
   // Set when the importer reports a model has a lot of files — drives the
@@ -232,7 +291,9 @@ export function ImportForm() {
     const url = String(new FormData(e.currentTarget).get("url")).trim();
     setFetching(true);
     try {
-      if (isMakerworldCollectionUrl(url)) {
+      // The import type is chosen up front in the sidebar, so route by it
+      // directly rather than sniffing the URL for a collection link.
+      if (type === "collection") {
         await importCollection(url);
       } else {
         await importModel(url);
@@ -250,7 +311,7 @@ export function ImportForm() {
         <form onSubmit={handleSubmit} className="grid gap-4">
           <div className="grid gap-2">
             <div className="flex items-center justify-between">
-              <Label htmlFor="url">Model or collection URL</Label>
+              <Label htmlFor="url">{config.inputLabel}</Label>
               <Dialog>
                 <DialogTrigger asChild>
                   <Button type="button" variant="ghost" size="xs">
@@ -260,65 +321,15 @@ export function ImportForm() {
                 </DialogTrigger>
                 <DialogContent className="sm:max-w-xl">
                   <DialogHeader>
-                    <DialogTitle>Importing models</DialogTitle>
+                    <DialogTitle>{config.heading}</DialogTitle>
                     <DialogDescription>
-                      What&apos;s imported from each source, and what a connected
-                      account adds.
+                      What&apos;s imported, and what a connected account adds.
                     </DialogDescription>
                   </DialogHeader>
                   <div className="grid gap-5 text-sm">
-                    <section className="grid gap-1.5">
-                      <h3 className="font-medium">Printables</h3>
-                      <p className="text-muted-foreground">
-                        Metadata, images and model files import directly — no
-                        connected account needed.
-                      </p>
-                    </section>
-                    <section className="grid gap-1.5">
-                      <h3 className="font-medium">MakerWorld</h3>
-                      <p className="text-muted-foreground">
-                        Metadata and images always import. The <code>.3mf</code>{" "}
-                        files import too once you{" "}
-                        <Link href="/settings/bambu" className="underline">
-                          connect your Bambu account
-                        </Link>
-                        . Without a connection, download the <code>.3mf</code>{" "}
-                        yourself and upload it instead — the metadata is read
-                        from the file automatically.
-                      </p>
-                    </section>
-                    <section className="grid gap-1.5">
-                      <h3 className="font-medium">MakerWorld collections</h3>
-                      <p className="text-muted-foreground">
-                        A <code>makerworld.com/…/collections/…</code> link
-                        imports every model in the collection in the
-                        background, into a new collection here. Requires a
-                        connected Bambu account; progress shows in the
-                        top-right corner.
-                      </p>
-                    </section>
-                    <section className="grid gap-1.5">
-                      <h3 className="font-medium">Onshape</h3>
-                      <p className="text-muted-foreground">
-                        Paste a document link (
-                        <code>cad.onshape.com/documents/…</code>), pick the
-                        Part Studio/Assembly tabs to import, and each exports
-                        as its own <code>.3mf</code> file. Requires{" "}
-                        <Link href="/settings/onshape" className="underline">
-                          signing in with your Onshape account
-                        </Link>
-                        .
-                      </p>
-                      <p className="text-muted-foreground">
-                        To keep several parameterizations of one design, put
-                        each on its own branch or version (choose it in the
-                        import dialog) and import them as separate models —
-                        or derive configured Part Studios into separate tabs.
-                        Editing Variable Studio values in place between
-                        imports doesn&apos;t stick: the next sync re-exports
-                        the branch&apos;s current state.
-                      </p>
-                    </section>
+                    {HELP_SECTIONS_BY_TYPE[type].map((key) => (
+                      <Fragment key={key}>{HELP_SECTIONS[key]}</Fragment>
+                    ))}
                   </div>
                 </DialogContent>
               </Dialog>
@@ -328,18 +339,15 @@ export function ImportForm() {
               name="url"
               type="url"
               required
-              placeholder="https://www.printables.com/model/3161-3d-benchy"
+              placeholder={config.placeholder}
               disabled={fetching}
             />
           </div>
           <Button type="submit" disabled={fetching} className="justify-self-start">
             <CloudDownload className="size-4" />
-            {fetching ? "Fetching model… this can take a moment" : "Fetch model"}
+            {fetching ? config.fetchingLabel : config.submitLabel}
           </Button>
-          <p className="text-xs text-muted-foreground">
-            Supports Printables, MakerWorld (single models or whole{" "}
-            <code>collections</code> links), and Onshape document links.
-          </p>
+          <p className="text-xs text-muted-foreground">{config.hint}</p>
         </form>
       </CardContent>
     </Card>
