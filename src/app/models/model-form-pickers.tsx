@@ -34,6 +34,7 @@ import { formatBytes } from "@/lib/format";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 
 function FileRow({
   name,
@@ -91,30 +92,40 @@ function FileRow({
         {formatBytes(size)}
       </span>
       {onRename && !editing && (
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon"
-          className="size-6 shrink-0"
-          aria-label={`Rename ${name}`}
-          onClick={() => {
-            setDraftBase(base);
-            setEditing(true);
-          }}
-        >
-          <Pencil className="size-3.5" />
-        </Button>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="size-6 shrink-0"
+              aria-label={`Rename ${name}`}
+              onClick={() => {
+                setDraftBase(base);
+                setEditing(true);
+              }}
+            >
+              <Pencil className="size-3.5" />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>Rename</TooltipContent>
+        </Tooltip>
       )}
-      <Button
-        type="button"
-        variant="ghost"
-        size="icon"
-        className="size-6 shrink-0"
-        aria-label={`Remove ${name}`}
-        onClick={onRemove}
-      >
-        <X className="size-3.5" />
-      </Button>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            className="size-6 shrink-0"
+            aria-label={`Remove ${name}`}
+            onClick={onRemove}
+          >
+            <X className="size-3.5" />
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent>Remove</TooltipContent>
+      </Tooltip>
     </li>
   );
 }
@@ -316,53 +327,73 @@ function ModelFileRow({
       <span className="text-muted-foreground ml-auto shrink-0">
         {formatBytes(entry.size)}
       </span>
-      <Button
-        type="button"
-        variant="ghost"
-        size="icon"
-        className="size-6 shrink-0"
-        aria-label={`Move ${entry.filename} up`}
-        disabled={isFirst}
-        onClick={() => onMove(-1)}
-      >
-        <ChevronUp className="size-3.5" />
-      </Button>
-      <Button
-        type="button"
-        variant="ghost"
-        size="icon"
-        className="size-6 shrink-0"
-        aria-label={`Move ${entry.filename} down`}
-        disabled={isLast}
-        onClick={() => onMove(1)}
-      >
-        <ChevronDown className="size-3.5" />
-      </Button>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            className="size-6 shrink-0"
+            aria-label={`Move ${entry.filename} up`}
+            disabled={isFirst}
+            onClick={() => onMove(-1)}
+          >
+            <ChevronUp className="size-3.5" />
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent>Move up</TooltipContent>
+      </Tooltip>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            className="size-6 shrink-0"
+            aria-label={`Move ${entry.filename} down`}
+            disabled={isLast}
+            onClick={() => onMove(1)}
+          >
+            <ChevronDown className="size-3.5" />
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent>Move down</TooltipContent>
+      </Tooltip>
       {!editing && (
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon"
-          className="size-6 shrink-0"
-          aria-label={`Rename ${entry.filename}`}
-          onClick={() => {
-            setDraftBase(base);
-            setEditing(true);
-          }}
-        >
-          <Pencil className="size-3.5" />
-        </Button>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="size-6 shrink-0"
+              aria-label={`Rename ${entry.filename}`}
+              onClick={() => {
+                setDraftBase(base);
+                setEditing(true);
+              }}
+            >
+              <Pencil className="size-3.5" />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>Rename</TooltipContent>
+        </Tooltip>
       )}
-      <Button
-        type="button"
-        variant="ghost"
-        size="icon"
-        className="size-6 shrink-0"
-        aria-label={`Remove ${entry.filename}`}
-        onClick={onRemove}
-      >
-        <X className="size-3.5" />
-      </Button>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            className="size-6 shrink-0"
+            aria-label={`Remove ${entry.filename}`}
+            onClick={onRemove}
+          >
+            <X className="size-3.5" />
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent>Remove</TooltipContent>
+      </Tooltip>
     </li>
   );
 }
@@ -523,38 +554,53 @@ export function ImagePicker({
                 </span>
               )}
               <div className="absolute inset-x-0 bottom-0 flex items-center justify-between p-1 bg-gradient-to-t from-black/60 to-transparent">
-                <Button
-                  type="button"
-                  variant="secondary"
-                  size="icon"
-                  className="size-6"
-                  aria-label={`Move ${image.filename} left`}
-                  disabled={i === 0}
-                  onClick={() => onMove(image.key, -1)}
-                >
-                  <ChevronLeft className="size-3.5" />
-                </Button>
-                <Button
-                  type="button"
-                  variant="secondary"
-                  size="icon"
-                  className="size-6"
-                  aria-label={`Remove ${image.filename}`}
-                  onClick={() => onRemove(image.key)}
-                >
-                  <X className="size-3.5" />
-                </Button>
-                <Button
-                  type="button"
-                  variant="secondary"
-                  size="icon"
-                  className="size-6"
-                  aria-label={`Move ${image.filename} right`}
-                  disabled={i === images.length - 1}
-                  onClick={() => onMove(image.key, 1)}
-                >
-                  <ChevronRight className="size-3.5" />
-                </Button>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      size="icon"
+                      className="size-6"
+                      aria-label={`Move ${image.filename} left`}
+                      disabled={i === 0}
+                      onClick={() => onMove(image.key, -1)}
+                    >
+                      <ChevronLeft className="size-3.5" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>Move left</TooltipContent>
+                </Tooltip>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      size="icon"
+                      className="size-6"
+                      aria-label={`Remove ${image.filename}`}
+                      onClick={() => onRemove(image.key)}
+                    >
+                      <X className="size-3.5" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>Remove</TooltipContent>
+                </Tooltip>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      size="icon"
+                      className="size-6"
+                      aria-label={`Move ${image.filename} right`}
+                      disabled={i === images.length - 1}
+                      onClick={() => onMove(image.key, 1)}
+                    >
+                      <ChevronRight className="size-3.5" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>Move right</TooltipContent>
+                </Tooltip>
               </div>
             </li>
           ))}
