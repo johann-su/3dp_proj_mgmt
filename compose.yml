@@ -80,6 +80,12 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+    # Next.js writes its on-disk cache here, including resized/reformatted
+    # next/image output. Without a volume this resets on every restart or
+    # rebuild, so every image is re-optimized from scratch on next viewing.
+    volumes:
+      - next-cache:/app/.next/cache
 
 volumes:
   postgres-data:
+  next-cache:
