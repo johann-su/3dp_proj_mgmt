@@ -41,10 +41,14 @@ uploaded before this feature are skipped. The service is optional: without
 
 (issue #79) The model owner — `canActAsOwner`, deliberately *not* the
 collaborative any-session gate, because this rewrites the stored file's bytes —
-can override which printer a `.3mf` is meant for: the edit form's file list has
-a per-row "edit printer info" dialog (Bambu presets from
-`src/lib/printer-presets.ts` + custom fields, defaulting to the file's current
-`printer_info`). Saving hits `PATCH /api/models/[id]/printer-info`
+can override which printer a `.3mf` is meant for: the pencil on a row of the
+edit form's file list opens the "edit file" dialog
+(`model-file-edit-dialog.tsx`), which combines the rename field with a printer
+section (Bambu presets from `src/lib/printer-presets.ts` + custom fields,
+defaulting to the file's current `printer_info`; renames stay form state saved
+with the model, and untouched printer fields never call the endpoint, so a
+plain rename can't trigger a re-slice). Saving a printer change hits
+`PATCH /api/models/[id]/printer-info`
 (`{ fileId, model, nozzleDiameterMm?, bedSizeMm? }`), which:
 
 - stores the profile on `model_files.printer_info` with **`override: true`** —

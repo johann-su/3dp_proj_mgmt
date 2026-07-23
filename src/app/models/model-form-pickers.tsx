@@ -16,12 +16,11 @@ import {
   GripVertical,
   ImageIcon,
   Pencil,
-  Printer,
   X,
 } from "lucide-react";
 import type { UploadedFile } from "@/app/models/actions";
 import type { PrinterInfo } from "@/db/schema";
-import { PrinterInfoDialog } from "./printer-info-dialog";
+import { ModelFileEditDialog } from "./model-file-edit-dialog";
 import {
   IMAGE_ACCEPT,
   MODEL_ACCEPT,
@@ -242,8 +241,7 @@ function ModelFileRow({
   onDragEnter,
   onMove,
   onRemove,
-  onRename,
-  onEditPrinter,
+  onEdit,
 }: {
   entry: ModelFileEntry;
   isFirst: boolean;
@@ -254,21 +252,10 @@ function ModelFileRow({
   onDragEnter: () => void;
   onMove: (direction: -1 | 1) => void;
   onRemove: () => void;
-  onRename: (newName: string) => void;
-  // Opens the printer-info dialog (issue #79) — only set for stored .3mf
-  // rows when the viewer may override printer profiles.
-  onEditPrinter?: () => void;
+  // Opens the edit dialog (rename + printer info where applicable) —
+  // ModelFilePicker hosts it.
+  onEdit: () => void;
 }) {
-  const [editing, setEditing] = useState(false);
-  const [draftBase, setDraftBase] = useState("");
-  const [base, ext] = splitExtension(entry.filename);
-
-  function commit() {
-    setEditing(false);
-    const trimmed = draftBase.trim();
-    if (trimmed && trimmed !== base) onRename(`${trimmed}${ext}`);
-  }
-
   return (
     <li
       className={cn(
@@ -283,8 +270,8 @@ function ModelFileRow({
       onDrop={(e) => e.preventDefault()}
     >
       {/* Only the grip starts the drag, so dragging doesn't fight with
-          selecting text in the rename input. The up/down buttons below cover
-          reordering for keyboard/touch use, where dragging is impractical. */}
+          selecting the row's text. The up/down buttons below cover reordering
+          for keyboard/touch use, where dragging is impractical. */}
       <span
         draggable
         onDragStart={(e) => {
@@ -301,30 +288,7 @@ function ModelFileRow({
         (entry.type === "existing" && entry.imported)) && (
         <CloudDownload className="size-3.5 text-primary shrink-0" />
       )}
-      {editing ? (
-        <span className="flex min-w-0 flex-1 items-center gap-1.5">
-          <Input
-            autoFocus
-            aria-label={`New name for ${entry.filename}`}
-            value={draftBase}
-            onChange={(e) => setDraftBase(e.target.value)}
-            onBlur={commit}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") {
-                e.preventDefault();
-                commit();
-              } else if (e.key === "Escape") {
-                e.preventDefault();
-                setEditing(false);
-              }
-            }}
-            className="h-6 min-w-0 flex-1 px-1"
-          />
-          <span className="shrink-0 text-muted-foreground">{ext}</span>
-        </span>
-      ) : (
-        <span className="truncate">{entry.filename}</span>
-      )}
+      <span className="truncate">{entry.filename}</span>
       <span className="text-muted-foreground ml-auto shrink-0">
         {formatBytes(entry.size)}
       </span>
@@ -339,59 +303,52 @@ function ModelFileRow({
       >
         <ChevronUp className="size-3.5" />
       </Button>
-      <Button
-        type="button"
-        variant="ghost"
-        size="icon"
-        className="size-6 shrink-0"
-        aria-label={`Move ${entry.filename} down`}
-        disabled={isLast}
-        onClick={() => onMove(1)}
-      >
-        <ChevronDown className="size-3.5" />
-      </Button>
-      {onEditPrinter && (
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon"
-              className="size-6 shrink-0"
-              aria-label={`Edit printer info for ${entry.filename}`}
-              onClick={onEditPrinter}
-            >
-              <Printer className="size-3.5" />
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent>Edit printer info</TooltipContent>
-        </Tooltip>
-      )}
-      {!editing && (
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon"
-          className="size-6 shrink-0"
-          aria-label={`Rename ${entry.filename}`}
-          onClick={() => {
-            setDraftBase(base);
-            setEditing(true);
-          }}
-        >
-          <Pencil className="size-3.5" />
-        </Button>
-      )}
-      <Button
-        type="button"
-        variant="ghost"
-        size="icon"
-        className="size-6 shrink-0"
-        aria-label={`Remove ${entry.filename}`}
-        onClick={onRemove}
-      >
-        <X className="size-3.5" />
-      </Button>
+      
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            className="size-6 shrink-0"
+            aria-label={`Edit ${entry.filename}`}
+            onClick={onEdit}
+          >
+            <Pencil className="size-3.5" />
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent>Edit file</TooltipContent>
+      </Tooltip>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            className="size-6 shrink-0"
+            aria-label={`Edit ${entry.filename}`}
+            onClick={onEdit}
+          >
+            <Pencil className="size-3.5" />
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent>Edit file</TooltipContent>
+      </Tooltip>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            className="size-6 shrink-0"
+            aria-label={`Remove ${entry.filename}`}
+            onClick={onRemove}
+          >
+            <X className="size-3.5" />
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent>Remove</TooltipContent>
+      </Tooltip>
     </li>
   );
 }
@@ -420,12 +377,9 @@ export function ModelFilePicker({
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [draggedKey, setDraggedKey] = useState<string | null>(null);
-  const [printerEditKey, setPrinterEditKey] = useState<string | null>(null);
+  const [editKey, setEditKey] = useState<string | null>(null);
 
-  const printerEditEntry = entries.find(
-    (entry): entry is ModelFileEntry & { type: "existing" } =>
-      entry.key === printerEditKey && entry.type === "existing",
-  );
+  const editEntry = entries.find((entry) => entry.key === editKey);
 
   return (
     <div className="grid gap-2">
@@ -469,30 +423,31 @@ export function ModelFilePicker({
               }}
               onMove={(direction) => onMove(entry.key, direction)}
               onRemove={() => onRemove(entry.key)}
-              onRename={(name) => onRename(entry.key, name)}
-              onEditPrinter={
-                printerEditModelId &&
-                entry.type === "existing" &&
-                entry.filename.toLowerCase().endsWith(".3mf")
-                  ? () => setPrinterEditKey(entry.key)
-                  : undefined
-              }
+              onEdit={() => setEditKey(entry.key)}
             />
           ))}
         </ul>
       )}
-      {printerEditModelId && printerEditEntry && (
-        <PrinterInfoDialog
-          key={printerEditEntry.key}
-          modelId={printerEditModelId}
-          fileId={printerEditEntry.id}
-          filename={printerEditEntry.filename}
-          current={printerEditEntry.printerInfo}
-          onClose={() => setPrinterEditKey(null)}
-          onSaved={(info, size) => {
-            onPrinterInfoSaved?.(printerEditEntry.key, info, size);
-            setPrinterEditKey(null);
-          }}
+      {editEntry && (
+        <ModelFileEditDialog
+          key={editEntry.key}
+          filename={editEntry.filename}
+          printer={
+            printerEditModelId &&
+            editEntry.type === "existing" &&
+            editEntry.filename.toLowerCase().endsWith(".3mf")
+              ? {
+                  modelId: printerEditModelId,
+                  fileId: editEntry.id,
+                  current: editEntry.printerInfo,
+                }
+              : undefined
+          }
+          onClose={() => setEditKey(null)}
+          onRename={(name) => onRename(editEntry.key, name)}
+          onPrinterSaved={(info, size) =>
+            onPrinterInfoSaved?.(editEntry.key, info, size)
+          }
         />
       )}
     </div>
