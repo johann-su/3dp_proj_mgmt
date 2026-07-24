@@ -275,7 +275,7 @@ export function ModelViewer({
     scene.add(bed);
 
     const controls = new OrbitControls(camera, renderer.domElement);
-    controls.maxPolarAngle = Math.PI * 0.55; // don't dive far below the plate
+    controls.maxPolarAngle = Math.PI; // allow looking up from underneath the plate
     const frame = () => renderer.render(scene, camera);
     controls.addEventListener("change", frame);
 
