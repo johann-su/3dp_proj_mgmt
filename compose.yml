@@ -57,6 +57,9 @@ services:
       BETTER_AUTH_URL: ${BETTER_AUTH_URL:-http://localhost:3000}
       # Set to true to turn off self-registration (see .env.example)
       DISABLE_SIGNUP: ${DISABLE_SIGNUP:-}
+      # Reverse-proxy IP(s)/CIDR(s), comma-separated, so sign-in rate limiting
+      # can key by real client IP instead of one shared bucket (see .env.example)
+      TRUSTED_PROXY_CIDRS: ${TRUSTED_PROXY_CIDRS:-}
       # Optional OIDC SSO (see .env.example)
       OIDC_ISSUER: ${OIDC_ISSUER:-}
       OIDC_CLIENT_ID: ${OIDC_CLIENT_ID:-}

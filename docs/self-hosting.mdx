@@ -33,7 +33,9 @@ docker compose --profile app up -d --build
 
 The app listens on port `3000`; put your reverse proxy in front of it and set
 `BETTER_AUTH_URL` to the public URL it serves (no trailing slash) — sessions,
-signed file URLs and OAuth redirect URIs are all derived from it.
+signed file URLs and OAuth redirect URIs are all derived from it. Also set
+`TRUSTED_PROXY_CIDRS` to your proxy's IP/CIDR — without it, sign-in rate
+limiting can't tell your users apart and treats them as one shared client.
 
 See [Configuration](/configuration) for the full environment-variable
 reference, including optional [OIDC single sign-on](/sso) and the
