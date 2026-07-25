@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   allowedExtensions,
   contentTypeForFilename,
+  safeFileBase,
   sanitizeRename,
 } from "@/lib/file-kind";
 
@@ -50,4 +51,17 @@ test("sanitizeRename falls back to the original name when the proposal is blank"
 
 test("sanitizeRename handles files without an extension", () => {
   assert.equal(sanitizeRename("README", "notes"), "notes");
+});
+
+test("safeFileBase reduces a title to a quote-safe download filename", () => {
+  // The result goes straight into a Content-Disposition filename="…" (BOM CSV,
+  // export zip), so a title's quotes, slashes and newlines must not survive.
+  assert.equal(safeFileBase('Bracket "v2" / left'), "Bracket-v2-left");
+  assert.equal(safeFileBase("Kabelhalter (5 mm)"), "Kabelhalter-5-mm");
+});
+
+test("safeFileBase falls back to 'model' when nothing safe is left", () => {
+  // Titles can be non-Latin or pure punctuation — never emit an empty name.
+  assert.equal(safeFileBase("★★★"), "model");
+  assert.equal(safeFileBase(""), "model");
 });

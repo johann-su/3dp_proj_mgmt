@@ -197,6 +197,28 @@ Reached from a download link on the model page, so it requires the session
 cookie. Returns `404` for a bad UUID, an unknown model, or a model with an empty
 BOM; `401` when not signed in.
 
+### `GET /api/models/<id>/export`
+
+Downloads everything attached to a model as a single **`.zip`**
+(`Content-Disposition: attachment`, named `<model-title>_v<version>.zip` after
+the model title and the [version](/features/versioning) being exported):
+
+```
+README.md      title, version, description (Markdown)
+bom.csv        the bill of materials — omitted when the model has none
+files/         .3mf / .step / .scad model files
+documents/     PDF manuals
+images/        gallery images
+```
+
+The export is always the model's **current state** — earlier versions can't be
+exported — and requires only a session, like the per-file downloads it bundles.
+The version number in the filename (and in `README.md`) is the one the model
+page's History panel shows for the current version. Names that collide inside a folder get a `-2`,
+`-3` suffix. Returns `404` for a bad UUID, an unknown or trashed model; `413`
+when the model's files together exceed the export size limit (250 MB); `401`
+when not signed in.
+
 ### `POST /api/models/<id>/customize`
 
 Renders a [parametric OpenSCAD](/features/parametric) `.scad` file with the

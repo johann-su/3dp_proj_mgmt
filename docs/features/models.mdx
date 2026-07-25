@@ -101,6 +101,30 @@ any PDF manuals, and the BOM. From here you can also
 the page (which, because the catalog is private, opens for other signed-in users
 at this exact page).
 
+## Exporting a model
+
+**Export** downloads the whole model as one `.zip`, so you have an offline copy
+that outlives the instance — a backup, a hand-off to someone without an
+account, or the raw material for moving a model elsewhere. The archive is named
+`<model title>_v<version>.zip`, so several exports of the same model taken over
+time stay apart on disk and you can tell which
+[version](/features/versioning) each one holds. It has a fixed layout:
+
+```
+README.md      the title, the version, and the description as Markdown
+bom.csv        the bill of materials (only if the model has one)
+files/         the .3mf / .step / .scad files
+documents/     PDF manuals
+images/        the gallery images
+```
+
+It always exports the model **as it is now**;
+[earlier versions](/features/versioning) can't be exported. Anyone signed in can export any
+model, the same as downloading its files one at a time. There is no matching
+"import a zip" yet: the folder layout is meant to be read by a human, and a
+round trip back into Print Vault would need more metadata than folder names
+carry.
+
 ## Markdown descriptions
 
 Descriptions (for both models and collections) are rendered as **GitHub-flavored

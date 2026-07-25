@@ -4,6 +4,7 @@ import { Upload } from "@aws-sdk/lib-storage";
 import { GetObjectCommand } from "@aws-sdk/client-s3";
 import { s3, S3_BUCKET } from "@/lib/s3";
 import { isAnimatedImage } from "@/lib/image-animated";
+import { reportError } from "@/lib/telemetry";
 
 export type StagedFile = {
   key: string;
@@ -85,6 +86,23 @@ export async function readTextFile(
     if (!object.Body) return null;
     return Buffer.from(await object.Body.transformToByteArray()).toString("utf8");
   } catch {
+    return null;
+  }
+}
+
+// Reads a stored object in full (the export zip needs the bytes in memory to
+// hand them to zipSync). Returns null when the object is missing or
+// unreadable, so an export skips that one file instead of failing the whole
+// download — a model whose S3 object vanished should still export the rest.
+export async function readFileBytes(s3Key: string): Promise<Uint8Array | null> {
+  try {
+    const object = await s3.send(
+      new GetObjectCommand({ Bucket: S3_BUCKET, Key: s3Key }),
+    );
+    if (!object.Body) return null;
+    return await object.Body.transformToByteArray();
+  } catch (err) {
+    reportError(`Failed to read ${s3Key} from S3`, err);
     return null;
   }
 }
