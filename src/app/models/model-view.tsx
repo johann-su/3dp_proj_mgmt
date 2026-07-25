@@ -32,6 +32,7 @@ import {
 } from "./model-file-cards";
 import { AddToCollection, type CollectionOption } from "./[id]/add-to-collection";
 import { DeleteModelButton } from "./[id]/delete-model-button";
+import { ExportButton } from "./[id]/export-button";
 import { LikeButton } from "./[id]/like-button";
 import { HistoryPanel, type ModelHistoryEntry } from "./[id]/history-panel";
 import { OnshapeSyncButton } from "./[id]/onshape-sync-button";
@@ -281,9 +282,10 @@ export function ModelView({ data }: { data: ModelViewData }) {
           {isLoggedIn && modelId && (
             <>
               <Separator />
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
                 <LikeButton modelId={modelId} initialLiked={liked ?? false} />
                 <ShareButton />
+                <ExportButton modelId={modelId} />
                 <Button asChild variant="outline" size="sm">
                   <Link href={`/models/${modelId}/edit`}>
                     <Pencil className="size-4" />

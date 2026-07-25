@@ -25,6 +25,11 @@ COPY --from=builder --chown=nextjs:nodejs /app/scripts ./scripts
 EXPOSE 3000
 ENV PORT=3000 HOSTNAME=0.0.0.0
 
+# Migrations run before the server starts (see CMD below), so give the first
+# check a head start longer than slicer/openscad's before polling every 30s.
+HEALTHCHECK --interval=30s --timeout=5s --start-period=15s \
+    CMD node -e "fetch('http://127.0.0.1:'+(process.env.PORT||3000)+'/api/health').then(r=>process.exit(r.ok?0:1),()=>process.exit(1))"
+
 # Stay root at boot: .next/cache is often a mounted volume, which Docker
 # creates owned by root regardless of the --chown above (that only applies
 # to files baked into the image). Fix the mount's ownership, then drop to

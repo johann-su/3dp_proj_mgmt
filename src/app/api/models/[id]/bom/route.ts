@@ -3,6 +3,7 @@ import { eq } from "drizzle-orm";
 import { db } from "@/db";
 import { models } from "@/db/schema";
 import { bomToCsv } from "@/lib/bom";
+import { safeFileBase } from "@/lib/file-kind";
 import { getSession } from "@/lib/auth";
 
 export const runtime = "nodejs";
@@ -34,13 +35,10 @@ export async function GET(
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
 
-  const safeTitle =
-    model.title.replace(/[^a-zA-Z0-9._-]+/g, "-").replace(/^-|-$/g, "") || "model";
-
   return new Response(bomToCsv(model.bomItems), {
     headers: {
       "Content-Type": "text/csv; charset=utf-8",
-      "Content-Disposition": `attachment; filename="${safeTitle}-bom.csv"`,
+      "Content-Disposition": `attachment; filename="${safeFileBase(model.title)}-bom.csv"`,
     },
   });
 }

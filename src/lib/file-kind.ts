@@ -47,6 +47,15 @@ export function contentTypeForFilename(filename: string): string {
   return EXTENSION_CONTENT_TYPES[fileExtension(filename)] ?? "application/octet-stream";
 }
 
+// Turns a model title into the base of a download filename (the BOM CSV, the
+// export zip). Titles are free text — anything outside the safe set would need
+// escaping in the Content-Disposition header.
+export function safeFileBase(title: string): string {
+  return (
+    title.replace(/[^a-zA-Z0-9._-]+/g, "-").replace(/^-|-$/g, "") || "model"
+  );
+}
+
 // Applied when a user renames an already-uploaded file. Always keeps the
 // original extension, so a crafted rename can't change what kind a file is
 // treated as (allowedExtensions/sliceEligible both key off the extension)

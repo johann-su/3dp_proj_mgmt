@@ -33,6 +33,25 @@ export const oidcProviderName = process.env.OIDC_PROVIDER_NAME?.trim() || "SSO";
 const oidcAdminGroup = process.env.OIDC_ADMIN_GROUP?.trim() || null;
 const oidcModeratorGroup = process.env.OIDC_MODERATOR_GROUP?.trim() || null;
 
+// BetterAuth rate-limits auth endpoints by client IP whenever NODE_ENV is
+// "production" (true for the Docker image), with a tight built-in rule for
+// sign-in/sign-up/change-password/change-email (3 requests/10s). It reads
+// that IP from X-Forwarded-For, but self-hosting.mdx tells operators to run
+// this behind their own reverse proxy — and without telling BetterAuth which
+// hop to trust, a proxy that *appends* to X-Forwarded-For (nginx's
+// $proxy_add_x_forwarded_for, Traefik, Caddy's default forwardedHeaders)
+// produces a multi-value header BetterAuth refuses to resolve, so every
+// signed-out visitor collapses onto one shared "no-trusted-ip" bucket — one
+// person's failed sign-in can lock out everyone else on the instance for the
+// window. TRUSTED_PROXY_CIDRS names the proxy hop(s) to strip so each client
+// gets its own bucket again. Malformed entries are dropped by BetterAuth
+// itself (fails closed to the shared bucket, never open) rather than
+// rejected here.
+const trustedProxyCidrs =
+  process.env.TRUSTED_PROXY_CIDRS?.split(",")
+    .map((entry) => entry.trim())
+    .filter(Boolean) ?? [];
+
 // Self-registration is on by default (self-hosters may want an open instance)
 // and can be switched off with DISABLE_SIGNUP=true once the accounts exist.
 // This gates email/password sign-up only — OIDC keeps provisioning users on
@@ -176,6 +195,14 @@ export const auth = betterAuth({
       // Local accounts are never email-verified (we send no verification
       // mails), so don't require that for linking. The IdP asserts the email.
       requireLocalEmailVerified: false,
+    },
+  },
+  advanced: {
+    ipAddress: {
+      // Empty is the safe default: BetterAuth then only trusts a
+      // single-value X-Forwarded-For, falling back to the shared bucket
+      // described above rather than a spoofable multi-value chain.
+      trustedProxies: trustedProxyCidrs,
     },
   },
   plugins: oidcEnabled
