@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { bomToCsv, parseBomCsv, sanitizeBomItems } from "@/lib/bom";
+import { bomToCsv, groupBySection, parseBomCsv, sanitizeBomItems } from "@/lib/bom";
 
 test("parseBomCsv maps header aliases onto the BOM columns", () => {
   const result = parseBomCsv(
@@ -86,4 +86,31 @@ test("bomToCsv output survives a round-trip through parseBomCsv", () => {
     parsed.items.map(({ name, quantity, link, imageUrl }) => ({ name, quantity, link, imageUrl })),
     items,
   );
+});
+
+// Sections are an ordering convention, not a stored tree: ungrouped items come
+// first, then each section in the order it first appears, and an item joins the
+// section it names even if that run was interrupted. The model page and the MCP
+// tool both present the BOM this way.
+test("groupBySection puts ungrouped items first and keeps first-appearance order", () => {
+  const grouped = groupBySection([
+    { name: "Filament", section: null },
+    { name: "M3x8 screw", section: "Screws" },
+    { name: "Heat set insert", section: "Screws" },
+    { name: "ESC", section: "Electronics" },
+    { name: "M3 nut", section: "Screws" },
+  ]);
+  assert.deepEqual(
+    grouped.map((g) => [g.section, g.items.map((i) => i.name)]),
+    [
+      [null, ["Filament"]],
+      ["Screws", ["M3x8 screw", "Heat set insert", "M3 nut"]],
+      ["Electronics", ["ESC"]],
+    ],
+  );
+});
+
+test("groupBySection omits the ungrouped bucket when every item has a section", () => {
+  const grouped = groupBySection([{ name: "ESC", section: "Electronics" }]);
+  assert.deepEqual(grouped, [{ section: "Electronics", items: [{ name: "ESC", section: "Electronics" }] }]);
 });

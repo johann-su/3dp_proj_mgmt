@@ -169,6 +169,17 @@ function firstNumber(value: unknown): number | undefined {
   return Number.isFinite(parsed) ? parsed : undefined;
 }
 
+// Both slicers spell booleans as "0"/"1" (Bambu wraps per-extruder settings in
+// an array, PrusaSlicer writes a bare ini value). Anything else — including a
+// missing key — is "the config doesn't say", not "false".
+function boolSetting(value: unknown): boolean | undefined {
+  const raw = Array.isArray(value) ? value[0] : value;
+  if (typeof raw === "boolean") return raw;
+  if (raw === "1" || raw === "true") return true;
+  if (raw === "0" || raw === "false") return false;
+  return undefined;
+}
+
 // Both slicers describe the bed as a polygon of "XxY" mm points — Bambu/Orca as
 // a `printable_area` array, PrusaSlicer as a comma-joined `bed_shape` string. We
 // only need the plate size, so we take the polygon's bounding box (which also
@@ -212,6 +223,7 @@ function printerInfoFromBambu(
     nozzleDiameterMm: firstNumber(settings.nozzle_diameter),
     bedType: cleanLabel(settings.curr_bed_type),
     filamentTypes: usedFilamentTypes(modelXml, settings.filament_type),
+    usesSupport: boolSetting(settings.enable_support),
     bedSizeMm: bedSizeFromPoints(settings.printable_area) ?? bedSizeForModel(model),
   };
   return Object.values(info).some((v) => v !== undefined) ? info : null;
@@ -235,6 +247,10 @@ function printerInfoFromPrusaIni(ini: string): PrinterInfo | null {
     model,
     nozzleDiameterMm: firstNumber(values.get("nozzle_diameter")?.split(",")[0]),
     filamentTypes: types && types.length > 0 ? [...new Set(types)] : undefined,
+    // support_material is the master switch; support_material_auto only picks
+    // "everywhere" vs "painted enforcers only" — either way the print has
+    // supports, so it doesn't change the answer.
+    usesSupport: boolSetting(values.get("support_material")),
     bedSizeMm:
       bedSizeFromPoints(values.get("bed_shape")?.split(",")) ??
       bedSizeForModel(model),

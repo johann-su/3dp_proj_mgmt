@@ -86,6 +86,10 @@ services:
       SLICER_URL: http://slicer:8000
       # Headless OpenSCAD service for parametric .scad models (customizer)
       OPENSCAD_URL: http://openscad:8000
+      # Set to true to expose the read-only MCP server for LLM clients. Also
+      # opens an unauthenticated OAuth client-registration endpoint — read the
+      # MCP integration docs before enabling it on a public instance.
+      ENABLE_MCP: ${ENABLE_MCP:-}
     depends_on:
       postgres:
         condition: service_healthy

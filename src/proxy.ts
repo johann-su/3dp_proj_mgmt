@@ -38,8 +38,11 @@ export function proxy(request: NextRequest) {
 
 export const config = {
   // Run on every path except API routes (they guard themselves), Next.js
-  // internals, and static/metadata files.
+  // internals, and static/metadata files. `.well-known` holds the OAuth
+  // discovery documents for the MCP server (issue #96), which a client must be
+  // able to read *before* it has any credential — the routes themselves serve
+  // nothing but public metadata.
   matcher: [
-    "/((?!api|_next/static|_next/image|favicon.ico|sitemap.xml|robots.txt).*)",
+    "/((?!api|_next/static|_next/image|favicon.ico|sitemap.xml|robots.txt|\\.well-known).*)",
   ],
 };

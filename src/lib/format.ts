@@ -26,9 +26,15 @@ export function formatGrams(grams: number) {
 }
 
 export function formatDate(date: Date) {
+  // Pinned to UTC: this renders in a "use client" component
+  // (model-view.tsx et al.) that's both server- and client-rendered, and
+  // without an explicit zone toLocaleDateString falls back to the runtime's
+  // local time — server container vs. browser — so a date near midnight can
+  // land on different calendar days and trip a React hydration mismatch.
   return date.toLocaleDateString("en-US", {
     year: "numeric",
     month: "short",
     day: "numeric",
+    timeZone: "UTC",
   });
 }

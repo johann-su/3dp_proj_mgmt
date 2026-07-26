@@ -21,6 +21,7 @@ these only stay useful if they move in lockstep with the code.
 | Slicer estimates & "open in slicer" deep links | [`slicing.md`](./slicing.md) |
 | OpenSCAD customizer / parametric models | [`openscad.md`](./openscad.md) |
 | Search, homepage listing, categories | [`search-and-catalog.md`](./search-and-catalog.md) |
+| MCP server, its tools, the OAuth provider wiring | [`mcp.md`](./mcp.md) |
 | OpenTelemetry, logging, metrics | [`observability.md`](./observability.md) |
 | Icon-only buttons & other UI conventions | [`ui-conventions.md`](./ui-conventions.md) |
 

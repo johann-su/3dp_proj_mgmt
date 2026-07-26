@@ -1,0 +1,89 @@
+---
+title: MCP server
+description: Let Claude and other LLM clients query your catalog over the Model Context Protocol
+---
+
+# MCP server
+
+Print Vault can expose your catalog to an LLM client — Claude Desktop, Claude
+Code, or anything else that speaks the [Model Context
+Protocol](https://modelcontextprotocol.io) — so you can ask questions about
+your models instead of copying descriptions and BOMs into a chat window:
+
+- *In which material should I print this, and does it need supports?*
+- *What do the components for this build cost?*
+- *How long will printing and assembling it take?*
+- *How does the wiring work on this one?*
+
+The client reads the same things you see when signed in: model descriptions,
+tags and categories, bills of materials, slicer estimates, and the manuals
+attached to a model. It cannot create, change or delete anything, and it never
+downloads meshes.
+
+## Turning it on
+
+Set `ENABLE_MCP=true` and restart. That is the whole configuration — no
+separate service, no API keys to hand out.
+
+**Before enabling it on an internet-facing instance**, know what it opens. The
+MCP server authenticates clients with OAuth and clients register themselves, so
+the registration endpoint is reachable by anyone who can reach your instance —
+that is how an LLM client bootstraps before anyone has signed in. Approving a
+connection then grants that client read access to your **whole catalog** for as
+long as its tokens live, exactly like the account that approved it. So: only
+approve a connection you just started yourself, treat an approval screen you
+didn't trigger as an attempt to phish your catalog, and leave `ENABLE_MCP`
+unset if you don't want that surface exposed at all.
+
+## Connecting a client
+
+Connecting always starts **in the assistant**, not in Print Vault — there is no
+"connect" button here, because the assistant is the one that has to be told
+where your catalog lives. Once `ENABLE_MCP` is set, **Settings → AI access**
+shows the server URL to paste (and the `claude mcp add` command), lists the
+assistants you have approved, and can disconnect them again.
+
+Add your instance as a remote MCP server. In Claude Code:
+
+```sh
+claude mcp add --transport http print-vault https://models.example.com/api/mcp
+```
+
+In Claude Desktop, add it under **Settings → Connectors → Add custom
+connector** with the same URL.
+
+The client then opens your browser, where you sign in as usual (including via
+[SSO](/sso)) and land on an approval screen naming the client. Approve it and
+the client is connected; the tokens it receives are refreshed automatically, so
+it stays connected until you disconnect it.
+
+## Disconnecting
+
+**Settings → AI access** lists everything you have approved, with the date it
+was connected and when it last signed in. **Disconnect** deletes that
+assistant's tokens for your account, and it stops working immediately — the
+next call it makes is rejected and it has to ask for approval again. Other
+users' connections are untouched, even to the same assistant.
+
+Deleting a user account removes their connections too. Turning `ENABLE_MCP`
+back off disables every connection at once, without deleting anything.
+
+## What the client can call
+
+| Tool | What it answers |
+|---|---|
+| `search_models` | Finds models by name, category or tags. Text matching tolerates typos. Every other tool needs the id it returns. |
+| `get_model` | The author's full description — assembly notes, recommended settings — plus category, tags, source URL and owner. |
+| `get_model_bom` | The bill of materials, grouped into your sections, with quantities and vendor links. |
+| `get_model_print_files` | Per printable file: print time, filament weight, printer, nozzle, build plate, filament types and whether supports are enabled. |
+| `get_model_documents` | Attached PDFs with temporary download links, so the client can read a manual itself. |
+
+Two things are left to the client on purpose. **Prices** aren't stored, so
+costing a build means following each BOM item's link — any client with web
+access does that well. **Manuals** are handed over as links rather than text,
+so the client fetches only the ones a question actually needs.
+
+Support-material information (*"does it need supports?"*) is read out of a
+file's embedded slicer settings when it is uploaded. Files that were already in
+your catalog before this feature shipped report it as unknown until they are
+re-uploaded or re-synced.

@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { getSession, signInRedirect } from "@/lib/auth";
+import { getSession, mcpEnabled, signInRedirect } from "@/lib/auth";
 import { ensureInitialAdmin } from "@/lib/admin";
 import { isAdmin } from "@/lib/roles";
 import { SettingsNav } from "./settings-nav";
@@ -22,7 +22,10 @@ export default async function SettingsLayout({
       <h1 className="text-2xl font-semibold mb-6">Settings</h1>
       <div className="grid gap-8 sm:grid-cols-[12rem_1fr]">
         <aside className="sm:sticky sm:top-20 sm:self-start">
-          <SettingsNav showUsers={isAdmin(session.user.role)} />
+          <SettingsNav
+            showMcp={mcpEnabled}
+            showUsers={isAdmin(session.user.role)}
+          />
         </aside>
         <div className="min-w-0">{children}</div>
       </div>

@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Cloud, Shapes, UserCog, Users } from "lucide-react";
+import { Bot, Cloud, Shapes, UserCog, Users } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const items = [
@@ -11,16 +11,23 @@ const items = [
   { href: "/settings/bambu", label: "Bambu Cloud", icon: Cloud },
 ];
 
-// User management is admin-only (the page enforces it server-side; the nav
-// entry just hides for everyone else).
+// Both of these hide unless the instance offers them; the pages enforce it
+// server-side (404 / admin check) rather than trusting the nav.
+const mcpItem = { href: "/settings/mcp", label: "AI access", icon: Bot };
 const usersItem = { href: "/settings/users", label: "Users", icon: Users };
 
-export function SettingsNav({ showUsers }: { showUsers: boolean }) {
+export function SettingsNav({
+  showMcp,
+  showUsers,
+}: {
+  showMcp: boolean;
+  showUsers: boolean;
+}) {
   const pathname = usePathname();
 
   return (
     <nav className="flex gap-1 overflow-x-auto sm:flex-col sm:gap-0.5">
-      {(showUsers ? [...items, usersItem] : items).map((item) => {
+      {[...items, ...(showMcp ? [mcpItem] : []), ...(showUsers ? [usersItem] : [])].map((item) => {
         const active = pathname === item.href;
         return (
           <Link
