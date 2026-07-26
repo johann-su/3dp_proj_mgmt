@@ -19,10 +19,14 @@ import {
 
 export function SignInForm({
   oidcProvider,
+  passwordLoginEnabled,
   signupEnabled,
   callbackPath,
 }: {
   oidcProvider: string | null;
+  // DISABLE_PASSWORD_LOGIN instances offer SSO only — hiding the fields is
+  // cosmetic, BetterAuth stops serving the email sign-in endpoint either way.
+  passwordLoginEnabled: boolean;
   signupEnabled: boolean;
   // Server-validated in-app path to land on after login (null → homepage).
   callbackPath: string | null;
@@ -70,51 +74,57 @@ export function SignInForm({
           <CardDescription>Welcome back to Print Vault.</CardDescription>
         </CardHeader>
         <CardContent>
-          <form onSubmit={handleSubmit} className="grid gap-4">
-            <div className="grid gap-2">
-              <Label htmlFor="email">Email</Label>
-              <Input id="email" name="email" type="email" required autoComplete="email" />
-            </div>
-            <div className="grid gap-2">
-              <Label htmlFor="password">Password</Label>
-              <Input
-                id="password"
-                name="password"
-                type="password"
-                required
-                autoComplete="current-password"
-              />
-            </div>
-            <Button type="submit" disabled={loading}>
-              {loading ? "Signing in…" : "Sign in"}
-            </Button>
-            {signupEnabled && (
-              <p className="text-sm text-muted-foreground text-center">
-                No account?{" "}
-                <Link
-                  href={
-                    callbackPath
-                      ? `/sign-up?callbackUrl=${encodeURIComponent(callbackPath)}`
-                      : "/sign-up"
-                  }
-                  className="underline"
-                >
-                  Sign up
-                </Link>
-              </p>
-            )}
-          </form>
+          {passwordLoginEnabled && (
+            <form onSubmit={handleSubmit} className="grid gap-4">
+              <div className="grid gap-2">
+                <Label htmlFor="email">Email</Label>
+                <Input id="email" name="email" type="email" required autoComplete="email" />
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="password">Password</Label>
+                <Input
+                  id="password"
+                  name="password"
+                  type="password"
+                  required
+                  autoComplete="current-password"
+                />
+              </div>
+              <Button type="submit" disabled={loading}>
+                {loading ? "Signing in…" : "Sign in"}
+              </Button>
+              {signupEnabled && (
+                <p className="text-sm text-muted-foreground text-center">
+                  No account?{" "}
+                  <Link
+                    href={
+                      callbackPath
+                        ? `/sign-up?callbackUrl=${encodeURIComponent(callbackPath)}`
+                        : "/sign-up"
+                    }
+                    className="underline"
+                  >
+                    Sign up
+                  </Link>
+                </p>
+              )}
+            </form>
+          )}
 
           {oidcProvider && (
             <>
-              <div className="relative my-4">
-                <div className="absolute inset-0 flex items-center">
-                  <span className="w-full border-t" />
+              {/* The divider only separates two options — with SSO alone the
+                  button stands by itself. */}
+              {passwordLoginEnabled && (
+                <div className="relative my-4">
+                  <div className="absolute inset-0 flex items-center">
+                    <span className="w-full border-t" />
+                  </div>
+                  <div className="relative flex justify-center text-xs">
+                    <span className="bg-card px-2 text-muted-foreground">or</span>
+                  </div>
                 </div>
-                <div className="relative flex justify-center text-xs">
-                  <span className="bg-card px-2 text-muted-foreground">or</span>
-                </div>
-              </div>
+              )}
               <Button
                 type="button"
                 variant="outline"

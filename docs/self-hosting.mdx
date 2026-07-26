@@ -31,11 +31,19 @@ export S3_ACCESS_KEY_ID=… S3_SECRET_ACCESS_KEY=… S3_BUCKET=models
 docker compose --profile app up -d --build
 ```
 
-The app listens on port `3000`; put your reverse proxy in front of it and set
-`BETTER_AUTH_URL` to the public URL it serves (no trailing slash) — sessions,
-signed file URLs and OAuth redirect URIs are all derived from it. Also set
-`TRUSTED_PROXY_CIDRS` to your proxy's IP/CIDR — without it, sign-in rate
-limiting can't tell your users apart and treats them as one shared client.
+The app listens on `127.0.0.1:3000`; put your reverse proxy in front of it and
+set `BETTER_AUTH_URL` to the public URL it serves (no trailing slash) —
+sessions, signed file URLs and OAuth redirect URIs are all derived from it.
+You may also need `TRUSTED_PROXY_CIDRS`, depending on how your proxy writes
+`X-Forwarded-For` — see [Exposing an instance to the
+internet](#exposing-an-instance-to-the-internet) for when it helps and when
+setting it makes rate limiting worse.
+
+The port is published on loopback rather than `0.0.0.0` on purpose: Docker's
+published ports bypass host firewalls like ufw, so `3000:3000` would put the
+app on your machine's public IP, reachable without TLS and around your proxy.
+If your proxy runs on another host or in its own Docker network, join it to
+that network instead of widening the published port.
 
 See [Configuration](/configuration) for the full environment-variable
 reference, including optional [OIDC single sign-on](/sso) and the
@@ -60,3 +68,45 @@ Once your accounts exist, set `DISABLE_SIGNUP=true` to turn off
 self-registration (the `/sign-up` page and the email/password sign-up API).
 [OIDC single sign-on](/sso) still creates users on first login — who may
 authenticate is then the identity provider's call.
+
+## Exposing an instance to the internet
+
+The catalog is private but not compartmented: **any signed-in user can read
+every model**, and any signed-in user can edit them (see
+[User roles](/roles)). Authentication is therefore the whole perimeter, so a
+publicly reachable instance needs it closed on both sides:
+
+- **`DISABLE_SIGNUP=true`** — otherwise anyone who finds the URL can register
+  themselves an account and read the entire catalog. This is the one that
+  matters most.
+- **`DISABLE_PASSWORD_LOGIN=true`** alongside [OIDC SSO](/sso), so every login
+  goes through your identity provider and inherits its MFA, password policy
+  and lockout rules. Without it, local passwords remain a second way in with
+  only a basic per-IP rate limit in front of them.
+- **`TRUSTED_PROXY_CIDRS`** — but only if your proxy chain needs it, and it
+  often doesn't. Check before setting it: sign-in rate limiting keys on
+  `X-Forwarded-For`, and a **single-value** header is used as-is, so a proxy
+  that replaces the header (rather than appending a hop to it) already gives
+  every client its own bucket with this unset. Set it only when the app
+  receives a **multi-value** chain, listing the hops to strip from the right.
+
+  Setting it when you don't need it actively breaks things: the entries are
+  matched against the values *in the header*, not against the peer address, so
+  a CIDR that happens to cover your real clients — `10.0.0.0/8` on a VPN, say —
+  marks the only entry as a proxy, leaves no untrusted hop, and collapses
+  everyone onto the shared bucket you were trying to avoid.
+
+  To check, log or echo the header your app actually receives from one real
+  request through the full chain, and try a request with a forged
+  `X-Forwarded-For` to confirm your edge proxy discards it.
+
+The app sends its own baseline security headers (CSP, HSTS, `frame-ancestors`,
+`nosniff`, `Referrer-Policy`), so there is nothing to add at the proxy for
+those. Note that HSTS is served with `includeSubDomains`; drop it in
+`next.config.ts` if a sibling subdomain of your deployment is HTTP-only.
+
+Two things stay open to signed-in users by design and are worth knowing before
+you widen access: uploads and OpenSCAD renders are not size- or quota-capped
+(a trusted-user assumption), and importing from MakerWorld/Printables makes the
+server fetch URLs those platforms hand back. Keep the instance to people you'd
+trust with that.

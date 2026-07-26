@@ -47,8 +47,14 @@ services:
     profiles: ["app"]
     build: .
     restart: unless-stopped
+    # Loopback only, for the same reason as postgres above: Docker's published
+    # ports bypass host firewalls (ufw etc.), so "3000:3000" would put the app
+    # on the host's public IP — reachable without TLS and around whatever
+    # reverse proxy (and IPS/bouncer) you put in front of it. Terminate TLS in
+    # your proxy on the same host and point it at 127.0.0.1:3000, or drop this
+    # block entirely and join the proxy's Docker network.
     ports:
-      - "3000:3000"
+      - "127.0.0.1:3000:3000"
     environment:
       DATABASE_URL: postgres://stl:stl@postgres:5432/stl
       # Required, no default: this secret guards sessions, signed file URLs

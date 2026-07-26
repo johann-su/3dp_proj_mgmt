@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { signupDisabled } from "@/lib/auth";
+import { passwordLoginDisabled, signupDisabled } from "@/lib/auth";
 import { safeCallbackPath, signInPath } from "@/lib/callback-url";
 import { SignUpForm } from "./sign-up-form";
 
@@ -16,6 +16,8 @@ export default async function SignUpPage({
   const callbackPath = safeCallbackPath(callbackUrl);
   // DISABLE_SIGNUP instances don't offer self-registration; BetterAuth also
   // rejects a direct POST to /api/auth/sign-up/email (this is just the UI).
-  if (signupDisabled) redirect(signInPath(callbackPath));
+  // Registering is email/password only, so DISABLE_PASSWORD_LOGIN removes it
+  // too — those instances provision users through the IdP on first login.
+  if (signupDisabled || passwordLoginDisabled) redirect(signInPath(callbackPath));
   return <SignUpForm callbackPath={callbackPath} />;
 }
