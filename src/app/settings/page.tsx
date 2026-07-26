@@ -1,9 +1,10 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { ChevronRight, Cloud, Shapes } from "lucide-react";
-import { getSession, signInRedirect } from "@/lib/auth";
+import { Bot, ChevronRight, Cloud, Shapes } from "lucide-react";
+import { getSession, mcpEnabled, signInRedirect } from "@/lib/auth";
 import { getOnshapeStatus } from "@/lib/onshape/credentials";
 import { getBambuStatus } from "@/lib/bambu/credentials";
+import { listMcpClients } from "@/lib/mcp/clients";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
@@ -13,9 +14,12 @@ export default async function SettingsPage() {
   const session = await getSession();
   if (!session) redirect(await signInRedirect());
 
-  const [onshape, bambu] = await Promise.all([
+  const [onshape, bambu, mcpClients] = await Promise.all([
     getOnshapeStatus(session.user.id),
     getBambuStatus(session.user.id),
+    // Nothing to list when the feature is off — and the query would read
+    // tables no row ever lands in.
+    mcpEnabled ? listMcpClients(session.user.id) : Promise.resolve([]),
   ]);
 
   const connections = [
@@ -33,6 +37,20 @@ export default async function SettingsPage() {
       description: "Download .3mf files when importing from MakerWorld.",
       status: bambu,
     },
+    // The odd one out: this is an assistant connecting *to* the catalog, not
+    // the app reaching out — so "connected" counts approved clients.
+    ...(mcpEnabled
+      ? [
+          {
+            href: "/settings/mcp",
+            icon: Bot,
+            title: "AI assistant access",
+            description:
+              "Let Claude or ChatGPT read your catalog over MCP, and revoke it again.",
+            status: { connected: mcpClients.some((client) => client.active) },
+          },
+        ]
+      : []),
   ];
 
   return (

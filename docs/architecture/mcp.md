@@ -115,6 +115,19 @@ Two pieces of the flow are ours rather than BetterAuth's, for one reason each:
 The proxy (`src/proxy.ts`) skips `/.well-known` — a client must read those
 documents before it holds any credential.
 
+## Connected clients in Settings
+
+`/settings/mcp` (hidden from the nav, and 404 for a direct hit, unless
+`ENABLE_MCP`) is the other half of the story: the OAuth flow can only ever
+*grant*, so without a page like this an approval is permanent short of editing
+the database. `listMcpClients`/`revokeMcpClient` (`src/lib/mcp/clients.ts`)
+group `oauth_access_token` rows **by client** — a refresh or a re-approval adds
+rows, and a person thinks "Claude is connected", not in tokens. Disconnecting
+deletes that user's tokens for that client (revocation is immediate: the route
+resolves every request against these rows) plus any consent rows, but leaves
+the `oauth_application` registration alone — dynamic registration isn't
+per-user, so another user may still be connected through it.
+
 ## Verifying a change
 
 Unit tests cover the wire contract; the OAuth handshake and the tools need a

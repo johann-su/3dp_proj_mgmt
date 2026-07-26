@@ -582,3 +582,13 @@ export const tagsRelations = relations(tags, ({ many }) => ({
 export const categoriesRelations = relations(categories, ({ many }) => ({
   models: many(models),
 }));
+
+// Joined on client_id rather than the primary key — that is the column the
+// token row carries (and it is unique). Only used by the "connected apps"
+// list in Settings; BetterAuth reaches these tables through its own adapter.
+export const oauthAccessTokenRelations = relations(oauthAccessToken, ({ one }) => ({
+  client: one(oauthApplication, {
+    fields: [oauthAccessToken.clientId],
+    references: [oauthApplication.clientId],
+  }),
+}));
