@@ -1,4 +1,5 @@
 import { ExternalLink, Wrench } from "lucide-react";
+import { bomImageProxySrc } from "@/lib/bom";
 
 // Read-only BOM list shared by the model detail page and the wizard preview.
 // Items are grouped under their section headings; ungrouped items come
@@ -60,7 +61,7 @@ export function BomList({
               {item.imageUrl ? (
                 // eslint-disable-next-line @next/next/no-img-element
                 <img
-                  src={item.imageUrl}
+                  src={bomImageProxySrc(item.imageUrl)}
                   alt={item.name}
                   className="size-10 rounded object-cover bg-muted shrink-0"
                 />
