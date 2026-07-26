@@ -74,6 +74,19 @@ export function fileSrc(fileId: string): string {
   return `/api/files/${fileId}?token=${fileToken(fileId)}`;
 }
 
+// Same file, same token — but as the /api/files/<id>/<token>/<filename> path
+// route (reusing the [id] handler; filename is cosmetic, the id is
+// authoritative — see that route). Some consumers decide how to handle a URL
+// by its apparent extension, and fileSrc()'s bare-UUID form gives them
+// nothing to go on: Orca/Bambu Studio needed this for slicer deep links
+// (file-download-menu.tsx), and the MCP server (issue #96) hands this form to
+// LLM clients for the same reason — get_model_documents' downloadUrl and
+// search_models' thumbnailUrl are otherwise indistinguishable from an opaque
+// API endpoint to a client that won't fetch what it can't identify.
+export function namedFileSrc(fileId: string, filename: string): string {
+  return `/api/files/${fileId}/${fileToken(fileId)}/${encodeURIComponent(filename)}`;
+}
+
 // Token subject for one file of a version snapshot (the version-preview page,
 // /api/files/versions/[versionId]/[index]): historical files have no
 // model_files row, so the token pins the version row id plus the index into
