@@ -23,7 +23,7 @@ import {
   Wrench,
   X,
 } from "lucide-react";
-import { parseBomCsv, MAX_BOM_ITEMS, type BomItemInput } from "@/lib/bom";
+import { parseBomCsv, MAX_BOM_ITEMS, bomImageProxySrc, type BomItemInput } from "@/lib/bom";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -82,7 +82,7 @@ function Thumb({ url }: { url: string | null }) {
     return (
       // eslint-disable-next-line @next/next/no-img-element
       <img
-        src={url}
+        src={bomImageProxySrc(url)}
         alt=""
         onError={() => setBroken(true)}
         className="size-14 shrink-0 self-center rounded-md border object-cover bg-muted"

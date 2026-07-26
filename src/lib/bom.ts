@@ -15,6 +15,13 @@ export const MAX_BOM_ITEMS = 200;
 
 export const BOM_CSV_HEADER = ["name", "quantity", "link", "image"] as const;
 
+// BOM item images are arbitrary vendor URLs, not files we host — route them
+// through the same-origin proxy so they survive the `img-src 'self'` CSP
+// (see src/app/api/bom-image/route.ts).
+export function bomImageProxySrc(imageUrl: string): string {
+  return `/api/bom-image?url=${encodeURIComponent(imageUrl)}`;
+}
+
 function isHttpUrl(value: string) {
   try {
     const url = new URL(value);
