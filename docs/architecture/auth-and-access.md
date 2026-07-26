@@ -98,6 +98,14 @@ the operator out is worse than the door it closes; the resolution lives in
 module because `@/lib/auth` opens a DB pool at import time. Setting it without
 OIDC logs a warning at boot.
 
+**One surface authenticates without a session cookie**: the MCP server
+(`/api/mcp`, issue #96) takes an OAuth bearer token instead, minted by
+BetterAuth's `mcp` plugin, and a token carries the same whole-catalog read
+access its user has. The whole thing — plugin, endpoint, discovery documents,
+consent page — is off unless `ENABLE_MCP` is set, because enabling it also
+opens an unauthenticated client-registration endpoint. See
+[mcp.md](./mcp.md) before touching any of it.
+
 Because signing in grants read access to the *whole* catalog, these two flags
 plus `TRUSTED_PROXY_CIDRS` are the perimeter for any internet-facing instance —
 see [self-hosting.mdx](../self-hosting.mdx#exposing-an-instance-to-the-internet).

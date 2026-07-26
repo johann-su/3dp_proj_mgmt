@@ -22,6 +22,27 @@ export function bomImageProxySrc(imageUrl: string): string {
   return `/api/bom-image?url=${encodeURIComponent(imageUrl)}`;
 }
 
+// Groups items under their section heading, preserving list order: ungrouped
+// items first, then each section in the order it first appears. Shared by the
+// read-only BOM list (src/app/models/bom-list.tsx) and the MCP tool, which
+// must present the same grouping the page shows.
+export function groupBySection<T extends { section: string | null }>(
+  items: T[],
+): { section: string | null; items: T[] }[] {
+  const groups: { section: string | null; items: T[] }[] = [
+    { section: null, items: [] },
+  ];
+  for (const item of items) {
+    let group = groups.find((g) => g.section === item.section);
+    if (!group) {
+      group = { section: item.section, items: [] };
+      groups.push(group);
+    }
+    group.items.push(item);
+  }
+  return groups.filter((g) => g.items.length > 0);
+}
+
 function isHttpUrl(value: string) {
   try {
     const url = new URL(value);

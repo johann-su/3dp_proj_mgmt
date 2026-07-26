@@ -338,3 +338,41 @@ Onshape's registered redirect target. Verifies the `state` cookie, exchanges the
 `code` for tokens, and stores them **encrypted** for the signed-in user, then
 redirects to `/settings/onshape`. On failure it redirects there with an `?error=`
 code (`denied`, `state-mismatch`, `connect-failed`, `not-configured`).
+
+## MCP server
+
+All of the following are **404 unless `ENABLE_MCP=true`** (see the
+[MCP integration](/integrations/mcp)). This is the one part of the API meant to
+be called by something other than the app's own UI, and the only one that
+accepts a credential other than a session cookie.
+
+### `POST /api/mcp`
+
+The Model Context Protocol endpoint: JSON-RPC 2.0 over HTTP with a single JSON
+response (no event stream), exposing read-only catalog tools —
+`search_models`, `get_model`, `get_model_bom`, `get_model_print_files`,
+`get_model_documents`.
+
+- **Authentication** — `Authorization: Bearer <token>`, issued by the OAuth
+  flow below. A session cookie is *not* accepted here. Without a valid token
+  the response is **`401`** with a `WWW-Authenticate` header naming the
+  metadata document to start discovery from.
+- A token carries the same read access as the user who approved it: the whole
+  catalog, no mutations.
+- **`GET`**/**`DELETE`** return **`405`** — the server never pushes messages,
+  so there is no stream to open and no session to end.
+
+### `GET /.well-known/oauth-authorization-server`, `GET /.well-known/oauth-protected-resource`
+
+Public OAuth discovery documents (RFC 8414 / RFC 9728) an MCP client reads
+before it has any credential. The protected-resource document is also served
+under `/.well-known/oauth-protected-resource/api/mcp` and by Better Auth under
+`/api/auth/`; all copies are identical.
+
+### `GET|POST /api/auth/mcp/*`
+
+Better Auth's OAuth provider endpoints: `register` (RFC 7591 dynamic client
+registration, **unauthenticated** — this is how a client bootstraps),
+`authorize`, `token`, `userinfo`, `jwks`. The browser-facing approval screen is
+the page at `/mcp/authorize`, which is what the discovery document advertises
+as the authorization endpoint.

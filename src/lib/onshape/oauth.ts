@@ -8,6 +8,8 @@
 // Access tokens live ~60 minutes; refresh tokens are rotated on every refresh
 // and both are stored encrypted (src/lib/onshape/credentials.ts).
 
+import { appUrl } from "@/lib/app-url";
+
 const OAUTH_BASE = "https://oauth.onshape.com/oauth";
 
 const clientId = process.env.ONSHAPE_CLIENT_ID?.trim();
@@ -18,17 +20,9 @@ export const onshapeOAuthEnabled = Boolean(clientId && clientSecret);
 // CSRF state cookie shared by the authorize and callback routes.
 export const OAUTH_STATE_COOKIE = "onshape-oauth-state";
 
-// The app's public origin. Derived from BETTER_AUTH_URL rather than the
-// incoming request: behind a reverse proxy `req.url` is the internal bind
-// address (e.g. http://0.0.0.0:3000), so redirects built from it send the
-// browser to a host it can't reach.
-export function appUrl(path: string): URL {
-  const base = (process.env.BETTER_AUTH_URL ?? "http://localhost:3000").replace(
-    /\/+$/,
-    "",
-  );
-  return new URL(path, base);
-}
+// Re-exported so the existing `@/lib/onshape/oauth` importers keep working;
+// the helper itself is app-wide (src/lib/app-url.ts).
+export { appUrl };
 
 export function onshapeRedirectUri(): string {
   return appUrl("/api/onshape/callback").toString();

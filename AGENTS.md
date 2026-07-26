@@ -164,6 +164,7 @@ every session and defeat the point).
 | Slicer estimates & "open in slicer" deep links | [`slicing.md`](docs/architecture/slicing.md) |
 | OpenSCAD customizer / parametric models | [`openscad.md`](docs/architecture/openscad.md) |
 | Search, homepage listing, categories | [`search-and-catalog.md`](docs/architecture/search-and-catalog.md) |
+| MCP server, its tools, the OAuth provider wiring | [`mcp.md`](docs/architecture/mcp.md) |
 | OpenTelemetry, logging, metrics | [`observability.md`](docs/architecture/observability.md) |
 | Icon-only buttons & other UI conventions | [`ui-conventions.md`](docs/architecture/ui-conventions.md) |
 

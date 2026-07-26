@@ -30,7 +30,10 @@ used filaments, and physical bed size — the latter parsed from the embedded
 `printable_area`/`bed_shape` polygon, or a known-model lookup, and used to draw
 the 3D preview's plate at real dimensions, issue #80; the preview's plate-size
 dropdown can swap in any of the `BED_PRESETS` in `src/lib/printer-beds.ts` to
-check fit against another printer), which the model page
+check fit against another printer; plus `usesSupport`, from the config's
+`enable_support`/`support_material` — tri-state on purpose, since a *missing*
+key means "the config didn't say", not "no supports", and the model page only
+badges the positive case), which the model page
 shows per file. Slicer-derived numbers
 are still approximations (PrusaSlicer's time estimator, not the printer's
 firmware) and shown with a `~` prefix; files PrusaSlicer cannot slice are
