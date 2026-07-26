@@ -1,4 +1,9 @@
-import { oidcEnabled, oidcProviderName, signupDisabled } from "@/lib/auth";
+import {
+  oidcEnabled,
+  oidcProviderName,
+  passwordLoginDisabled,
+  signupDisabled,
+} from "@/lib/auth";
 import { safeCallbackPath } from "@/lib/callback-url";
 import { SignInForm } from "./sign-in-form";
 
@@ -16,7 +21,9 @@ export default async function SignInPage({
   return (
     <SignInForm
       oidcProvider={oidcEnabled ? oidcProviderName : null}
-      signupEnabled={!signupDisabled}
+      passwordLoginEnabled={!passwordLoginDisabled}
+      // Self-registration is email/password only, so it can't outlive it.
+      signupEnabled={!signupDisabled && !passwordLoginDisabled}
       callbackPath={callbackPath}
     />
   );

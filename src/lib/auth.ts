@@ -7,6 +7,7 @@ import { db } from "@/db";
 import * as schema from "@/db/schema";
 import { logger } from "@/lib/logger";
 import { roleFromOidcGroups, type UserRole } from "@/lib/roles";
+import { envFlag, passwordLoginEnabled } from "@/lib/auth-config";
 import { CALLBACK_PATH_HEADER, signInPath } from "@/lib/callback-url";
 
 // Optional OIDC single sign-on, enabled when all three env vars are set.
@@ -35,18 +36,27 @@ const oidcModeratorGroup = process.env.OIDC_MODERATOR_GROUP?.trim() || null;
 
 // BetterAuth rate-limits auth endpoints by client IP whenever NODE_ENV is
 // "production" (true for the Docker image), with a tight built-in rule for
-// sign-in/sign-up/change-password/change-email (3 requests/10s). It reads
-// that IP from X-Forwarded-For, but self-hosting.mdx tells operators to run
-// this behind their own reverse proxy — and without telling BetterAuth which
-// hop to trust, a proxy that *appends* to X-Forwarded-For (nginx's
-// $proxy_add_x_forwarded_for, Traefik, Caddy's default forwardedHeaders)
-// produces a multi-value header BetterAuth refuses to resolve, so every
-// signed-out visitor collapses onto one shared "no-trusted-ip" bucket — one
-// person's failed sign-in can lock out everyone else on the instance for the
-// window. TRUSTED_PROXY_CIDRS names the proxy hop(s) to strip so each client
-// gets its own bucket again. Malformed entries are dropped by BetterAuth
-// itself (fails closed to the shared bucket, never open) rather than
-// rejected here.
+// sign-in/sign-up/change-password/change-email (3 requests/10s). It reads that
+// IP from X-Forwarded-For (getIPFromHeader in @better-auth/core/utils/ip):
+//
+//  * a SINGLE-value header is trusted as-is — no configuration needed, which
+//    is the common case behind one proxy that *replaces* the header (Traefik
+//    with no forwardedHeaders.trustedIPs discards whatever the client sent,
+//    and does not append its own hop — measured, not assumed);
+//  * a MULTI-value header is refused outright unless trustedProxies is set, so
+//    every signed-out visitor collapses onto one shared bucket and one
+//    person's failed sign-in can lock out everyone else for the window. That
+//    is what a chain that appends (nginx's $proxy_add_x_forwarded_for, a CDN
+//    in front of your proxy) produces, and what TRUSTED_PROXY_CIDRS fixes: the
+//    listed hops are stripped from the right until an untrusted one is left.
+//
+// The entries match values *inside the header*, never the peer address — so
+// setting this when the header is already single-valued is actively harmful:
+// a CIDR covering your real clients (10.0.0.0/8 on a VPN) marks the only entry
+// as a proxy, leaves nothing untrusted, and yields the shared bucket it was
+// meant to prevent. Leave it unset until you've looked at the header the app
+// actually receives. Malformed entries are dropped by BetterAuth itself (fails
+// closed to the shared bucket, never open) rather than rejected here.
 const trustedProxyCidrs =
   process.env.TRUSTED_PROXY_CIDRS?.split(",")
     .map((entry) => entry.trim())
@@ -56,9 +66,29 @@ const trustedProxyCidrs =
 // and can be switched off with DISABLE_SIGNUP=true once the accounts exist.
 // This gates email/password sign-up only — OIDC keeps provisioning users on
 // first login, since who may authenticate is the IdP's decision.
-export const signupDisabled = ["true", "1"].includes(
-  process.env.DISABLE_SIGNUP?.trim().toLowerCase() ?? "",
+export const signupDisabled = envFlag(process.env.DISABLE_SIGNUP);
+
+// DISABLE_PASSWORD_LOGIN=true removes email/password sign-in entirely, leaving
+// the IdP as the only way in — the setting an internet-facing instance wants,
+// since a local password is a second door with no MFA behind it. Ignored
+// (with a warning) when no OIDC provider is configured, so it can't lock
+// everyone out of an instance that has no other way to sign in.
+export const passwordLoginDisabled = !passwordLoginEnabled(
+  process.env.DISABLE_PASSWORD_LOGIN,
+  oidcEnabled,
 );
+
+if (
+  envFlag(process.env.DISABLE_PASSWORD_LOGIN) &&
+  !oidcEnabled &&
+  process.env.NEXT_PHASE !== "phase-production-build"
+) {
+  logger.warn(
+    "[auth] DISABLE_PASSWORD_LOGIN is set but no OIDC provider is configured — " +
+      "ignoring it, since that would leave no way to sign in. Set OIDC_ISSUER/" +
+      "OIDC_CLIENT_ID/OIDC_CLIENT_SECRET first.",
+  );
+}
 
 // Bootstrap for user roles (issue #54): the account with this email becomes
 // the first admin — at sign-up via the create hook below, or (for accounts
@@ -145,7 +175,10 @@ export const auth = betterAuth({
     },
   }),
   emailAndPassword: {
-    enabled: true,
+    // Off means BetterAuth stops serving /api/auth/sign-in/email entirely, so
+    // existing local credentials become unusable and SSO is the only way in.
+    // Sessions are unaffected — nobody signed in gets kicked out.
+    enabled: !passwordLoginDisabled,
     // Enforced server-side by BetterAuth (a direct POST to
     // /api/auth/sign-up/email is rejected); the /sign-up page also hides.
     disableSignUp: signupDisabled,

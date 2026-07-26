@@ -21,7 +21,8 @@ All configuration is via environment variables. The `app` service in
 
 | Variable | Default | Description |
 |---|---|---|
-| `DISABLE_SIGNUP` | unset | Set to `true` to turn off self-registration once your accounts exist. OIDC sign-in still creates users on first login. |
+| `DISABLE_SIGNUP` | unset | Set to `true` to turn off self-registration once your accounts exist. OIDC sign-in still creates users on first login. Signing in grants read access to the whole catalog, so leave self-registration on only where you are happy for any visitor to join. |
+| `DISABLE_PASSWORD_LOGIN` | unset | Set to `true` to remove email/password sign-in, leaving your OIDC provider as the only way in. Existing local passwords stop working; sessions are unaffected. Ignored (with a warning in the log) unless OIDC is configured, so it cannot lock you out of an instance that has no SSO. See [Exposing an instance to the internet](/self-hosting#exposing-an-instance-to-the-internet). |
 | `INITIAL_ADMIN_EMAIL` | unset | Bootstrap the first admin: while the database has no admin at all, the account with this email is promoted. Inert once an admin exists. See [User roles](/roles). |
 | `TRUSTED_PROXY_CIDRS` | unset | Comma-separated IP(s)/CIDR(s) of your reverse proxy. Sign-in, sign-up and password/email changes are rate-limited by client IP in production; without this, a proxy that appends to `X-Forwarded-For` (nginx, Traefik, Caddy defaults) makes every visitor share one rate-limit bucket instead of getting their own. Only needed when running behind a reverse proxy. |
 

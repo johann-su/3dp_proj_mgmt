@@ -85,3 +85,24 @@ Auth is BetterAuth email/password with sessions stored in Postgres.
 `emailAndPassword.disableSignUp` plus hiding the `/sign-up` page); OIDC keeps
 provisioning users on first login regardless — who may authenticate through SSO
 is the IdP's decision.
+
+`DISABLE_PASSWORD_LOGIN=true` goes further and sets
+`emailAndPassword.enabled: false`, so BetterAuth stops serving the email
+sign-in endpoint and the IdP becomes the only way in (existing sessions are
+untouched; existing credential rows simply stop working). The sign-in page
+hides the email/password fields and `/sign-up` redirects away, since
+registering is email/password only. **The flag is ignored unless `oidcEnabled`**
+— honouring it without an IdP would leave nobody able to sign in, and locking
+the operator out is worse than the door it closes; the resolution lives in
+`passwordLoginEnabled` (`src/lib/auth-config.ts`, unit-tested), kept in its own
+module because `@/lib/auth` opens a DB pool at import time. Setting it without
+OIDC logs a warning at boot.
+
+Because signing in grants read access to the *whole* catalog, these two flags
+plus `TRUSTED_PROXY_CIDRS` are the perimeter for any internet-facing instance —
+see [self-hosting.mdx](../self-hosting.mdx#exposing-an-instance-to-the-internet).
+Baseline security headers (CSP, HSTS, `frame-ancestors: none`, `nosniff`,
+`Referrer-Policy`, `Permissions-Policy`) are set in `next.config.ts` rather than
+at the proxy, so they hold however the app is fronted. The CSP keeps
+`'unsafe-inline'` for scripts and styles: Next inlines its bootstrap/flight
+payload, and tightening it means nonces, which means making every page dynamic.
