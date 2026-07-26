@@ -45,7 +45,13 @@ the feature shouldn't expose that write surface.
   (`src/lib/file-token.ts`) so the client can fetch the PDF itself without a
   cookie. Anyone holding such a URL can read that one file until it expires —
   the same trade the image optimizer already makes, now aimed outward on
-  purpose.
+  purpose. **`robots.ts` allows `/api/files/`** for exactly this reason: the
+  blanket `Disallow: /` that keeps the catalog out of search engines also made
+  a policy-abiding fetcher (a client's "open this link" step, not the MCP tool
+  calls themselves — those aren't robots.txt-gated) refuse the URL outright,
+  while a human clicking the same link never consults robots.txt and saw
+  nothing wrong. Keep the carve-out scoped to `/api/files/` — nothing under it
+  is indexable anyway, every URL is single-file and token-gated.
 
 Support material (`printerInfo.usesSupport`) was added for this: the key was
 parsed out of the embedded slicer config and thrown away. **It is only filled
