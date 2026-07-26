@@ -38,6 +38,7 @@ test("readSliceData sums predictions and weights across plates (sliced Bambu fil
         nozzle_diameter: ["0.4"],
         curr_bed_type: "Textured PEI Plate",
         filament_type: ["PLA", "PETG"],
+        enable_support: "1",
         // Bed polygon → 256×256 plate. bed_exclude_area (the Bambu logo corner)
         // is not part of the plate size and must be ignored.
         printable_area: ["0x0", "256x0", "256x256", "0x256"],
@@ -57,8 +58,36 @@ test("readSliceData sums predictions and weights across plates (sliced Bambu fil
     nozzleDiameterMm: 0.4,
     bedType: "Textured PEI Plate",
     filamentTypes: ["PETG"],
+    usesSupport: true,
     bedSizeMm: { x: 256, y: 256 },
   });
+});
+
+// "Does it need supports?" is answerable from the embedded config, but only
+// when it says so: a missing key must stay undefined ("unknown") rather than
+// collapsing to false, which would read as "no supports needed".
+test("readSliceData reports the support setting only when the config states it", async () => {
+  const withoutSupportKey = zipSync({
+    "Metadata/project_settings.config": strToU8(
+      JSON.stringify({ printer_model: "Bambu Lab P1S" }),
+    ),
+  });
+  const off = zipSync({
+    "Metadata/Slic3r_PE.config": strToU8(
+      "printer_model = MK4S\nsupport_material = 0\n",
+    ),
+  });
+
+  const a = readerFor(withoutSupportKey);
+  assert.equal(
+    (await readSliceData(a.readRange, a.size))?.printerInfo?.usesSupport,
+    undefined,
+  );
+  const b = readerFor(off);
+  assert.equal(
+    (await readSliceData(b.readRange, b.size))?.printerInfo?.usesSupport,
+    false,
+  );
 });
 
 test("readSliceData counts plates from model_settings for unsliced projects", async () => {
@@ -89,6 +118,7 @@ test("readSliceData reads printer info from a PrusaSlicer project ini", async ()
     model: "MK4S",
     nozzleDiameterMm: 0.4,
     filamentTypes: ["PLA"],
+    usesSupport: undefined,
     bedSizeMm: { x: 250, y: 210 },
   });
 });

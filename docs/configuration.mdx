@@ -70,6 +70,12 @@ disappears from the UI.
 | `SLICER_URL` | `http://slicer:8000` | Headless PrusaSlicer service (`slicer` in `compose.yml`). Estimates print time & filament use for unsliced `.3mf` uploads; without it, such files show no estimates. |
 | `OPENSCAD_URL` | `http://openscad:8000` | Headless OpenSCAD service (`openscad` in `compose.yml`). Renders customized `.3mf` files from parametric `.scad` models; without it, the customizer UI is hidden and `.scad` files are plain downloads. |
 
+## MCP server (optional)
+
+| Variable | Default | Description |
+|---|---|---|
+| `ENABLE_MCP` | unset (off) | Set to `true` to expose the read-only [MCP server](/integrations/mcp) at `/api/mcp`, letting an LLM client such as Claude query your catalog. Enabling it also makes the instance an OAuth authorization server whose client-registration endpoint is open by design — read the integration page before switching it on. |
+
 ## Telemetry (optional)
 
 | Variable | Default | Description |

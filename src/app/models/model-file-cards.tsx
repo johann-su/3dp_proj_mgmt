@@ -229,6 +229,7 @@ function PrintFileRow({
         )}
         {(file.printer?.filamentTypes?.length ||
           file.printer?.bedType ||
+          file.printer?.usesSupport ||
           file.sliceStatus === "failed") && (
           <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
             {file.printer?.filamentTypes?.map((type) => (
@@ -246,6 +247,16 @@ function PrintFileRow({
                 className="px-1.5 py-0 text-[10px] font-normal text-muted-foreground"
               >
                 {file.printer.bedType.toLowerCase()}
+              </Badge>
+            )}
+            {/* Only the positive case is worth a badge: "no supports" is the
+                default expectation, and the setting is often simply unknown. */}
+            {file.printer?.usesSupport && (
+              <Badge
+                variant="outline"
+                className="px-1.5 py-0 text-[10px] font-normal text-muted-foreground"
+              >
+                supports
               </Badge>
             )}
             {file.sliceStatus === "failed" && (

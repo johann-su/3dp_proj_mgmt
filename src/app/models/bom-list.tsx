@@ -1,5 +1,5 @@
 import { ExternalLink, Wrench } from "lucide-react";
-import { bomImageProxySrc } from "@/lib/bom";
+import { bomImageProxySrc, groupBySection } from "@/lib/bom";
 
 // Read-only BOM list shared by the model detail page and the wizard preview.
 // Items are grouped under their section headings; ungrouped items come
@@ -12,21 +12,6 @@ type BomListItem = {
   imageUrl: string | null;
   section: string | null;
 };
-
-function groupBySection<T extends { section: string | null }>(items: T[]) {
-  const groups: { section: string | null; items: T[] }[] = [
-    { section: null, items: [] },
-  ];
-  for (const item of items) {
-    let group = groups.find((g) => g.section === item.section);
-    if (!group) {
-      group = { section: item.section, items: [] };
-      groups.push(group);
-    }
-    group.items.push(item);
-  }
-  return groups.filter((g) => g.items.length > 0);
-}
 
 function linkHostname(link: string) {
   try {

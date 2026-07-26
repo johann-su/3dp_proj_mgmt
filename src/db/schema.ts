@@ -72,6 +72,67 @@ export const verification = pgTable("verification", {
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
 
+// --- OAuth provider tables (BetterAuth `mcp` plugin, issue #96) ---
+//
+// The MCP server (/api/mcp) authenticates LLM clients with OAuth 2.1 bearer
+// tokens instead of session cookies, so the instance acts as an authorization
+// server for them. These three tables are BetterAuth's own (shared with its
+// oidc-provider plugin) — the property names must stay exactly as spelled
+// here, because the drizzle adapter looks each model/field up by name (see the
+// `schema` map in src/lib/auth.ts). Only used while ENABLE_MCP is set.
+//
+// Clients register themselves (RFC 7591 dynamic client registration), so an
+// oauthApplication row is created by whoever connects a client, not by an
+// admin — hence the whole surface being opt-in per instance.
+
+export const oauthApplication = pgTable("oauth_application", {
+  id: text("id").primaryKey(),
+  name: text("name").notNull(),
+  icon: text("icon"),
+  metadata: text("metadata"),
+  clientId: text("client_id").notNull().unique(),
+  clientSecret: text("client_secret"),
+  // Comma-joined list; an authorize request must match one exactly.
+  redirectUrls: text("redirect_urls").notNull(),
+  type: text("type").notNull(),
+  disabled: boolean("disabled").notNull().default(false),
+  // The user who registered the client, when it was registered from a session.
+  userId: text("user_id").references(() => user.id, { onDelete: "cascade" }),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export const oauthAccessToken = pgTable("oauth_access_token", {
+  id: text("id").primaryKey(),
+  accessToken: text("access_token").notNull().unique(),
+  refreshToken: text("refresh_token").notNull().unique(),
+  accessTokenExpiresAt: timestamp("access_token_expires_at").notNull(),
+  refreshTokenExpiresAt: timestamp("refresh_token_expires_at").notNull(),
+  clientId: text("client_id")
+    .notNull()
+    .references(() => oauthApplication.clientId, { onDelete: "cascade" }),
+  // Null after the user account is deleted — the token is then unusable
+  // (getMcpSession resolves the user), so revocation comes for free.
+  userId: text("user_id").references(() => user.id, { onDelete: "cascade" }),
+  scopes: text("scopes").notNull(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export const oauthConsent = pgTable("oauth_consent", {
+  id: text("id").primaryKey(),
+  clientId: text("client_id")
+    .notNull()
+    .references(() => oauthApplication.clientId, { onDelete: "cascade" }),
+  userId: text("user_id")
+    .notNull()
+    .references(() => user.id, { onDelete: "cascade" }),
+  scopes: text("scopes").notNull(),
+  consentGiven: boolean("consent_given").notNull().default(false),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
 // --- Application tables ---
 
 export const categories = pgTable("categories", {
@@ -168,6 +229,11 @@ export type PrinterInfo = {
   nozzleDiameterMm?: number;
   bedType?: string; // "Textured PEI Plate"
   filamentTypes?: string[]; // ["PETG"]
+  // Whether the project was set up to print support material (Bambu/Orca
+  // `enable_support`, PrusaSlicer `support_material`). Undefined when the
+  // config doesn't say — "does this need supports?" is one of the first
+  // questions about a print, and the answer is already in the file.
+  usesSupport?: boolean;
   // Physical build-plate size in mm (bounding box of the bed shape), so the 3D
   // preview can draw a real bed the geometry is measured against (issue #80).
   // Parsed from the embedded config's printable area (Bambu `printable_area` /

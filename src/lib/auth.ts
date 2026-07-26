@@ -1,10 +1,11 @@
 import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
-import { genericOAuth } from "better-auth/plugins";
+import { genericOAuth, mcp } from "better-auth/plugins";
 import { headers } from "next/headers";
 import { and, ne, sql } from "drizzle-orm";
 import { db } from "@/db";
 import * as schema from "@/db/schema";
+import { appUrl } from "@/lib/app-url";
 import { logger } from "@/lib/logger";
 import { roleFromOidcGroups, type UserRole } from "@/lib/roles";
 import { envFlag, passwordLoginEnabled } from "@/lib/auth-config";
@@ -90,6 +91,25 @@ if (
   );
 }
 
+// MCP server (issue #96): opt-in, because enabling it turns the instance into
+// an OAuth authorization server whose client-registration endpoint
+// (/api/auth/mcp/register, RFC 7591) is unauthenticated by design — that is
+// how an LLM client bootstraps itself, but it is a write surface an instance
+// that doesn't want the feature shouldn't expose. Everything MCP is gated on
+// this: the plugin, /api/mcp, the discovery documents and the consent page.
+export const mcpEnabled = envFlag(process.env.ENABLE_MCP);
+
+// The page an MCP client's browser is sent to for approval. It is the
+// `authorization_endpoint` we advertise (see the discovery route) and doubles
+// as BetterAuth's `loginPage`, so a session that expires mid-flow lands back
+// on it rather than somewhere that has lost the OAuth query.
+export const MCP_AUTHORIZE_PATH = "/mcp/authorize";
+
+// The MCP endpoint itself, and the OAuth "resource identifier" clients name
+// when asking for a token for it. Both the discovery documents and the token
+// requests have to agree on this string, so it is defined once.
+export const MCP_ENDPOINT_PATH = "/api/mcp";
+
 // Bootstrap for user roles (issue #54): the account with this email becomes
 // the first admin — at sign-up via the create hook below, or (for accounts
 // that already exist) lazily on the next settings page load while the DB has
@@ -172,6 +192,10 @@ export const auth = betterAuth({
       session: schema.session,
       account: schema.account,
       verification: schema.verification,
+      // Written by the `mcp` plugin only; harmless when it is disabled.
+      oauthApplication: schema.oauthApplication,
+      oauthAccessToken: schema.oauthAccessToken,
+      oauthConsent: schema.oauthConsent,
     },
   }),
   emailAndPassword: {
@@ -238,37 +262,52 @@ export const auth = betterAuth({
       trustedProxies: trustedProxyCidrs,
     },
   },
-  plugins: oidcEnabled
-    ? [
-        genericOAuth({
-          config: [
-            {
-              providerId: "oidc",
-              clientId: oidcClientId!,
-              clientSecret: oidcClientSecret!,
-              discoveryUrl,
-              scopes: ["openid", "profile", "email"],
-              // Users that don't exist yet are created on first SSO login
-              // (implicit sign-up is the default; spelled out here on purpose).
-              disableImplicitSignUp: false,
-              mapProfileToUser: async (profile) => {
-                // Runs on every OIDC callback — the hook that keeps roles in
-                // sync with IdP group membership.
-                await applyOidcGroupRole(profile);
-                return {
-                  name:
-                    profile.name ||
-                    profile.preferred_username ||
-                    (typeof profile.email === "string"
-                      ? profile.email.split("@")[0]
-                      : "User"),
-                };
+  plugins: [
+    ...(oidcEnabled
+      ? [
+          genericOAuth({
+            config: [
+              {
+                providerId: "oidc",
+                clientId: oidcClientId!,
+                clientSecret: oidcClientSecret!,
+                discoveryUrl,
+                scopes: ["openid", "profile", "email"],
+                // Users that don't exist yet are created on first SSO login
+                // (implicit sign-up is the default; spelled out here on purpose).
+                disableImplicitSignUp: false,
+                mapProfileToUser: async (profile) => {
+                  // Runs on every OIDC callback — the hook that keeps roles in
+                  // sync with IdP group membership.
+                  await applyOidcGroupRole(profile);
+                  return {
+                    name:
+                      profile.name ||
+                      profile.preferred_username ||
+                      (typeof profile.email === "string"
+                        ? profile.email.split("@")[0]
+                        : "User"),
+                  };
+                },
               },
-            },
-          ],
-        }),
-      ]
-    : [],
+            ],
+          }),
+        ]
+      : []),
+    // Mounts /api/auth/mcp/* (authorize, token, register, get-session) plus
+    // the OAuth discovery documents BetterAuth serves under its own base path.
+    ...(mcpEnabled
+      ? [
+          mcp({
+            loginPage: MCP_AUTHORIZE_PATH,
+            // Without this the advertised resource would be the bare origin,
+            // and a client that checks the metadata against the server URL it
+            // was configured with (RFC 9728 §3.3) would refuse the token.
+            resource: appUrl(MCP_ENDPOINT_PATH).toString(),
+          }),
+        ]
+      : []),
+  ],
 });
 
 export async function getSession() {
