@@ -21,7 +21,7 @@ import type { PrinterInfo } from "@/db/schema";
 import { appUrl } from "@/lib/app-url";
 import { groupBySection } from "@/lib/bom";
 import { ruleTreeToSql, type RuleNode } from "@/lib/collection-rules";
-import { fileSrc } from "@/lib/file-token";
+import { namedFileSrc } from "@/lib/file-token";
 import { formatDuration } from "@/lib/format";
 import {
   optionalInt,
@@ -47,8 +47,11 @@ function modelUrl(id: string): string {
   return appUrl(`/models/${id}`).toString();
 }
 
-function absoluteFileUrl(fileId: string): string {
-  return appUrl(fileSrc(fileId)).toString();
+// An LLM client's own "fetch this URL" step may decide how (or whether) to
+// handle a link by its apparent extension, so every file URL handed to MCP
+// clients is named rather than a bare UUID — see namedFileSrc.
+function absoluteNamedFileUrl(fileId: string, filename: string): string {
+  return appUrl(namedFileSrc(fileId, filename)).toString();
 }
 
 function summarize(description: string): string | null {
@@ -88,6 +91,7 @@ type SearchRow = {
   category: string | null;
   tags: string[] | null;
   thumbnail_id: string | null;
+  thumbnail_filename: string | null;
 };
 
 async function searchModels(args: Record<string, unknown>) {
@@ -134,7 +138,9 @@ async function searchModels(args: Record<string, unknown>) {
            ARRAY(SELECT t.name FROM model_tags mt JOIN tags t ON t.id = mt.tag_id
                  WHERE mt.model_id = m.id ORDER BY t.name) AS tags,
            (SELECT mf.id FROM model_files mf WHERE mf.model_id = m.id AND mf.kind = 'image'
-            ORDER BY mf.position ASC LIMIT 1) AS thumbnail_id
+            ORDER BY mf.position ASC LIMIT 1) AS thumbnail_id,
+           (SELECT mf.filename FROM model_files mf WHERE mf.model_id = m.id AND mf.kind = 'image'
+            ORDER BY mf.position ASC LIMIT 1) AS thumbnail_filename
     FROM models m
     LEFT JOIN categories c ON c.id = m.category_id
     WHERE ${where}
@@ -151,7 +157,10 @@ async function searchModels(args: Record<string, unknown>) {
       tags: row.tags ?? [],
       sourceUrl: row.source_url,
       url: modelUrl(row.id),
-      thumbnailUrl: row.thumbnail_id ? absoluteFileUrl(row.thumbnail_id) : null,
+      thumbnailUrl:
+        row.thumbnail_id && row.thumbnail_filename
+          ? absoluteNamedFileUrl(row.thumbnail_id, row.thumbnail_filename)
+          : null,
     })),
     count: rows.length,
     truncated: rows.length === limit,
@@ -326,8 +335,10 @@ async function getModelDocuments(args: Record<string, unknown>) {
       sizeBytes: file.size,
       // A signed, expiring URL (src/lib/file-token.ts) — the only way to hand
       // a file to a client that has no session cookie. Anyone holding the URL
-      // can fetch that one file until it expires.
-      downloadUrl: absoluteFileUrl(file.id),
+      // can fetch that one file until it expires. Named (not the bare-UUID
+      // form) so a client's own fetch step can tell from the URL that this is
+      // a PDF worth reading.
+      downloadUrl: absoluteNamedFileUrl(file.id, file.filename),
     })),
     documentCount: files.length,
     note: "Fetch a downloadUrl to read the manual; the links expire.",

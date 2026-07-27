@@ -46,6 +46,18 @@ test("fileToken buckets expiry so URLs stay stable within a week", async () => {
   assert.equal(verifyFileToken(FILE_ID, token, later), true);
 });
 
+test("namedFileSrc carries the filename in the path so a URL is identifiable by extension", async () => {
+  // Some consumers (Orca/Bambu deep links, and MCP clients fetching a
+  // downloadUrl on their own) decide how to handle a URL by its apparent
+  // extension; fileSrc()'s bare-UUID form gives them nothing to go on.
+  const { namedFileSrc, verifyFileToken } = await import("@/lib/file-token");
+  const src = namedFileSrc(FILE_ID, "manual v2.pdf");
+  const [id, token, name] = src.split("/").slice(-3);
+  assert.equal(id, FILE_ID);
+  assert.equal(name, "manual%20v2.pdf");
+  assert.equal(verifyFileToken(FILE_ID, token), true);
+});
+
 test("version-file tokens are scoped to one version and file index", async () => {
   // The version-preview page serves snapshot files by (version row, index);
   // a token minted for one file must not unlock its neighbours.
