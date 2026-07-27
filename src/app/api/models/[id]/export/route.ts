@@ -46,15 +46,33 @@ export async function GET(
 
   const model = await db.query.models.findFirst({
     where: and(eq(models.id, id), isNull(models.deletedAt)),
-    columns: { title: true, description: true },
+    columns: {
+      title: true,
+      description: true,
+      sourceUrl: true,
+      onshapeMicroversion: true,
+    },
     with: {
       // Ordered so the dedupe suffixes ("part-2.3mf") are stable across
       // repeated exports of an unchanged model.
       files: {
-        columns: { kind: true, filename: true, s3Key: true, size: true },
+        columns: {
+          kind: true,
+          filename: true,
+          s3Key: true,
+          size: true,
+          // Manifest-only, for a faithful re-import (see model-export.ts).
+          imported: true,
+          sourceFileId: true,
+          sourceModifiedAt: true,
+          onshapeElementId: true,
+          generatedFromId: true,
+        },
         orderBy: (f, { asc }) => [asc(f.position), asc(f.id)],
       },
       bomItems: { orderBy: (b, { asc }) => asc(b.position) },
+      category: { columns: { name: true } },
+      modelTags: { with: { tag: true } },
     },
   });
   if (!model) {
@@ -76,19 +94,35 @@ export async function GET(
     await db.$count(modelVersions, eq(modelVersions.modelId, id)),
   );
 
-  const files = (
+  const files: ExportFile[] = (
     await Promise.all(
-      model.files.map(async (file) => {
+      model.files.map(async (file): Promise<ExportFile | null> => {
         const data = await readFileBytes(file.s3Key);
-        return data ? { kind: file.kind, filename: file.filename, data } : null;
+        return data
+          ? {
+              kind: file.kind,
+              filename: file.filename,
+              data,
+              imported: file.imported,
+              sourceFileId: file.sourceFileId,
+              sourceModifiedAt: file.sourceModifiedAt,
+              onshapeElementId: file.onshapeElementId,
+              generated: file.generatedFromId !== null,
+            }
+          : null;
       }),
     )
-  ).filter((file): file is ExportFile => file !== null);
+  ).filter((file) => file !== null);
 
   const zip = buildModelExportZip({
     title: model.title,
     description: model.description,
     version,
+    tags: model.modelTags.map((mt) => mt.tag.name),
+    category: model.category?.name ?? null,
+    sourceUrl: model.sourceUrl,
+    onshapeMicroversion: model.onshapeMicroversion,
+    exportedAt: new Date(),
     bomItems: model.bomItems,
     files,
   });

@@ -153,6 +153,25 @@ client which phase it's in:
 | `502` | The source platform rejected the request (`ImportError` — message is safe to show) |
 | `500` | Unexpected import failure |
 
+### `POST /api/import/archive`
+
+Imports a **`.zip` exported by `GET /api/models/<id>/export`** (this instance or
+another one) and returns the same *draft* the create form pre-fills from —
+nothing is saved to the catalog. The archive's files are unpacked and staged to
+S3; its `metadata.json` supplies the title, description, tags, category name,
+BOM (sections included) and per-file provenance. Archives predating that
+manifest fall back to the folder names, `README.md` and `bom.csv`.
+
+- **Body** — the raw `.zip` bytes (not multipart), like `POST /api/upload`.
+  `?filename=` is optional and only used as the title when the archive names
+  the model nowhere.
+- **`200`** — a draft: `{ source: "archive", sourceUrl, title, description,
+  tags, categories, files, bom, warnings, onshapeMicroversion }`. Files the
+  OpenSCAD customizer generated are omitted and reported in `warnings`.
+- **`400`** not a readable zip, no archive uploaded, or no model files inside ·
+  **`401`** not signed in · **`413`** larger than 250 MB · **`500`** unexpected
+  failure.
+
 ### `POST /api/import/collection`
 
 Starts a **background import of a whole MakerWorld collection**. It validates the
@@ -204,12 +223,17 @@ Downloads everything attached to a model as a single **`.zip`**
 the model title and the [version](/features/versioning) being exported):
 
 ```
+metadata.json  manifest — read back by POST /api/import/archive
 README.md      title, version, description (Markdown)
 bom.csv        the bill of materials — omitted when the model has none
 files/         .3mf / .step / .scad model files
 documents/     PDF manuals
 images/        gallery images
 ```
+
+`metadata.json` holds what the folder tree can't: tags, the category *name*,
+the BOM with its sections, `sourceUrl`, and one entry per file naming its kind,
+its real filename, its sync provenance and whether the customizer generated it.
 
 The export is always the model's **current state** — earlier versions can't be
 exported — and requires only a session, like the per-file downloads it bundles.

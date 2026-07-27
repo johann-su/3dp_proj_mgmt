@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
 import { ImportError, type ImportedProject } from "@/lib/import/types";
-import { stageImportedAssets, type StagedImportFile } from "@/lib/import/stage";
+import { stageImportedAssets } from "@/lib/import/stage";
+import type { UploadedFile } from "@/app/models/actions";
 import type { BomItemInput } from "@/lib/bom";
 import { importFromMakerworld, parseMakerworldUrl } from "@/lib/import/makerworld";
 import { parseMakerworldCollectionUrl } from "@/lib/import/makerworld-collection";
@@ -51,7 +52,11 @@ export type ImportDraft = {
   // Source platform category names (most specific first) — the create form
   // uses them to suggest one of our categories.
   categories: string[];
-  files: StagedImportFile[];
+  // Files already staged in S3. The platform importers only ever produce
+  // `imported: true` files (StagedImportFile); the archive importer
+  // (/api/import/archive) restores whatever provenance the archive recorded,
+  // so the shared draft type is the wider UploadedFile.
+  files: UploadedFile[];
   bom: BomItemInput[];
   warnings: string[];
   onshapeMicroversion?: string | null;

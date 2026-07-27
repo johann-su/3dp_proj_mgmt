@@ -1,4 +1,4 @@
-# Platform import (.3mf, MakerWorld/Printables, source sync, collections)
+# Platform import (.3mf, MakerWorld/Printables, archives, source sync, collections)
 
 *Read before touching the importers, source sync, or collection import. Onshape
 has its own file — see [`onshape.md`](./onshape.md). Update in the same PR that
@@ -36,6 +36,45 @@ sync below; Onshape sync keeps selecting the files it replaces via
 `onshape_element_id`, never via `imported`. Migration 0019 backfilled it
 (Onshape by element id; other platforms by files sharing their model's
 `created_at` — same insert transaction — on models with a `source_url`).
+
+## Archive import
+
+`POST /api/import/archive`, pure reader in `src/lib/import/archive.ts`: takes a
+`.zip` produced by the [export route](files.md#export-zip) — from this instance
+or another one — and turns it into the same create-form draft the URL importers
+produce (staged S3 files + metadata in `sessionStorage`). The zip arrives as the
+**raw request body** (like `/api/upload`), not multipart: there is one file, and
+it has to be buffered whole to unzip anyway. Nothing is written to the catalog —
+the user still reviews and saves the form.
+
+The reader takes everything from `metadata.json` when it is present and falls
+back to the folder tree + `README.md` heading + `bom.csv` when it isn't (zips
+exported before the manifest shipped are already on people's disks). Four rules
+it must keep:
+
+- **The manifest is untrusted input.** It rides in on a user-supplied file, so
+  its `kind` is re-checked against the extension allowlist (an "image" named
+  `.html` would otherwise become a stored content type on our own origin) and
+  its `filename` is re-sanitized with the exporter's own `safeEntryName` (zip
+  slip, in reverse). The folder an entry sits in wins over the manifest's
+  `kind` — that is where the bytes actually are.
+- **Guard the unpacked size, not just the upload.** The route caps the
+  compressed body at 250 MB; a zip bomb a few hundred KB long can still claim
+  gigabytes, so the fflate `filter` enforces a decompressed-byte and file-count
+  budget *before* anything is decompressed.
+- **Generated variants are skipped** (with a warning). A customizer variant's
+  link to the `.scad` it was rendered from can't cross instances, so importing
+  it would leave a detached duplicate of geometry the customizer regenerates on
+  demand.
+- **Per-file provenance is restored**, not invented: `imported`,
+  `sourceFileId`, `sourceModifiedAt` and `onshapeElementId` come back off the
+  manifest so a restored model still source-syncs like the original did.
+  `createModel` re-applies its own `sourceUrl` gate to all of them, so an
+  archive claiming provenance without a valid source URL gets none.
+
+The category travels as a **name** and is fed to `suggestCategory` as a source
+category, which matches it against the importing instance's own categories
+(ids don't survive the trip) — the same mechanism MakerWorld's categories use.
 
 ## Source sync (MakerWorld/Printables)
 

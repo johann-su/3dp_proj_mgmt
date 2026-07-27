@@ -6,6 +6,7 @@ import {
   exportZipName,
   exportedVersionNumber,
   type ExportFile,
+  type ModelExportManifest,
 } from "@/lib/model-export";
 
 const bytes = (text: string) => new TextEncoder().encode(text);
@@ -24,11 +25,20 @@ function exportZip(input: Partial<Parameters<typeof buildModelExportZip>[0]>) {
       title: "Widget",
       description: "",
       version: 1,
+      tags: [],
+      category: null,
+      sourceUrl: null,
+      onshapeMicroversion: null,
+      exportedAt: new Date("2026-07-27T10:00:00Z"),
       bomItems: [],
       files: [],
       ...input,
     }),
   );
+}
+
+function manifestOf(entries: Record<string, Uint8Array>): ModelExportManifest {
+  return JSON.parse(strFromU8(entries["metadata.json"]));
 }
 
 test("files are grouped into folders by kind", () => {
@@ -46,6 +56,7 @@ test("files are grouped into folders by kind", () => {
     "documents/manual.pdf",
     "files/part.3mf",
     "images/cover.png",
+    "metadata.json",
   ]);
   assert.equal(strFromU8(entries["files/part.3mf"]), "part.3mf");
 });
@@ -110,6 +121,110 @@ test("files sharing a name within a folder are suffixed, case-insensitively", ()
   assert.equal(strFromU8(entries["images/part.3mf"]), "image");
 });
 
+test("metadata.json carries what the folder tree can't", () => {
+  // The manifest is the whole reason an export can be re-imported: tags, the
+  // category and BOM sections have no place in the tree, and the file entries
+  // pin down each file's kind rather than leaving it to be guessed.
+  const manifest = manifestOf(
+    exportZip({
+      title: "Widget",
+      description: "Body",
+      version: 3,
+      tags: ["bracket", "petg"],
+      category: "Tools",
+      bomItems: [
+        {
+          name: "M3 screw",
+          quantity: "4",
+          link: null,
+          imageUrl: null,
+          section: "Hardware",
+        },
+      ],
+      files: [file("model", "part.3mf"), file("image", "cover.png")],
+    }),
+  );
+  assert.equal(manifest.model.title, "Widget");
+  assert.deepEqual(manifest.model.tags, ["bracket", "petg"]);
+  assert.equal(manifest.model.category, "Tools");
+  assert.equal(manifest.bom[0].section, "Hardware");
+  assert.deepEqual(
+    manifest.files.map((f) => [f.path, f.kind]),
+    [
+      ["files/part.3mf", "model"],
+      ["images/cover.png", "image"],
+    ],
+  );
+});
+
+test("the manifest publishes only BOM fields, never the rows' database ids", () => {
+  // Callers hand over whole bom_items rows, and the zip is a file users pass
+  // around — this instance's row/model ids have no business travelling in it.
+  const manifest = manifestOf(
+    exportZip({
+      bomItems: [
+        {
+          id: "row-uuid",
+          modelId: "model-uuid",
+          position: 0,
+          name: "M3 screw",
+          quantity: "4",
+          link: null,
+          imageUrl: null,
+          section: null,
+        } as never,
+      ],
+    }),
+  );
+  assert.deepEqual(Object.keys(manifest.bom[0]).sort(), [
+    "imageUrl",
+    "link",
+    "name",
+    "quantity",
+    "section",
+  ]);
+});
+
+test("tags are sorted so an unchanged model exports an identical manifest", () => {
+  // Tag rows arrive in join order, which the database is free to vary.
+  assert.deepEqual(
+    manifestOf(exportZip({ tags: ["petg", "bracket"] })).model.tags,
+    ["bracket", "petg"],
+  );
+});
+
+test("the manifest records a file's real name even when the zip entry was renamed", () => {
+  // Two files can share a name, so the entry gets a "-2" suffix — but the
+  // model's own filename is the one to restore on import, so both are kept.
+  const manifest = manifestOf(
+    exportZip({ files: [file("model", "part.3mf"), file("model", "part.3mf")] }),
+  );
+  assert.deepEqual(
+    manifest.files.map((f) => [f.path, f.filename]),
+    [
+      ["files/part.3mf", "part.3mf"],
+      ["files/part-2.3mf", "part.3mf"],
+    ],
+  );
+});
+
+test("customizer-generated variants are flagged in the manifest", () => {
+  // They stay in the zip (an offline copy holds everything the model page
+  // offers) but an import must be able to tell them from real source files.
+  const manifest = manifestOf(
+    exportZip({
+      files: [
+        { ...file("model", "source.scad"), generated: false },
+        { ...file("model", "variant.3mf"), generated: true },
+      ],
+    }),
+  );
+  assert.deepEqual(
+    manifest.files.map((f) => f.generated),
+    [false, true],
+  );
+});
+
 test("filenames can't escape their folder (zip slip)", () => {
   // Filenames are user-controlled (upload + rename), so a "../" in one must
   // not make an extractor write outside the destination directory.
@@ -125,5 +240,6 @@ test("filenames can't escape their folder (zip slip)", () => {
     "documents/file",
     "files/passwd",
     "images/evil.png",
+    "metadata.json",
   ]);
 });

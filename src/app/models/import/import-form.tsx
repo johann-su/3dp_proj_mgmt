@@ -4,7 +4,7 @@ import { Fragment, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Box, Boxes, CloudDownload, HelpCircle } from "lucide-react";
+import { Box, Boxes, CloudDownload, FileArchive, HelpCircle } from "lucide-react";
 import { IMPORT_DRAFT_KEY } from "@/app/models/import-draft";
 import { IMPORT_TYPES, type ImportType } from "./import-types";
 import type { OnshapeBranchPick, OnshapeImportTab } from "@/lib/import/onshape";
@@ -92,6 +92,18 @@ const HELP_SECTIONS: Record<string, React.ReactNode> = {
       </p>
     </section>
   ),
+  archive: (
+    <section className="grid gap-1.5">
+      <h3 className="font-medium">Print Vault archives</h3>
+      <p className="text-muted-foreground">
+        The <code>.zip</code> a model&apos;s <strong>Export</strong> button
+        produces, from this instance or another one. Files, images, PDFs, the
+        description, tags, category and BOM all come back. Files the OpenSCAD
+        customizer generated are skipped — regenerate them from the{" "}
+        <code>.scad</code> source once the model is saved.
+      </p>
+    </section>
+  ),
   onshape: (
     <>
       <section className="grid gap-1.5">
@@ -124,6 +136,7 @@ const HELP_SECTIONS_BY_TYPE: Record<ImportType, string[]> = {
   model: ["printables", "makerworld"],
   collection: ["collection"],
   cad: ["onshape"],
+  archive: ["archive"],
 };
 
 export function ImportForm({ type }: { type: ImportType }) {
@@ -226,8 +239,30 @@ export function ImportForm({ type }: { type: ImportType }) {
       });
       return;
     }
-    sessionStorage.setItem(IMPORT_DRAFT_KEY, JSON.stringify(body));
+    handOffDraft(body);
+  }
+
+  // Every importer ends the same way: stash the draft where the create form
+  // picks it up (it can't travel in the URL — the files are already staged and
+  // the payload is far too big) and open the form.
+  function handOffDraft(draft: unknown) {
+    sessionStorage.setItem(IMPORT_DRAFT_KEY, JSON.stringify(draft));
     router.push("/models/new");
+  }
+
+  // The archive is POSTed as the raw request body (like /api/upload) — one
+  // file, no wrapper to parse. The name rides along in the query string as the
+  // title of last resort for an archive with neither a manifest nor a README.
+  async function importArchive(file: File) {
+    const res = await fetch(
+      `/api/import/archive?filename=${encodeURIComponent(file.name)}`,
+      { method: "POST", body: file, headers: { "Content-Type": "application/zip" } },
+    );
+    const body = await res.json().catch(() => null);
+    if (!res.ok) {
+      throw new Error(body?.error ?? `Import failed (${res.status})`);
+    }
+    handOffDraft(body);
   }
 
   async function confirmImport() {
@@ -288,12 +323,20 @@ export function ImportForm({ type }: { type: ImportType }) {
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    const url = String(new FormData(e.currentTarget).get("url")).trim();
+    const data = new FormData(e.currentTarget);
+    const archive = data.get("archive");
+    if (config.input === "file" && !(archive instanceof File && archive.size > 0)) {
+      toast.error("Choose a .zip archive to import");
+      return;
+    }
+    const url = String(data.get("url") ?? "").trim();
     setFetching(true);
     try {
       // The import type is chosen up front in the sidebar, so route by it
       // directly rather than sniffing the URL for a collection link.
-      if (type === "collection") {
+      if (type === "archive") {
+        await importArchive(archive as File);
+      } else if (type === "collection") {
         await importCollection(url);
       } else {
         await importModel(url);
@@ -334,17 +377,33 @@ export function ImportForm({ type }: { type: ImportType }) {
                 </DialogContent>
               </Dialog>
             </div>
-            <Input
-              id="url"
-              name="url"
-              type="url"
-              required
-              placeholder={config.placeholder}
-              disabled={fetching}
-            />
+            {config.input === "file" ? (
+              <Input
+                id="url"
+                name="archive"
+                type="file"
+                accept={config.accept}
+                required
+                disabled={fetching}
+                className="h-auto py-1.5 file:mr-3 file:cursor-pointer"
+              />
+            ) : (
+              <Input
+                id="url"
+                name="url"
+                type="url"
+                required
+                placeholder={config.placeholder}
+                disabled={fetching}
+              />
+            )}
           </div>
           <Button type="submit" disabled={fetching} className="justify-self-start">
-            <CloudDownload className="size-4" />
+            {config.input === "file" ? (
+              <FileArchive className="size-4" />
+            ) : (
+              <CloudDownload className="size-4" />
+            )}
             {fetching ? config.fetchingLabel : config.submitLabel}
           </Button>
           <p className="text-xs text-muted-foreground">{config.hint}</p>

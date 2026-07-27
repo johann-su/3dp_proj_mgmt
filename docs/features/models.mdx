@@ -26,6 +26,8 @@ single transaction. You reach it three ways:
   before saving.
 - **Import from [Onshape](/integrations/onshape)** — pick the document tabs and
   a branch/version; each tab is exported to a `.3mf` file.
+- **Import an archive** — upload a `.zip` [exported](#importing-an-archive) from
+  Print Vault, here or on another instance.
 
 Whichever path you use, the model is created live in one step (imports prefill
 the form as a draft first). Bulk
@@ -111,6 +113,7 @@ time stay apart on disk and you can tell which
 [version](/features/versioning) each one holds. It has a fixed layout:
 
 ```
+metadata.json  everything needed to import the archive back
 README.md      the title, the version, and the description as Markdown
 bom.csv        the bill of materials (only if the model has one)
 files/         the .3mf / .step / .scad files
@@ -120,10 +123,32 @@ images/        the gallery images
 
 It always exports the model **as it is now**;
 [earlier versions](/features/versioning) can't be exported. Anyone signed in can export any
-model, the same as downloading its files one at a time. There is no matching
-"import a zip" yet: the folder layout is meant to be read by a human, and a
-round trip back into Print Vault would need more metadata than folder names
-carry.
+model, the same as downloading its files one at a time.
+
+## Importing an archive
+
+**Import → Import Archive** takes an exported `.zip` back: upload it and the
+files, images, PDFs, description, tags, category and BOM are read out and
+prefilled into the create form, where you review and save as with any other
+[import](/integrations/makerworld-printables). That makes an export a real
+backup — it restores into this instance or any other one, so a model can move
+between instances (or come back after one is rebuilt) without retyping
+anything.
+
+Two things to know:
+
+- The category travels as a **name**. It's matched against the categories of
+  the instance you're importing into; if there's no match, the form suggests
+  one from the title and tags like it does for any new model.
+- Files the [OpenSCAD customizer](/features/parametric) generated are
+  **skipped**. They belong to the `.scad` they were rendered from, and that link
+  can't cross instances — regenerate them from the source once the model is
+  saved.
+
+Archives exported before `metadata.json` existed still import; without the
+manifest the folder names supply the file kinds and the `README.md` supplies
+the title and description, so tags, the category and BOM sections come back
+empty.
 
 ## Markdown descriptions
 
