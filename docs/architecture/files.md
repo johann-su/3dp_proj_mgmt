@@ -32,12 +32,23 @@ Next 16 rejects the tokened srcs.
 
 ## Export zip
 
-`GET /api/models/[id]/export` bundles one model into a `.zip`: `README.md`
-(title + version + description, already Markdown source), `bom.csv`
-(`bomToCsv`, omitted when the BOM is empty) and the files under `files/`
-(model), `documents/` (PDF) and `images/`. Session-gated but **not**
-owner-gated — it is a bundle of downloads the viewer could already fetch one by
-one.
+`GET /api/models/[id]/export` bundles one model into a `.zip`: `metadata.json`
+(the manifest — see below), `README.md` (title + version + description, already
+Markdown source), `bom.csv` (`bomToCsv`, omitted when the BOM is empty) and the
+files under `files/` (model), `documents/` (PDF) and `images/`. Session-gated
+but **not** owner-gated — it is a bundle of downloads the viewer could already
+fetch one by one.
+
+`metadata.json` is what makes the archive re-importable
+([import.md](import.md#archive-import)); the folder tree alone is lossy. It
+carries tags, the category **name** (ids are per-instance), the BOM *with*
+sections (`bom.csv` is flat), `sourceUrl`, and one entry per file with its
+`kind`, its real `filename` (which differs from the entry `path` when dedupe
+renamed it), its sync provenance (`imported`, `sourceFileId`,
+`sourceModifiedAt`, `onshapeElementId`) and whether it is a customizer-
+**generated** variant. Adding a field does **not** bump `formatVersion` — the
+reader treats every field as optional, so old readers ignore what they don't
+know and archives written before the manifest existed still import.
 
 The archive is named `<title>_v<version>.zip`. That number must keep agreeing
 with the History panel's numbering, which is positional over the *retained*
@@ -60,7 +71,5 @@ pure so it can be unit-tested; the route only reads the bytes
   fix if real models ever get close.
 
 Exports are **live state only** — `model_files`, not `model_versions`
-snapshots (see [versioning.md](versioning.md)). Re-importing an export is
-deliberately not supported: the folder layout can't distinguish e.g. a `.scad`
-source from a generated variant, so a round trip needs its own manifest
-format.
+snapshots (see [versioning.md](versioning.md)). Re-importing one is the archive
+importer's job, documented in [import.md](import.md#archive-import).

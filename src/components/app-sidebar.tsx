@@ -134,15 +134,15 @@ export function AppSidebar({ user }: { user: SessionUser | null }) {
                     <DropdownMenuTrigger asChild>
                       <SidebarMenuButton
                         isActive={isActive("/models/import")}
-                        tooltip="Import from URL"
+                        tooltip="Import"
                         className="data-[state=open]:bg-sidebar-accent"
                       >
                         <CloudDownload />
-                        <span>Import from URL</span>
+                        <span>Import</span>
                       </SidebarMenuButton>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent side="right" align="start" className="w-64">
-                      <DropdownMenuLabel>Import from URL</DropdownMenuLabel>
+                      <DropdownMenuLabel>Import</DropdownMenuLabel>
                       {IMPORT_TYPE_ORDER.map((type) => {
                         const option = IMPORT_TYPES[type];
                         return (
