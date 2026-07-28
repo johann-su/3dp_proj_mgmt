@@ -375,7 +375,7 @@ accepts a credential other than a session cookie.
 The Model Context Protocol endpoint: JSON-RPC 2.0 over HTTP with a single JSON
 response (no event stream), exposing read-only catalog tools —
 `search_models`, `get_model`, `get_model_bom`, `get_model_print_files`,
-`get_model_documents`.
+`get_model_documents`, `read_document`, `get_document_images`.
 
 - **Authentication** — `Authorization: Bearer <token>`, issued by the OAuth
   flow below. A session cookie is *not* accepted here. Without a valid token

@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   handleMcpMessage,
   handleMcpPayload,
+  ImageResult,
   InvalidParamsError,
   LATEST_PROTOCOL_VERSION,
   optionalInt,
@@ -95,6 +96,41 @@ test("a tool result is returned as both text and structured content", async () =
     .result;
   assert.deepEqual(result.structuredContent, { modelId: MODEL_ID });
   assert.deepEqual(JSON.parse(result.content[0].text), { modelId: MODEL_ID });
+});
+
+// A manual's wiring diagrams are pictures, and a link to them is not reliably
+// fetchable by the client, so get_document_images sends the pixels back in the
+// result itself. They ride as extra content blocks after the JSON.
+test("a tool can return images alongside its JSON payload", async () => {
+  const response = await handleMcpMessage(
+    call(),
+    options([
+      tool(async () =>
+        new ImageResult({ page: 17 }, [{ data: "aGVsbG8=", mimeType: "image/webp" }]),
+      ),
+    ]),
+  );
+  const result = (
+    response as {
+      result: {
+        content: { type: string; text?: string; data?: string; mimeType?: string }[];
+        structuredContent: unknown;
+      };
+    }
+  ).result;
+
+  assert.deepEqual(
+    result.content.map((c) => c.type),
+    ["text", "image"],
+  );
+  assert.deepEqual(result.content[1], {
+    type: "image",
+    data: "aGVsbG8=",
+    mimeType: "image/webp",
+  });
+  // structuredContent stays pure JSON: a base64 blob in there would reach the
+  // model as characters to read rather than as an image to look at.
+  assert.deepEqual(result.structuredContent, { page: 17 });
 });
 
 // "No such model" is something the model can act on, so it comes back as a
