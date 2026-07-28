@@ -76,12 +76,26 @@ back off disables every connection at once, without deleting anything.
 | `get_model` | The author's full description — assembly notes, recommended settings — plus category, tags, source URL and owner. |
 | `get_model_bom` | The bill of materials, grouped into your sections, with quantities and vendor links. |
 | `get_model_print_files` | Per printable file: print time, filament weight, printer, nozzle, build plate, filament types and whether supports are enabled. |
-| `get_model_documents` | Attached PDFs with temporary download links, so the client can read a manual itself. |
+| `get_model_documents` | Lists the attached PDFs, with sizes and a temporary download link each. |
+| `read_document` | The text of one of those PDFs, returned directly. Long manuals come back a page range at a time. |
+| `get_document_images` | The figures on one page of a PDF — wiring diagrams, exploded views, print orientation — as images the assistant can actually look at. |
 
-Two things are left to the client on purpose. **Prices** aren't stored, so
-costing a build means following each BOM item's link — any client with web
-access does that well. **Manuals** are handed over as links rather than text,
-so the client fetches only the ones a question actually needs.
+**Prices** are left to the client on purpose: they aren't stored, so costing a
+build means following each BOM item's link, which any client with web access
+does well.
+
+**Manuals are served as content, not as links.** A download link that only ever
+appeared inside a tool result isn't something every assistant is allowed to
+fetch — Claude, for one, restricts which URLs it will follow, and reports
+`Failed to fetch` for the rest no matter how the server is configured. So
+`read_document` returns the text and `get_document_images` returns the pictures
+over the same connection the client is already authenticated on. The
+`downloadUrl` from `get_model_documents` is still there for people and for
+clients that can use it.
+
+Much of a manual's real content is in its diagrams rather than its text, so an
+assistant that has only read the text has usually seen the smaller half. Point
+it at `get_document_images` for any page whose text looks thin.
 
 Support-material information (*"does it need supports?"*) is read out of a
 file's embedded slicer settings when it is uploaded. Files that were already in

@@ -23,7 +23,8 @@ the feature shouldn't expose that write surface.
 ## What the tools return, and what they deliberately don't
 
 `src/lib/mcp/tools.ts` — `search_models`, `get_model`, `get_model_bom`,
-`get_model_print_files`, `get_model_documents`. Metadata only.
+`get_model_print_files`, `get_model_documents`, `read_document`,
+`get_document_images`. Metadata, plus the contents of PDFs.
 
 - **No mesh bytes.** `.3mf`/`.step` geometry is useless to a language model and
   answers none of the target questions.
@@ -48,15 +49,63 @@ the feature shouldn't expose that write surface.
   purpose. **`robots.ts` explicitly allows `/api/files/`**: a *disallow* there
   makes a policy-abiding fetcher (a client's "open this link" step, not the MCP
   tool calls themselves — those aren't robots.txt-gated) refuse the URL
-  outright — the "Failed to fetch" this is tuned to avoid — while a human
-  clicking the same link never consults robots.txt and sees nothing wrong.
-  `robots.ts` carries **no disallow at all** otherwise: the auth gate
-  (`proxy.ts`) is what actually keeps a crawler out, so there was nothing left
-  for a blanket `Disallow: /` to protect. The usual advice to keep bearer-token
-  URLs out of a search index doesn't cleanly apply to `/api/files/` — robots.txt
-  can't tell "a search engine" from "an LLM client fetching on the user's
-  behalf" by path alone, and enabling the latter is the whole point of the
-  feature.
+  outright, while a human clicking the same link never consults robots.txt and
+  sees nothing wrong. `robots.ts` carries **no disallow at all** otherwise: the
+  auth gate (`proxy.ts`) is what actually keeps a crawler out, so there was
+  nothing left for a blanket `Disallow: /` to protect.
+
+## Documents are served as content, not as links
+
+**A URL is not a delivery mechanism for an LLM client.** `downloadUrl` alone
+was not enough, and the reason is worth writing down because it looks exactly
+like an infrastructure bug and isn't one: claude.ai's `web_fetch` will only
+follow URLs that came from the user's own message or from `web_search` results.
+A URL that appeared *only* in an MCP tool result is not in that set, so it
+comes back **"Failed to fetch"** — with a permissive `robots.txt`, no WAF, no
+CrowdSec decision, and the file fetching fine by `curl` from the same network.
+This was investigated end to end (2026-07-28): Anthropic's own fetcher pulls
+the file happily, and the giveaway was that an unrelated public site failed in
+the identical way in the same conversation. **Don't debug the reverse proxy
+when a client reports this.**
+
+So the content travels over the MCP channel instead, on the connection the
+client is already authenticated on:
+
+- **`read_document`** returns extracted text, whole pages at a time, capped by
+  `MAX_RESPONSE_CHARS` in `src/lib/mcp/pdf-text.ts`. That budget is halved in
+  practice because `toolResult` serializes every payload *twice* (text block +
+  `structuredContent`), and has to clear both client caps: ~150k characters on
+  claude.ai/Desktop before a result spills to the sandbox filesystem, and 25k
+  tokens in Claude Code (`MAX_MCP_OUTPUT_TOKENS`). Callers page with
+  `nextStartPage`.
+- **`get_document_images`** returns a page's figures as MCP `image` content
+  blocks. Text alone is often the *smaller* half of a manual — the document
+  this was built against extracts 24 pages of text totalling ~12k characters
+  (page 1 is literally `1USER MANUAL`) while every wiring and orientation
+  detail lives in the pictures.
+
+Both parse with **unpdf** (a serverless pdf.js build), imported lazily since no
+other tool needs it, and always with `verbosity: 0` — pdf.js reports missing
+fonts straight to `console`, which this codebase doesn't do.
+
+### Picking figures out of page furniture
+
+`src/lib/mcp/pdf-images.ts`. A page's embedded images include the header logo
+and footer mark, which are noise. The trap: **pdf.js object keys are not stable
+across pages**, so the obvious dedupe silently half-works. In the reference
+manual the 219x32 logo is globally cached and keeps `g_d0_img_p1_2` on every
+page, while the 474x120 banner beside it is re-keyed per page (`img_p6_2`,
+`img_p12_2`, `img_p16_2`) though it is the same picture. Repetition is
+therefore matched on **exact width x height** (`imageSignature`): furniture is
+pixel-identical by construction, real figures are not (that document's diagrams
+are 1638x1158, 1625x1149, 1583x890 — no two alike). Keys are still right for
+spotting the same figure painted twice *within* one page.
+
+Only a sample of other pages is checked (`samplePagesForRepeats`) — boilerplate
+is on nearly every page, and decoding every image in the file to answer a
+question about one page would be absurd. Figures are re-encoded with **sharp**
+(raw pixels → WebP, longest edge 1200, alpha flattened onto white so line art
+doesn't render as black), which turns a 17 MB raw buffer into ~50 KB.
 
 Support material (`printerInfo.usesSupport`) was added for this: the key was
 parsed out of the embedded slicer config and thrown away. **It is only filled
@@ -77,6 +126,11 @@ needs a small slice of it and this way the whole contract stays unit-tested
   the endpoint exists, it just offers no stream to open).
 - **Stateless** — no `Mcp-Session-Id`. Nothing has to survive between requests,
   which a self-hosted app with no shared store would otherwise need.
+- A tool returning `ImageResult` gets its images appended to `content` as MCP
+  `image` blocks, after the JSON text block. `structuredContent` deliberately
+  stays pure JSON: a base64 blob in there reaches the model as characters to
+  read rather than as an image to look at. It is a distinct class rather than a
+  magic key so a tool's own payload can never be mistaken for one.
 - Notifications (no `id`) get an empty **202**, including the
   `notifications/initialized` every client sends after the handshake.
 - `initialize` echoes the client's protocol version when it is one we support,

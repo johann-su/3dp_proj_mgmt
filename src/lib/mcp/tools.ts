@@ -5,9 +5,9 @@
 // already has, plus links the calling model can follow itself.
 //
 // Two things are deliberately NOT here:
-//   * mesh/geometry bytes (.3mf/.step). Useless to a language model, and the
-//     one file type that is worth reading — the manual — is handed over as a
-//     URL instead.
+//   * mesh/geometry bytes (.3mf/.step). Useless to a language model. The one
+//     file type that *is* worth reading — the manual — is served as text by
+//     read_document rather than as bytes.
 //   * scraped BOM prices. Each item carries its vendor link; a client with web
 //     access reads the current price better than per-vendor parsing here would.
 //
@@ -24,13 +24,23 @@ import { ruleTreeToSql, type RuleNode } from "@/lib/collection-rules";
 import { namedFileSrc } from "@/lib/file-token";
 import { formatDuration } from "@/lib/format";
 import {
+  imageSignature,
+  samplePagesForRepeats,
+  selectDiagrams,
+} from "@/lib/mcp/pdf-images";
+import { normalizePageText, pickDocument, selectPages } from "@/lib/mcp/pdf-text";
+import {
+  ImageResult,
   optionalInt,
   optionalString,
   optionalStringArray,
   requireUuid,
   ToolError,
+  type McpImage,
   type McpTool,
 } from "@/lib/mcp/protocol";
+import { readFileBytes } from "@/lib/storage";
+import { reportError } from "@/lib/telemetry";
 
 const SEARCH_DEFAULT_LIMIT = 20;
 const SEARCH_MAX_LIMIT = 50;
@@ -341,8 +351,223 @@ async function getModelDocuments(args: Record<string, unknown>) {
       downloadUrl: absoluteNamedFileUrl(file.id, file.filename),
     })),
     documentCount: files.length,
-    note: "Fetch a downloadUrl to read the manual; the links expire.",
+    note:
+      "Call read_document to read one of these — it returns the text over this connection. " +
+      "downloadUrl is the raw file, for a human or a client that can fetch it; the links expire.",
   };
+}
+
+// PDFs are read into memory to be parsed, so there is a ceiling. Well above any
+// real manual (the largest in a typical catalog is a few MB) and far below what
+// would threaten the server.
+const MAX_READABLE_PDF_BYTES = 50 * 1024 * 1024;
+
+// unpdf carries a full pdf.js build, and this is the only tool that ever needs
+// it — imported on use so the rest of the server (and every other tool call)
+// doesn't pay for loading it.
+async function extractPdfPages(bytes: Uint8Array): Promise<string[]> {
+  const { extractText, getDocumentProxy } = await import("unpdf");
+  // verbosity 0: pdf.js reports missing fonts and its own polyfill gaps by
+  // writing straight to console, which this codebase doesn't do (the pino
+  // logger owns server output). None of it affects the extracted text.
+  const pdf = await getDocumentProxy(bytes, { verbosity: 0 });
+  const { text } = await extractText(pdf, { mergePages: false });
+  return text.map(normalizePageText);
+}
+
+async function readDocument(args: Record<string, unknown>) {
+  const model = await requireModel(args);
+  const requested = optionalString(args, "filename");
+  const startPage = optionalInt(args, "startPage", {
+    min: 1,
+    max: 10_000,
+    fallback: 1,
+  });
+
+  const files = await db.query.modelFiles.findMany({
+    where: (f, { and, eq }) => and(eq(f.modelId, model.id), eq(f.kind, "pdf")),
+    orderBy: (f, { asc }) => asc(f.position),
+  });
+  const file = pickDocument(files, requested);
+
+  if (file.size > MAX_READABLE_PDF_BYTES) {
+    throw new ToolError(
+      `"${file.filename}" is too large to read here (${Math.round(file.size / 1024 / 1024)} MB). ` +
+        "Use its downloadUrl from get_model_documents instead.",
+    );
+  }
+
+  const bytes = await readFileBytes(file.s3Key);
+  if (!bytes) {
+    throw new ToolError(
+      `"${file.filename}" could not be read from storage. Its downloadUrl may still work.`,
+    );
+  }
+
+  let pageTexts: string[];
+  try {
+    pageTexts = await extractPdfPages(bytes);
+  } catch (err) {
+    // A file that isn't really a PDF, or one pdf.js can't parse. The model can
+    // act on this (fall back to the download link), so it comes back as a tool
+    // error — but it's still worth recording, since a catalog full of them
+    // would mean something upstream is storing bad files.
+    reportError(`[mcp] could not extract text from ${file.id}`, err);
+    throw new ToolError(
+      `"${file.filename}" could not be parsed as a PDF. Use its downloadUrl instead.`,
+    );
+  }
+
+  const slice = selectPages(pageTexts, { startPage });
+  const empty = slice.pages.every((page) => page.text === "");
+
+  return {
+    modelId: model.id,
+    title: model.title,
+    filename: file.filename,
+    pageCount: pageTexts.length,
+    pages: slice.pages,
+    // Non-null means there is more: call again with startPage set to it.
+    nextStartPage: slice.nextStartPage,
+    otherDocuments: files.filter((f) => f.id !== file.id).map((f) => f.filename),
+    note: [
+      empty && slice.pages.length > 0
+        ? "These pages carry no text layer at all — they are scanned or drawn. Call get_document_images for them."
+        : "A page whose text is empty or very short is usually carrying a diagram instead; get_document_images returns the figures on a page.",
+      slice.pageTruncated
+        ? `Page ${slice.pages[0]?.page} was longer than one response and was cut; call again with the same startPage for the rest.`
+        : null,
+      slice.nextStartPage !== null
+        ? `More pages follow — call again with startPage ${slice.nextStartPage}.`
+        : null,
+    ]
+      .filter(Boolean)
+      .join(" "),
+  };
+}
+
+// Diagrams are re-encoded before they go out: pdf.js hands back raw pixels
+// (a 1583x890 figure is 4.2 MB of them), which would be absurd as base64. 1200px
+// is enough to read part labels and wire colours on a wiring diagram, and WebP
+// suits both the line art and the photos a manual mixes.
+const MAX_IMAGE_EDGE = 1200;
+
+async function encodeDiagram(image: {
+  data: Uint8Array | Uint8ClampedArray;
+  width: number;
+  height: number;
+  channels: number;
+}): Promise<McpImage> {
+  const { default: sharp } = await import("sharp");
+  const encoded = await sharp(Buffer.from(image.data), {
+    raw: {
+      width: image.width,
+      height: image.height,
+      channels: image.channels as 1 | 2 | 3 | 4,
+    },
+  })
+    // Diagrams are routinely drawn on transparency; left alone that renders as
+    // black in a flat format and swallows the linework.
+    .flatten({ background: "#ffffff" })
+    .resize({
+      width: MAX_IMAGE_EDGE,
+      height: MAX_IMAGE_EDGE,
+      fit: "inside",
+      withoutEnlargement: true,
+    })
+    .webp({ quality: 82 })
+    .toBuffer();
+  return { data: encoded.toString("base64"), mimeType: "image/webp" };
+}
+
+async function getDocumentImages(args: Record<string, unknown>) {
+  const model = await requireModel(args);
+  const requested = optionalString(args, "filename");
+  const page = optionalInt(args, "page", { min: 1, max: 10_000, fallback: 1 });
+
+  const files = await db.query.modelFiles.findMany({
+    where: (f, { and, eq }) => and(eq(f.modelId, model.id), eq(f.kind, "pdf")),
+    orderBy: (f, { asc }) => asc(f.position),
+  });
+  const file = pickDocument(files, requested);
+
+  if (file.size > MAX_READABLE_PDF_BYTES) {
+    throw new ToolError(
+      `"${file.filename}" is too large to open here. Use its downloadUrl from get_model_documents.`,
+    );
+  }
+  const bytes = await readFileBytes(file.s3Key);
+  if (!bytes) {
+    throw new ToolError(`"${file.filename}" could not be read from storage.`);
+  }
+
+  const { extractImages, extractText, getDocumentProxy } = await import("unpdf");
+  let pdf;
+  try {
+    pdf = await getDocumentProxy(bytes, { verbosity: 0 });
+  } catch (err) {
+    reportError(`[mcp] could not open ${file.id} as a PDF`, err);
+    throw new ToolError(
+      `"${file.filename}" could not be parsed as a PDF. Use its downloadUrl instead.`,
+    );
+  }
+
+  const pageCount = pdf.numPages;
+  if (page > pageCount) {
+    throw new ToolError(
+      `Page ${page} is out of range — "${file.filename}" has ${pageCount} page(s).`,
+    );
+  }
+
+  const pageImages = await extractImages(pdf, page);
+  // Learn which of this page's images also appear elsewhere: those are the
+  // header/footer furniture, not figures. Matched by dimensions rather than
+  // pdf.js key — see imageSignature for why the keys can't be trusted here.
+  const onThisPage = new Set(pageImages.map(imageSignature));
+  const repeated = new Set<string>();
+  for (const other of samplePagesForRepeats(pageCount, page)) {
+    for (const image of await extractImages(pdf, other)) {
+      const signature = imageSignature(image);
+      if (onThisPage.has(signature)) repeated.add(signature);
+    }
+  }
+
+  const selection = selectDiagrams(pageImages, repeated);
+  const images: McpImage[] = [];
+  for (const image of selection.images) {
+    try {
+      images.push(await encodeDiagram(image));
+    } catch (err) {
+      // One unencodable image (an exotic colour space) shouldn't cost the
+      // caller the rest of the page.
+      reportError(`[mcp] could not encode an image from ${file.id} page ${page}`, err);
+    }
+  }
+
+  // The page's own text goes along as caption context — a diagram is much
+  // easier to read next to the paragraph that refers to it. Extracted the same
+  // way read_document does, whole document and all, so the two tools never
+  // disagree about what page N says; text extraction is cheap next to the image
+  // decoding this call has already done.
+  const { text } = await extractText(pdf, { mergePages: false });
+  const pageText = normalizePageText(text[page - 1] ?? "");
+
+  return new ImageResult(
+    {
+      modelId: model.id,
+      title: model.title,
+      filename: file.filename,
+      page,
+      pageCount,
+      imageCount: images.length,
+      pageText,
+      note:
+        images.length === 0
+          ? "This page has no figures of its own — any images on it are the header/footer repeated throughout the document. Try another page."
+          : "The images follow this JSON. Repeated page furniture (logos, footers) is filtered out.",
+    },
+    images,
+  );
 }
 
 // --- Tool definitions ------------------------------------------------------
@@ -442,12 +667,80 @@ export const catalogTools: McpTool[] = [
     name: "get_model_documents",
     title: "Get manuals and documents",
     description:
-      "PDF manuals and other documents attached to a model, each with a temporary download " +
-      "URL. Fetch the URL to read the document — assembly and wiring instructions usually " +
-      "live there rather than in the description.",
+      "Lists the PDF manuals and other documents attached to a model, with their sizes. " +
+      "Assembly and wiring instructions usually live in these rather than in the description. " +
+      "Use read_document to actually read one.",
     inputSchema: MODEL_ID_SCHEMA,
     annotations: READ_ONLY,
     run: getModelDocuments,
+  },
+  {
+    name: "read_document",
+    title: "Read a document",
+    description:
+      "The text of a model's PDF manual, returned directly. Use this rather than trying to " +
+      "fetch a downloadUrl — the text comes back over this connection, so it works whether or " +
+      "not the client can follow links. Long manuals come back a page range at a time: when " +
+      "the result has a nextStartPage, call again with it to continue.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        modelId: {
+          type: "string",
+          description: "Model id (UUID) as returned by search_models.",
+        },
+        filename: {
+          type: "string",
+          description:
+            "Which document to read, when the model has more than one. Exact filename or a " +
+            "distinctive part of it. Defaults to the first document.",
+        },
+        startPage: {
+          type: "integer",
+          minimum: 1,
+          default: 1,
+          description: "1-based page to start from. Use the previous result's nextStartPage.",
+        },
+      },
+      required: ["modelId"],
+      additionalProperties: false,
+    },
+    annotations: READ_ONLY,
+    run: readDocument,
+  },
+  {
+    name: "get_document_images",
+    title: "See a document's figures",
+    description:
+      "The figures on one page of a PDF manual, returned as images you can actually look at, " +
+      "together with that page's text. Manuals carry their wiring diagrams, print orientation " +
+      "and exploded views as pictures, so read_document alone will miss them — when a page's " +
+      "text is thin or refers to a diagram, call this for that page.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        modelId: {
+          type: "string",
+          description: "Model id (UUID) as returned by search_models.",
+        },
+        filename: {
+          type: "string",
+          description:
+            "Which document, when the model has more than one. Exact filename or a " +
+            "distinctive part of it. Defaults to the first document.",
+        },
+        page: {
+          type: "integer",
+          minimum: 1,
+          default: 1,
+          description: "1-based page to take the figures from.",
+        },
+      },
+      required: ["modelId"],
+      additionalProperties: false,
+    },
+    annotations: READ_ONLY,
+    run: getDocumentImages,
   },
 ];
 
@@ -456,7 +749,10 @@ export const catalogTools: McpTool[] = [
 export const CATALOG_INSTRUCTIONS = [
   "This server exposes a private, self-hosted 3D-printing catalog (Print Vault).",
   "Resolve a model with search_models first, then call the get_model_* tools with its id.",
-  "Costs and assembly effort are not stored: follow BOM item links for prices, and fetch a",
-  "document's downloadUrl to read the manual. Print estimates marked sliceSource \"slicer\"",
-  "are approximations, not the printer's own numbers.",
+  "Costs and assembly effort are not stored: follow BOM item links for prices, and call",
+  "read_document to read a manual — do not try to fetch a document's downloadUrl, since a",
+  "URL that appears only in a tool result is not always fetchable. Manuals keep their wiring",
+  "diagrams and orientation guides in pictures, so use get_document_images on any page whose",
+  "text looks thin. Print estimates marked sliceSource \"slicer\" are approximations, not the",
+  "printer's own numbers.",
 ].join(" ");

@@ -43,6 +43,25 @@ export type McpToolAnnotations = {
   openWorldHint?: boolean;
 };
 
+/** One image for the model to look at. `data` is base64, with no data: prefix. */
+export type McpImage = { data: string; mimeType: string };
+
+/**
+ * A tool result that carries images as well as JSON.
+ *
+ * Images have to travel *in the result* rather than as a URL to fetch: a link
+ * that appears only in a tool result is not reliably fetchable by the client
+ * (see the note in pdf-text.ts), and a wiring diagram the model cannot open is
+ * the same as no diagram at all. A distinct class rather than a magic key on
+ * the payload, so a tool's own JSON can never be mistaken for one.
+ */
+export class ImageResult {
+  constructor(
+    readonly payload: Record<string, unknown>,
+    readonly images: McpImage[],
+  ) {}
+}
+
 export type McpTool = {
   name: string;
   /** Human-readable name for client UIs. */
@@ -52,7 +71,9 @@ export type McpTool = {
   /** JSON Schema for `arguments`; the model builds calls from it. */
   inputSchema: Record<string, unknown>;
   annotations?: McpToolAnnotations;
-  run: (args: Record<string, unknown>) => Promise<Record<string, unknown>>;
+  run: (
+    args: Record<string, unknown>,
+  ) => Promise<Record<string, unknown> | ImageResult>;
 };
 
 export type McpServerInfo = { name: string; title: string; version: string };
@@ -158,10 +179,21 @@ function fail(id: JsonRpcId, code: number, message: string): JsonRpcResponse {
 
 // Tool payloads travel twice: as text (every client shows it to the model) and
 // as `structuredContent` (clients that can hand the model real JSON). Both are
-// the same object, so neither kind of client sees less.
-function toolResult(payload: Record<string, unknown>) {
+// the same object, so neither kind of client sees less. Images ride along as
+// extra content blocks; `structuredContent` stays pure JSON, since a base64
+// blob there would be handed to the model as characters rather than pixels.
+function toolResult(outcome: Record<string, unknown> | ImageResult) {
+  const payload = outcome instanceof ImageResult ? outcome.payload : outcome;
+  const images = outcome instanceof ImageResult ? outcome.images : [];
   return {
-    content: [{ type: "text", text: JSON.stringify(payload, null, 2) }],
+    content: [
+      { type: "text", text: JSON.stringify(payload, null, 2) },
+      ...images.map((image) => ({
+        type: "image",
+        data: image.data,
+        mimeType: image.mimeType,
+      })),
+    ],
     structuredContent: payload,
   };
 }
