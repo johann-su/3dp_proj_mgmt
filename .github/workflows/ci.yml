@@ -27,3 +27,23 @@ jobs:
       - run: npm test
 
       - run: npx tsc --noEmit
+
+  docs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: nextra/package-lock.json
+
+      - run: npm ci
+        working-directory: nextra
+
+      # Nextra docs site is a separate Next.js app/package (its own version,
+      # own lockfile); build it standalone rather than folding into the root
+      # checks. Static export catches broken MDX/links before they ship.
+      - run: npm run build
+        working-directory: nextra
