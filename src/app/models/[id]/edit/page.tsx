@@ -61,6 +61,8 @@ export default async function EditModelPage({
             size: file.size,
             kind: file.kind,
             imported: file.imported,
+            // Drives the per-file "queue for slicing" toggle.
+            sliceStatus: file.sliceStatus,
           })),
           createdAt: model.createdAt,
         }}

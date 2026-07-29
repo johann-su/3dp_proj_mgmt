@@ -75,7 +75,7 @@ back off disables every connection at once, without deleting anything.
 | `search_models` | Finds models by name, category or tags. Text matching tolerates typos. Every other tool needs the id it returns. |
 | `get_model` | The author's full description — assembly notes, recommended settings — plus category, tags, source URL and owner. |
 | `get_model_bom` | The bill of materials, grouped into your sections, with quantities and vendor links. |
-| `get_model_print_files` | Per printable file: print time, filament weight, printer, nozzle, build plate, filament types and whether supports are enabled. |
+| `get_model_print_files` | Per printable file: print time, filament weight, printer, nozzle, build plate, the filament of each slot (type and colour), whether it is a multi-colour or multi-material print, whether it needs a second nozzle, and whether supports are enabled. |
 | `get_model_documents` | Lists the attached PDFs, with sizes and a temporary download link each. |
 | `read_document` | The text of one of those PDFs, returned directly. Long manuals come back a page range at a time. |
 | `get_document_images` | The figures on one page of a PDF — wiring diagrams, exploded views, print orientation — as images the assistant can actually look at. |
@@ -97,7 +97,7 @@ Much of a manual's real content is in its diagrams rather than its text, so an
 assistant that has only read the text has usually seen the smaller half. Point
 it at `get_document_images` for any page whose text looks thin.
 
-Support-material information (*"does it need supports?"*) is read out of a
-file's embedded slicer settings when it is uploaded. Files that were already in
-your catalog before this feature shipped report it as unknown until they are
-re-uploaded or re-synced.
+Support-material information (*"does it need supports?"*), the filament colours
+and the multi-nozzle flag are read out of a file's embedded slicer settings when
+it is uploaded. Files that were already in your catalog before those features
+shipped report them as unknown until they are re-uploaded or re-synced.

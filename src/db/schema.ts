@@ -222,13 +222,26 @@ export type SliceSource = "embedded" | "slicer";
 // slicer config (Bambu/Orca project_settings.config or PrusaSlicer
 // Slic3r_PE.config) — see get3mfPrinterInfo in src/lib/threemf-remote.ts.
 // Deliberately not the full process settings (layer height, infill, …): only
-// what a visitor needs to judge "can I print this on my setup". filamentTypes
-// lists the filaments the objects actually use, not every AMS slot.
+// what a visitor needs to judge "can I print this on my setup". The filament
+// arrays cover the slots the objects actually use, not every AMS slot.
 export type PrinterInfo = {
   model?: string; // "Bambu Lab P1S"
   nozzleDiameterMm?: number;
   bedType?: string; // "Textured PEI Plate"
-  filamentTypes?: string[]; // ["PETG"]
+  // One entry per filament *slot* the objects print from, in slot order, and
+  // deliberately not deduped: red PLA in slot 1 plus black PLA in slot 2 is a
+  // two-colour print, and ["PLA"] would read as a single-colour one.
+  filamentTypes?: string[]; // ["PLA", "PLA"]
+  // Hex colours index-parallel to filamentTypes (Bambu/PrusaSlicer
+  // `filament_colour`). Absent — rather than padded — when the config doesn't
+  // give every used slot a colour, so the two arrays always zip 1:1.
+  filamentColors?: string[]; // ["#e02020", "#000000"]
+  // Whether the used slots sit on more than one *physical* extruder, i.e. the
+  // print needs a dual-nozzle/toolchanger machine (H2D, Prusa XL, IDEX) rather
+  // than many filaments multiplexed through one nozzle by an AMS/MMU — a
+  // materially different answer to "can I print this". Undefined when the
+  // config doesn't say, like usesSupport.
+  requiresMultiNozzle?: boolean;
   // Whether the project was set up to print support material (Bambu/Orca
   // `enable_support`, PrusaSlicer `support_material`). Undefined when the
   // config doesn't say — "does this need supports?" is one of the first

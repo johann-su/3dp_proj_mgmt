@@ -37,6 +37,27 @@ whitelist of settings keys is copied across, so a crafted archive can't smuggle
 in post-processing scripts, and the virtual bed is made huge so that multi-plate
 Bambu projects (whose coordinates extend well past a physical bed) still slice.
 
+### Re-running slicing on a file
+
+Every `.3mf` row in the create and edit forms has a **⟳ button** that decides
+whether that file goes to the slicer when you save:
+
+- **Files you are adding start queued** (⏳) — the same thing an upload does
+  anyway. Click to take one out if you don't want an estimate for it; it is
+  then stored with no estimates at all.
+- **Files already on the model start out of the queue.** Click to queue one:
+  its print time, filament weight and printer info are re-read from scratch.
+  Use it to retry a file that failed to slice, to pick up a file you replaced
+  outside Print Vault, or to **backfill newly added details onto older models**
+  — filament colours and the multi-colour/multi-nozzle badges, for instance,
+  only appear on files parsed since that shipped.
+
+Nothing happens until you press **Save changes**; the icon shows an hourglass
+for what the save will hand over, and clicking again undoes it. The old
+estimates stay on the page until the new ones land. For files sliced in Bambu
+Studio or OrcaSlicer this is quick and doesn't need the slicer service at all —
+Print Vault re-reads the numbers the file already carries.
+
 ### Things to know about estimates
 
 - **They are approximations, and shown with a `~` prefix.** Server-side numbers
@@ -45,6 +66,14 @@ Bambu projects (whose coordinates extend well past a physical bed) still slice.
 - **Unsliceable files are flagged.** If PrusaSlicer can't slice a file, the
   model page marks it — a useful signal that the file may be broken or
   unprintable, not silently missing an estimate.
+- **Multi-colour prints are called out.** The filament badges show one swatch
+  per slot the file actually prints from, in the colours the project was sliced
+  with, plus a `multi-color` or `multi-material` badge when it uses more than
+  one. A `multi-nozzle` badge means the print needs a printer with two nozzles
+  (an H2D, Prusa XL or other toolchanger) — colours fed through a single nozzle
+  by an AMS or MMU don't get it, since those are a filament swap rather than
+  hardware you either have or don't. Files sliced before this shipped show the
+  older plain filament badges until they are re-uploaded or re-synced.
 - **The build plate is drawn at real size.** Alongside the estimate, the file's
   hardware context is recorded (printer model, nozzle, build plate, filaments,
   whether the project prints support material — shown as a `supports` badge —

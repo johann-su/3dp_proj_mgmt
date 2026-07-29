@@ -39,6 +39,7 @@ import {
   type McpImage,
   type McpTool,
 } from "@/lib/mcp/protocol";
+import { filamentSummary } from "@/lib/printer-info";
 import { readFileBytes } from "@/lib/storage";
 import { reportError } from "@/lib/telemetry";
 
@@ -275,10 +276,17 @@ function printerPayload(info: PrinterInfo | null) {
     nozzleDiameterMm: info.nozzleDiameterMm ?? null,
     bedType: info.bedType ?? null,
     bedSizeMm: info.bedSizeMm ?? null,
+    // One entry per filament slot in use, so the same material twice reads as a
+    // two-colour print; colors is index-parallel when the file records it.
     filamentTypes: info.filamentTypes ?? [],
+    filamentColors: info.filamentColors ?? [],
+    multiFilament: filamentSummary(info)?.multi ?? null,
     // undefined = the embedded config didn't say, which is not the same as "no
     // supports" — keep the distinction instead of defaulting it to false.
     usesSupport: info.usesSupport ?? null,
+    // True only for hardware with more than one nozzle (toolchanger/IDEX); an
+    // AMS/MMU feeding many filaments through one nozzle is false.
+    requiresMultiNozzle: info.requiresMultiNozzle ?? null,
   };
 }
 

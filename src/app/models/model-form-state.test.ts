@@ -1,12 +1,16 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import type { UploadedFile } from "@/app/models/actions";
+import type { SliceStatus } from "@/db/schema";
 import {
   buildUpdateFileOrders,
   formIsDirty,
+  isQueuedForSlicing,
   mergeTags,
   orderFilesForCreate,
+  skippedSliceKeys,
   splitExtension,
+  toggleSliceQueue,
   type ExistingFile,
   type ImageEntry,
   type ModelFileEntry,
@@ -32,8 +36,20 @@ function existingFile(
   return { id, kind, filename, size: 10, imported: false };
 }
 
-function existingModelEntry(id: string, filename: string): ModelFileEntry {
-  return { key: id, type: "existing", id, imported: false, filename, size: 10 };
+function existingModelEntry(
+  id: string,
+  filename: string,
+  sliceStatus?: SliceStatus | null,
+): ModelFileEntry {
+  return {
+    key: id,
+    type: "existing",
+    id,
+    imported: false,
+    filename,
+    size: 10,
+    sliceStatus,
+  };
 }
 
 function newModelEntry(filename: string): ModelFileEntry {
@@ -109,6 +125,7 @@ function pristineEditState(): { current: ModelFormValues; initial: ModelFormInit
     images: [existingImageEntry("i1"), existingImageEntry("i2")],
     pdfFiles: [],
     existingPdfFiles: [existingFile("p1", "pdf", "manual.pdf")],
+    sliceOverrides: {},
   };
   return { current, initial };
 }
@@ -171,5 +188,70 @@ test("orderFilesForCreate interleaves staged and new files in arranged order", (
   assert.deepEqual(
     files.map((f) => f.filename),
     ["local.3mf", "imported.3mf", "imported.pdf", "local.pdf", "local.png", "imported.png"],
+  );
+});
+
+// The two sides of the wizard want opposite defaults: a file being added is
+// sliced (that's what an upload does), one already on the model is not — its
+// estimates exist, so re-slicing is a deliberate ask.
+test("isQueuedForSlicing: new .3mf files default in, stored ones default out", () => {
+  assert.equal(isQueuedForSlicing(newModelEntry("a.3mf"), {}), true);
+  assert.equal(isQueuedForSlicing(existingModelEntry("f1", "clip.3mf"), {}), false);
+  // Only .3mf reaches the slicer at all (a .scad is rendered, not sliced).
+  assert.equal(isQueuedForSlicing(newModelEntry("part.scad"), {}), false);
+  // Already handed over by an earlier save — the toggle can't call that back.
+  assert.equal(
+    isQueuedForSlicing(existingModelEntry("f1", "clip.3mf", "pending"), {
+      f1: false,
+    }),
+    true,
+  );
+});
+
+// Overrides record only what differs from the default, so toggling twice
+// leaves no trace — otherwise an untouched form would prompt "discard changes?"
+test("toggleSliceQueue: flipping back to the default clears the override", () => {
+  const existing = existingModelEntry("f1", "clip.3mf");
+  const queued = toggleSliceQueue({}, existing);
+  assert.deepEqual(queued, { f1: true });
+  assert.deepEqual(toggleSliceQueue(queued, existing), {});
+
+  const added = newModelEntry("a.3mf");
+  const skipped = toggleSliceQueue({}, added);
+  assert.deepEqual(skipped, { [added.key]: false });
+  assert.deepEqual(toggleSliceQueue(skipped, added), {});
+});
+
+// The skip list is keyed by S3 key, which a new file only gets at upload time:
+// the entries and the uploads are matched by walking both in wizard order (as
+// orderFilesForCreate does), so an unqueued file must not shift the pairing.
+test("skippedSliceKeys pairs unqueued entries with their uploaded keys", () => {
+  const stagedModel = uploadedFile("model", "imported.3mf");
+  const firstUpload = uploadedFile("model", "one.3mf");
+  const secondUpload = uploadedFile("model", "two.3mf");
+  const one = newModelEntry("one.3mf");
+  const two = newModelEntry("two.3mf");
+  const entries: ModelFileEntry[] = [
+    one,
+    { key: "s", type: "staged", staged: stagedModel, filename: "imported.3mf", size: 10 },
+    two,
+    existingModelEntry("f1", "clip.3mf"),
+  ];
+
+  // Untouched: every file being added is sliced, nothing to skip.
+  assert.deepEqual(skippedSliceKeys(entries, {}, [firstUpload, secondUpload]), []);
+  // The second new file and the imported one taken out of the queue.
+  assert.deepEqual(
+    skippedSliceKeys(entries, { [two.key]: false, s: false }, [
+      firstUpload,
+      secondUpload,
+    ]),
+    [stagedModel.key, secondUpload.key],
+  );
+  // Queueing a file already on the model is an id, not a key — it belongs to
+  // resliceFileIds and must stay out of the skip list.
+  assert.deepEqual(
+    skippedSliceKeys(entries, { f1: true }, [firstUpload, secondUpload]),
+    [],
   );
 });

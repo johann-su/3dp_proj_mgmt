@@ -10,6 +10,8 @@
 // - Metadata/project_settings.config  Bambu/Orca print+printer+filament
 //                                     settings (JSON)
 // - Metadata/Slic3r_PE.config         PrusaSlicer project settings (ini)
+// - Metadata/Slic3r_PE_model.config   PrusaSlicer's per-object extruders (the
+//                                     equivalent of model_settings.config)
 //
 // The caller supplies the byte source (S3 ranged GETs in production, an
 // in-memory buffer in tests) — see src/lib/threemf-remote.ts for the S3 side.
@@ -37,11 +39,13 @@ const MODEL_SETTINGS_PATH = "metadata/model_settings.config";
 const SLICE_INFO_PATH = "metadata/slice_info.config";
 const PROJECT_SETTINGS_PATH = "metadata/project_settings.config";
 const PRUSA_CONFIG_PATH = "metadata/slic3r_pe.config";
+const PRUSA_MODEL_PATH = "metadata/slic3r_pe_model.config";
 const WANTED_ENTRIES = new Set([
   MODEL_SETTINGS_PATH,
   SLICE_INFO_PATH,
   PROJECT_SETTINGS_PATH,
   PRUSA_CONFIG_PATH,
+  PRUSA_MODEL_PATH,
 ]);
 const PLATE_PNG_RE = /^metadata\/plate_\d+\.png$/;
 
@@ -138,35 +142,70 @@ function cleanLabel(value: unknown): string | undefined {
   return label || undefined;
 }
 
-// The filaments the objects are actually assigned to (model_settings.config
-// extruder keys, 1-based) — an AMS project may park 5 filaments while
-// everything prints with one. Falls back to the first slot.
-function usedFilamentTypes(
-  modelXml: string | null,
-  types: unknown,
-): string[] | undefined {
-  if (!Array.isArray(types) || types.length === 0) return undefined;
+// The filament slots the objects are actually assigned to (the model config's
+// per-object/per-part `extruder` keys, 1-based) — an AMS project may park 5
+// filaments while everything prints with one, and PrusaSlicer writes an entry
+// per physical extruder whether or not it is used. Falls back to the first slot
+// when the archive carries no assignment.
+function usedFilamentSlots(modelXml: string | null): number[] {
   const used = new Set<number>();
-  if (modelXml) {
-    for (const m of modelXml.matchAll(/key="extruder"\s+value="(\d+)"/g)) {
-      used.add(Number(m[1]));
-    }
+  for (const m of modelXml?.matchAll(/key="extruder"\s+value="(\d+)"/g) ?? []) {
+    // PrusaSlicer writes 0 on parts that inherit their object's extruder.
+    if (Number(m[1]) > 0) used.add(Number(m[1]));
   }
-  const slots = used.size > 0 ? [...used].sort((a, b) => a - b) : [1];
-  const result = [
-    ...new Set(
-      slots
-        .map((slot) => cleanLabel(types[slot - 1]))
-        .filter((t): t is string => t !== undefined),
-    ),
-  ];
-  return result.length > 0 ? result : undefined;
+  return used.size > 0 ? [...used].sort((a, b) => a - b) : [1];
 }
 
-function firstNumber(value: unknown): number | undefined {
-  const raw = Array.isArray(value) ? value[0] : value;
-  const parsed = Number.parseFloat(String(raw));
-  return Number.isFinite(parsed) ? parsed : undefined;
+// Both slicers spell filament colours "#RRGGBB" (Bambu sometimes appends an
+// alpha pair, which a swatch doesn't need).
+const HEX_COLOR_RE = /^#?([0-9a-f]{6})(?:[0-9a-f]{2})?$/i;
+
+function hexColor(value: unknown): string | undefined {
+  const m = HEX_COLOR_RE.exec(String(value ?? "").trim());
+  return m ? `#${m[1].toLowerCase()}` : undefined;
+}
+
+type UsedFilaments = {
+  slots: number[]; // 1-based indices into the config's per-slot arrays
+  types: string[]; // parallel to slots
+  colors?: string[]; // parallel to slots, or absent when any slot lacks one
+};
+
+// The filaments the print actually uses, one entry per slot. Types are *not*
+// deduped: two slots of the same material in different colours is a two-colour
+// print, and collapsing it to ["PLA"] loses exactly the distinction the badges
+// exist to show. Colours are all-or-nothing so the arrays always zip 1:1.
+function usedFilaments(
+  slots: number[],
+  types: unknown,
+  colors: unknown,
+): UsedFilaments | null {
+  if (!Array.isArray(types)) return null;
+  const used: UsedFilaments = { slots: [], types: [] };
+  for (const slot of slots) {
+    const type = cleanLabel(types[slot - 1]);
+    if (type === undefined) continue;
+    used.slots.push(slot);
+    used.types.push(type);
+  }
+  if (used.types.length === 0) return null;
+  const hexes = used.slots
+    .map((slot) => hexColor(Array.isArray(colors) ? colors[slot - 1] : undefined))
+    .filter((c): c is string => c !== undefined);
+  if (hexes.length === used.slots.length) used.colors = hexes;
+  return used;
+}
+
+// Per-extruder numeric settings — Bambu writes an array (one entry per physical
+// extruder), PrusaSlicer a comma-joined string the caller splits. Kept
+// positional, with unparseable entries as undefined, because the index *is* the
+// extruder number.
+function numberList(value: unknown): (number | undefined)[] {
+  const raw = Array.isArray(value) ? value : value == null ? [] : [value];
+  return raw.map((v) => {
+    const parsed = Number.parseFloat(String(v));
+    return Number.isFinite(parsed) ? parsed : undefined;
+  });
 }
 
 // Both slicers spell booleans as "0"/"1" (Bambu wraps per-extruder settings in
@@ -218,35 +257,76 @@ function printerInfoFromBambu(
 ): PrinterInfo | null {
   const model =
     cleanLabel(settings.printer_model) ?? cleanLabel(settings.printer_settings_id);
+  const filaments = usedFilaments(
+    usedFilamentSlots(modelXml),
+    settings.filament_type,
+    settings.filament_colour, // British spelling, in both slicers
+  );
+  const nozzles = numberList(settings.nozzle_diameter);
+  // `filament_map` assigns each slot to a physical extruder (1-based); Bambu/
+  // Orca only writes it for dual-nozzle machines. Without it, a print using a
+  // single slot needs a single nozzle either way, and a lone nozzle_diameter
+  // entry proves the machine only has one — anything else is unknowable.
+  const map = numberList(settings.filament_map);
+  const usedExtruders = !filaments
+    ? undefined
+    : map.length > 0
+      ? [...new Set(filaments.slots.map((slot) => map[slot - 1] ?? 1))].sort(
+          (a, b) => a - b,
+        )
+      : filaments.slots.length === 1 || nozzles.length === 1
+        ? [1]
+        : undefined;
   const info: PrinterInfo = {
     model,
-    nozzleDiameterMm: firstNumber(settings.nozzle_diameter),
+    // One nozzle_diameter entry per physical extruder: report the nozzle the
+    // objects actually print from, not just the first one on the machine.
+    nozzleDiameterMm: nozzles[(usedExtruders?.[0] ?? 1) - 1] ?? nozzles[0],
     bedType: cleanLabel(settings.curr_bed_type),
-    filamentTypes: usedFilamentTypes(modelXml, settings.filament_type),
+    filamentTypes: filaments?.types,
+    filamentColors: filaments?.colors,
+    requiresMultiNozzle: usedExtruders && usedExtruders.length > 1,
     usesSupport: boolSetting(settings.enable_support),
     bedSizeMm: bedSizeFromPoints(settings.printable_area) ?? bedSizeForModel(model),
   };
   return Object.values(info).some((v) => v !== undefined) ? info : null;
 }
 
-function printerInfoFromPrusaIni(ini: string): PrinterInfo | null {
+function printerInfoFromPrusaIni(
+  ini: string,
+  modelXml: string | null,
+): PrinterInfo | null {
   const values = new Map<string, string>();
   for (const line of ini.split("\n")) {
     const m = line.match(/^\s*([a-z_0-9]+)\s*=\s*(.*)$/);
     if (m) values.set(m[1], m[2].trim());
   }
-  const types = values
-    .get("filament_type")
-    ?.split(";")
-    .map((t) => cleanLabel(t))
-    .filter((t): t is string => t !== undefined);
   const model =
     cleanLabel(values.get("printer_model")) ??
     cleanLabel(values.get("printer_settings_id"));
+  const filaments = usedFilaments(
+    usedFilamentSlots(modelXml),
+    values.get("filament_type")?.split(";"),
+    values.get("filament_colour")?.split(";"),
+  );
+  const nozzles = numberList(values.get("nozzle_diameter")?.split(","));
+  // PrusaSlicer says it outright: single_extruder_multi_material is an MMU-style
+  // multiplexer feeding one nozzle, so only a multi-slot print *without* that
+  // flag needs a real toolchanger (Prusa XL, IDEX).
+  const semm = boolSetting(values.get("single_extruder_multi_material"));
+  const usedExtruders = !filaments
+    ? undefined
+    : filaments.slots.length === 1 || nozzles.length === 1 || semm === true
+      ? [1]
+      : semm === false
+        ? filaments.slots
+        : undefined;
   const info: PrinterInfo = {
     model,
-    nozzleDiameterMm: firstNumber(values.get("nozzle_diameter")?.split(",")[0]),
-    filamentTypes: types && types.length > 0 ? [...new Set(types)] : undefined,
+    nozzleDiameterMm: nozzles[(usedExtruders?.[0] ?? 1) - 1] ?? nozzles[0],
+    filamentTypes: filaments?.types,
+    filamentColors: filaments?.colors,
+    requiresMultiNozzle: usedExtruders && usedExtruders.length > 1,
     // support_material is the master switch; support_material_auto only picks
     // "everywhere" vs "painted enforcers only" — either way the print has
     // supports, so it doesn't change the answer.
@@ -311,7 +391,14 @@ export async function readSliceData(
   }
   if (!printerInfo) {
     const ini = await entryText(PRUSA_CONFIG_PATH);
-    if (ini) printerInfo = printerInfoFromPrusaIni(ini);
+    // PrusaSlicer keeps its per-object extruders in its own model config, not
+    // in Bambu's model_settings.config.
+    if (ini) {
+      printerInfo = printerInfoFromPrusaIni(
+        ini,
+        await entryText(PRUSA_MODEL_PATH),
+      );
+    }
   }
 
   if (!sliceInfo && !printerInfo) return null;

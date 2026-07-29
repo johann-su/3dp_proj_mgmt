@@ -14,13 +14,16 @@ import {
   CloudDownload,
   FileBox,
   GripVertical,
+  Hourglass,
   ImageIcon,
   Pencil,
+  RotateCw,
   X,
 } from "lucide-react";
 import type { UploadedFile } from "@/app/models/actions";
 import {
   IMAGE_ACCEPT,
+  isQueuedForSlicing,
   MODEL_ACCEPT,
   splitExtension,
   type ExistingFile,
@@ -240,27 +243,34 @@ function ModelFileRow({
   isFirst,
   isLast,
   dragging,
+  queuedForSlicing,
   onDragStart,
   onDragEnd,
   onDragEnter,
   onMove,
   onRemove,
   onRename,
+  onToggleSlicing,
 }: {
   entry: ModelFileEntry;
   isFirst: boolean;
   isLast: boolean;
   dragging: boolean;
+  queuedForSlicing: boolean;
   onDragStart: () => void;
   onDragEnd: () => void;
   onDragEnter: () => void;
   onMove: (direction: -1 | 1) => void;
   onRemove: () => void;
   onRename: (newName: string) => void;
+  onToggleSlicing: () => void;
 }) {
   const [editing, setEditing] = useState(false);
   const [draftBase, setDraftBase] = useState("");
   const [base, ext] = splitExtension(entry.filename);
+  const sliceable = ext.toLowerCase() === ".3mf";
+  // Already being sliced from an earlier save — nothing left to queue or undo.
+  const alreadyPending = entry.type === "existing" && entry.sliceStatus === "pending";
 
   function commit() {
     setEditing(false);
@@ -359,6 +369,56 @@ function ModelFileRow({
         </TooltipTrigger>
         <TooltipContent>Move down</TooltipContent>
       </Tooltip>
+      {/* Slicing is queued by the save, not by this click, so the whole edit
+          stays one action — the hourglass shows what the save will hand over.
+          New files start queued (an upload slices them anyway) and can be
+          taken out; files already on the model start out of the queue, and
+          adding them back re-slices to refresh estimates and printer info. */}
+      {sliceable &&
+        (alreadyPending ? (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <span
+                className="shrink-0 text-muted-foreground"
+                aria-label={`${entry.filename} is queued for slicing`}
+              >
+                <Hourglass className="size-3.5" />
+              </span>
+            </TooltipTrigger>
+            <TooltipContent>Already queued for slicing</TooltipContent>
+          </Tooltip>
+        ) : (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className={cn("size-6 shrink-0", queuedForSlicing && "text-primary")}
+                aria-pressed={queuedForSlicing}
+                aria-label={
+                  queuedForSlicing
+                    ? `Don't slice ${entry.filename} when saving`
+                    : `Slice ${entry.filename} when saving`
+                }
+                onClick={onToggleSlicing}
+              >
+                {queuedForSlicing ? (
+                  <Hourglass className="size-3.5" />
+                ) : (
+                  <RotateCw className="size-3.5" />
+                )}
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>
+              {queuedForSlicing
+                ? "Queued for slicing — runs when you save (click to skip)"
+                : entry.type === "existing"
+                  ? "Re-run slicing"
+                  : "Slice this file when saving"}
+            </TooltipContent>
+          </Tooltip>
+        ))}
       {!editing && (
         <Tooltip>
           <TooltipTrigger asChild>
@@ -400,18 +460,23 @@ function ModelFileRow({
 
 export function ModelFilePicker({
   entries,
+  sliceOverrides,
   onAdd,
   onRemove,
   onRename,
   onMove,
   onReorder,
+  onToggleSlicing,
 }: {
   entries: ModelFileEntry[];
+  // The .3mf entries whose slice queueing the user flipped from the default.
+  sliceOverrides: Record<string, boolean>;
   onAdd: (files: File[]) => void;
   onRemove: (key: string) => void;
   onRename: (key: string, name: string) => void;
   onMove: (key: string, direction: -1 | 1) => void;
   onReorder: (key: string, targetKey: string) => void;
+  onToggleSlicing: (entry: ModelFileEntry) => void;
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [draggedKey, setDraggedKey] = useState<string | null>(null);
@@ -456,9 +521,11 @@ export function ModelFilePicker({
                   onReorder(draggedKey, entry.key);
                 }
               }}
+              queuedForSlicing={isQueuedForSlicing(entry, sliceOverrides)}
               onMove={(direction) => onMove(entry.key, direction)}
               onRemove={() => onRemove(entry.key)}
               onRename={(name) => onRename(entry.key, name)}
+              onToggleSlicing={() => onToggleSlicing(entry)}
             />
           ))}
         </ul>

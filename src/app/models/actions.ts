@@ -65,6 +65,9 @@ export type CreateModelInput = {
   sourceUrl?: string | null;
   // Workspace microversion at import time (Onshape imports only).
   onshapeMicroversion?: string | null;
+  // S3 keys within `files` that should NOT be queued for slicing — every new
+  // .3mf is queued unless the uploader turns it off in the wizard.
+  skipSliceKeys?: string[];
 };
 
 function validateSourceUrl(raw: string | null | undefined): string | null | undefined {
@@ -108,6 +111,12 @@ export type UpdateModelInput = {
   modelFileOrder?: FileOrderRef[];
   imageOrder?: FileOrderRef[];
   bom?: BomItemInput[];
+  // Kept .3mf files to hand back to the slicer: their estimates and printer
+  // info are re-read from scratch. Ids outside the kept set are ignored.
+  resliceFileIds?: string[];
+  // S3 keys within newFiles that should NOT be queued for slicing — the
+  // wizard queues every new .3mf unless the uploader turns it off.
+  skipSliceKeys?: string[];
 };
 
 // Merges a client-supplied order (kept-file ids interleaved with indices into
@@ -195,6 +204,7 @@ export async function createModel(
   // Sniff image headers up front (outside the transaction) so animated covers
   // can be frozen to a poster frame in browse cards.
   const animatedKeys = await animatedImageKeys(uploads);
+  const skipSlice = new Set(input.skipSliceKeys ?? []);
 
   // No model stays uncategorized — the form preselects a suggestion, but a
   // stale/hand-crafted request still lands in "Other".
@@ -240,9 +250,10 @@ export async function createModel(
           imported: (!!sourceUrl && file.imported === true) || elementId !== null,
           sourceFileId: sourceString(file.sourceFileId, 300),
           sourceModifiedAt: sourceString(file.sourceModifiedAt, 64),
-          sliceStatus: sliceEligible(file.kind, file.filename)
-            ? ("pending" as const)
-            : null,
+          sliceStatus:
+            sliceEligible(file.kind, file.filename) && !skipSlice.has(file.key)
+              ? ("pending" as const)
+              : null,
         };
       }),
     );
@@ -323,6 +334,7 @@ export async function updateModel(
   // Sniff new image headers up front (outside the transaction) so animated
   // covers are frozen to a poster frame in browse cards.
   const animatedKeys = await animatedImageKeys(input.newFiles);
+  const skipSlice = new Set(input.skipSliceKeys ?? []);
 
   // Same fallback as createModel: clearing the category means "Other".
   const categoryId = input.categoryId || (await otherCategoryId());
@@ -368,9 +380,10 @@ export async function updateModel(
             contentType: contentTypeForFilename(file.filename),
             animated: animatedKeys.has(file.key),
             position: i,
-            sliceStatus: sliceEligible(file.kind, file.filename)
-              ? ("pending" as const)
-              : null,
+            sliceStatus:
+              sliceEligible(file.kind, file.filename) && !skipSlice.has(file.key)
+                ? ("pending" as const)
+                : null,
           })),
         )
         .returning({ id: modelFiles.id, position: modelFiles.position });
@@ -446,6 +459,25 @@ export async function updateModel(
   });
 
   await deleteS3Keys(s3KeysToDelete);
+
+  // Files the editor put back in the slice queue: "pending" is all it takes —
+  // the pass below (and any later model-page view) picks them up and rewrites
+  // the estimates and printer_info. Deliberately outside the transaction, so
+  // re-slicing on its own doesn't record a version: the snapshot covers
+  // sliceStatus, and the slicer's own writes land outside versioning too.
+  // The old estimates stay visible until the new ones replace them.
+  const resliceIds = (input.resliceFileIds ?? []).filter((id) => {
+    const file = keptById.get(id);
+    return file !== undefined && sliceEligible(file.kind, file.filename);
+  });
+  if (resliceIds.length > 0) {
+    await db
+      .update(modelFiles)
+      .set({ sliceStatus: "pending", sliceError: null })
+      .where(
+        and(eq(modelFiles.modelId, model.id), inArray(modelFiles.id, resliceIds)),
+      );
+  }
 
   // Estimate print time & filament use once the response is sent.
   after(() => processPendingSlices(model.id));

@@ -24,12 +24,15 @@ import {
   PDF_ACCEPT,
   buildUpdateFileOrders,
   formIsDirty,
+  isQueuedForSlicing,
   mergeTags,
   newImageEntry,
   newModelFileEntry,
   orderFilesForCreate,
+  skippedSliceKeys,
   stagedImageEntry,
   stagedModelFileEntry,
+  toggleSliceQueue,
   uploadFile,
   type ExistingFile,
   type ImageEntry,
@@ -102,7 +105,13 @@ export function ModelForm({
           imported: f.imported,
           filename: f.filename,
           size: f.size,
+          sliceStatus: f.sliceStatus,
         })),
+  );
+  // Which .3mf files the save hands to the slicer, as overrides of the
+  // per-entry default (new: yes, already stored: no) — see model-form-state.
+  const [sliceOverrides, setSliceOverrides] = useState<Record<string, boolean>>(
+    {},
   );
   const [existingPdfFiles, setExistingPdfFiles] = useState<ExistingFile[]>(
     () => model?.files.filter((f) => f.kind === "pdf") ?? [],
@@ -150,6 +159,7 @@ export function ModelForm({
       images,
       pdfFiles,
       existingPdfFiles,
+      sliceOverrides,
     },
     model,
   );
@@ -289,6 +299,12 @@ export function ModelForm({
     setModelFileEntries((prev) => prev.filter((entry) => entry.key !== key));
   }
 
+  // Queues/unqueues one .3mf for slicing. Nothing runs until the form is
+  // saved — createModel/updateModel apply it (see handleSubmit).
+  function toggleSlicing(entry: ModelFileEntry) {
+    setSliceOverrides((prev) => toggleSliceQueue(prev, entry));
+  }
+
   function renameModelFile(key: string, name: string) {
     setModelFileEntries((prev) =>
       prev.map((entry) => (entry.key === key ? { ...entry, filename: name } : entry)),
@@ -414,6 +430,14 @@ export function ModelForm({
         uploaded.push(await uploadFile(file, kind, filename));
       }
 
+      // Files the user took out of the slice queue, by the S3 key they were
+      // stored under — everything else .3mf is sliced as usual.
+      const skipSliceKeys = skippedSliceKeys(
+        modelFileEntries,
+        sliceOverrides,
+        uploaded,
+      );
+
       // On success the action redirects (handled by Next); it only returns
       // a value when something went wrong.
       let result: { error: string } | undefined;
@@ -449,6 +473,14 @@ export function ModelForm({
           modelFileOrder,
           imageOrder,
           bom,
+          // Existing .3mf files the user put back in the queue — re-sliced to
+          // refresh estimates and printer info (or retry a failure).
+          resliceFileIds: modelFileEntries.flatMap((entry) =>
+            entry.type === "existing" && isQueuedForSlicing(entry, sliceOverrides)
+              ? [entry.id]
+              : [],
+          ),
+          skipSliceKeys,
         });
       } else {
         setStatus("Creating model…");
@@ -461,6 +493,7 @@ export function ModelForm({
           bom,
           sourceUrl,
           onshapeMicroversion,
+          skipSliceKeys,
         });
       }
       if (result?.error) {
@@ -498,11 +531,13 @@ export function ModelForm({
           {step === 1 && (
             <ModelFilePicker
               entries={modelFileEntries}
+              sliceOverrides={sliceOverrides}
               onAdd={addModelFiles}
               onRemove={removeModelFile}
               onRename={renameModelFile}
               onMove={moveModelFile}
               onReorder={reorderModelFile}
+              onToggleSlicing={toggleSlicing}
             />
           )}
 
