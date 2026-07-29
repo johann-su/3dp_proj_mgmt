@@ -26,6 +26,7 @@ import {
 import type { PrinterInfo } from "@/db/schema";
 import type { ScadParameterGroup } from "@/lib/scad-params";
 import { formatBytes, formatDuration, formatGrams } from "@/lib/format";
+import { filamentSummary } from "@/lib/printer-info";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -156,6 +157,7 @@ function PrintFileRow({
   // rejects any other filename ("unknown file format") and Orca would save a
   // useless download. Other model files (.scad, .step) get a plain download.
   const is3mf = file.filename.toLowerCase().endsWith(".3mf");
+  const filaments = filamentSummary(file.printer);
 
   return (
     <div className="flex min-w-0 items-center gap-3 border rounded-lg px-3 py-2.5">
@@ -227,20 +229,53 @@ function PrintFileRow({
             </span>
           </div>
         )}
-        {(file.printer?.filamentTypes?.length ||
+        {(filaments ||
           file.printer?.bedType ||
           file.printer?.usesSupport ||
           file.sliceStatus === "failed") && (
           <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-            {file.printer?.filamentTypes?.map((type) => (
+            {/* One badge per filament slot — the same material twice means a
+                two-colour print, so these are intentionally not deduped. */}
+            {filaments?.slots.map((slot, i) => (
               <Badge
-                key={type}
+                key={`${i}-${slot.type}`}
                 variant="secondary"
                 className="px-1.5 py-0 text-[10px] font-medium"
               >
-                {type}
+                {slot.color && (
+                  <span
+                    className="size-2 shrink-0 rounded-full border border-foreground/20"
+                    style={{ backgroundColor: slot.color }}
+                  />
+                )}
+                {slot.type}
               </Badge>
             ))}
+            {/* Like "supports": only the informative case is badged. */}
+            {filaments?.multi && (
+              <Badge
+                variant="outline"
+                className="px-1.5 py-0 text-[10px] font-normal text-muted-foreground"
+              >
+                {filaments.multi === "material" ? "multi-material" : "multi-color"}
+              </Badge>
+            )}
+            {file.printer?.requiresMultiNozzle && (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Badge
+                    variant="outline"
+                    className="px-1.5 py-0 text-[10px] font-normal text-muted-foreground"
+                  >
+                    multi-nozzle
+                  </Badge>
+                </TooltipTrigger>
+                <TooltipContent>
+                  Needs a printer with more than one nozzle (toolchanger or dual
+                  extruder) — an AMS/MMU won&apos;t do
+                </TooltipContent>
+              </Tooltip>
+            )}
             {file.printer?.bedType && (
               <Badge
                 variant="outline"

@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useState } from "react";
+import { Fragment, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
@@ -9,6 +9,8 @@ import { IMPORT_DRAFT_KEY } from "@/app/models/import-draft";
 import { IMPORT_TYPES, type ImportType } from "./import-types";
 import type { OnshapeBranchPick, OnshapeImportTab } from "@/lib/import/onshape";
 import type { OnshapeBranchChoice } from "@/lib/onshape/api";
+import type { DuplicateMatch } from "@/lib/duplicates";
+import { DuplicateMatchList } from "@/components/duplicate-match-list";
 import {
   Select,
   SelectContent,
@@ -163,6 +165,17 @@ export function ImportForm({ type }: { type: ImportType }) {
     selected: OnshapeBranchPick;
   } | null>(null);
   const [onshapeSelected, setOnshapeSelected] = useState<string[]>([]);
+  // Set when the catalog already holds the design this URL names — drives the
+  // Skip/Import-anyway dialog (issue #118). Flag-only: nothing is blocked.
+  const [pendingDuplicate, setPendingDuplicate] = useState<{
+    url: string;
+    duplicates: DuplicateMatch[];
+  } | null>(null);
+  // "Import anyway" has been answered for the URL in flight. A ref, not state:
+  // the duplicate prompt comes before the many-files and Onshape-tab prompts,
+  // and every one of those re-POSTs synchronously from its own handler, which
+  // would read a stale state value.
+  const duplicateOkRef = useRef(false);
   // Branch switch in flight — freezes the dialog's controls until the new
   // tab list arrives.
   const [onshapeSwitching, setOnshapeSwitching] = useState(false);
@@ -198,6 +211,9 @@ export function ImportForm({ type }: { type: ImportType }) {
       body: JSON.stringify({
         url,
         confirm: opts.confirm ?? false,
+        // Carried on every follow-up POST for this URL, so answering the
+        // duplicate prompt once doesn't re-open it behind the next dialog.
+        confirmDuplicate: duplicateOkRef.current,
         // Absent on the first POST — for multi-tab Onshape documents the
         // route then answers with the tab list instead of importing.
         onshapeElements: opts.onshapeElements,
@@ -209,6 +225,16 @@ export function ImportForm({ type }: { type: ImportType }) {
     const body = await res.json().catch(() => null);
     if (!res.ok) {
       throw new Error(body?.error ?? `Import failed (${res.status})`);
+    }
+    // This design is already in the catalog — pause before downloading
+    // anything and let the user skip or continue.
+    if (body?.needsDuplicateConfirmation) {
+      setFetching(false);
+      setPendingDuplicate({
+        url,
+        duplicates: Array.isArray(body.duplicates) ? body.duplicates : [],
+      });
+      return;
     }
     // The model has a lot of files — pause and open the Continue/Cancel dialog
     // before downloading them all. The dialog is modal, so drop the fetching
@@ -263,6 +289,20 @@ export function ImportForm({ type }: { type: ImportType }) {
       throw new Error(body?.error ?? `Import failed (${res.status})`);
     }
     handOffDraft(body);
+  }
+
+  async function confirmDuplicateImport() {
+    if (!pendingDuplicate) return;
+    const { url } = pendingDuplicate;
+    setPendingDuplicate(null);
+    duplicateOkRef.current = true;
+    setFetching(true);
+    try {
+      await importModel(url);
+    } catch (err) {
+      setFetching(false);
+      toast.error(err instanceof Error ? err.message : "Import failed");
+    }
   }
 
   async function confirmImport() {
@@ -330,6 +370,9 @@ export function ImportForm({ type }: { type: ImportType }) {
       return;
     }
     const url = String(data.get("url") ?? "").trim();
+    // A new submission asks about duplicates again — the URL may be a
+    // different design than the one that was waved through last time.
+    duplicateOkRef.current = false;
     setFetching(true);
     try {
       // The import type is chosen up front in the sidebar, so route by it
@@ -410,6 +453,36 @@ export function ImportForm({ type }: { type: ImportType }) {
         </form>
       </CardContent>
     </Card>
+
+      <AlertDialog
+        open={pendingDuplicate !== null}
+        onOpenChange={(open) => {
+          if (!open) setPendingDuplicate(null);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {pendingDuplicate && pendingDuplicate.duplicates.length > 1
+                ? "This model already exists (more than once)"
+                : "This model already exists"}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              Someone already imported this design from the same source.
+              Importing it again adds a second copy of it to the library.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          {pendingDuplicate && (
+            <DuplicateMatchList matches={pendingDuplicate.duplicates} />
+          )}
+          <AlertDialogFooter>
+            <AlertDialogCancel>Skip</AlertDialogCancel>
+            <AlertDialogAction onClick={confirmDuplicateImport}>
+              Import anyway
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <AlertDialog
         open={pendingConfirm !== null}

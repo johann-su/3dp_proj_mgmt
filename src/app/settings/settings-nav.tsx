@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Bot, Cloud, Shapes, UserCog, Users } from "lucide-react";
+import { Bot, Cloud, Copy, Shapes, UserCog, Users } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const items = [
@@ -11,24 +11,41 @@ const items = [
   { href: "/settings/bambu", label: "Bambu Cloud", icon: Cloud },
 ];
 
-// Both of these hide unless the instance offers them; the pages enforce it
+// These hide unless the instance offers them; the pages enforce it
 // server-side (404 / admin check) rather than trusting the nav.
 const mcpItem = { href: "/settings/mcp", label: "AI access", icon: Bot };
 const usersItem = { href: "/settings/users", label: "Users", icon: Users };
+const duplicatesItem = {
+  href: "/settings/duplicates",
+  label: "Duplicates",
+  icon: Copy,
+};
 
 export function SettingsNav({
   showMcp,
   showUsers,
+  showDuplicates,
+  duplicateCount,
 }: {
   showMcp: boolean;
   showUsers: boolean;
+  showDuplicates: boolean;
+  // Open flags, shown as a count next to the entry so a moderator doesn't have
+  // to open the page to find out there's nothing to do.
+  duplicateCount: number;
 }) {
   const pathname = usePathname();
 
   return (
     <nav className="flex gap-1 overflow-x-auto sm:flex-col sm:gap-0.5">
-      {[...items, ...(showMcp ? [mcpItem] : []), ...(showUsers ? [usersItem] : [])].map((item) => {
+      {[
+        ...items,
+        ...(showMcp ? [mcpItem] : []),
+        ...(showUsers ? [usersItem] : []),
+        ...(showDuplicates ? [duplicatesItem] : []),
+      ].map((item) => {
         const active = pathname === item.href;
+        const badge = item === duplicatesItem && duplicateCount > 0;
         return (
           <Link
             key={item.href}
@@ -43,6 +60,11 @@ export function SettingsNav({
           >
             <item.icon className="size-4" />
             {item.label}
+            {badge && (
+              <span className="ml-auto rounded-full bg-muted px-1.5 text-xs font-normal tabular-nums">
+                {duplicateCount}
+              </span>
+            )}
           </Link>
         );
       })}

@@ -58,6 +58,9 @@ test("readSliceData sums predictions and weights across plates (sliced Bambu fil
     nozzleDiameterMm: 0.4,
     bedType: "Textured PEI Plate",
     filamentTypes: ["PETG"],
+    filamentColors: undefined,
+    // One nozzle on the machine → the AMS swap can't need a second one.
+    requiresMultiNozzle: false,
     usesSupport: true,
     bedSizeMm: { x: 256, y: 256 },
   });
@@ -90,6 +93,131 @@ test("readSliceData reports the support setting only when the config states it",
   );
 });
 
+// The AMS case: two slots of the *same* material is still a two-colour print,
+// so the slots must survive as separate entries (a deduped ["PLA"] would read
+// as single-colour) — and one nozzle on the machine means one nozzle needed.
+test("readSliceData keeps one filament entry per used slot, with colours", async () => {
+  const zip = zipSync({
+    "Metadata/model_settings.config": strToU8(
+      `<config><object><metadata key="extruder" value="1"/>` +
+        `<part><metadata key="extruder" value="2"/></part></object></config>`,
+    ),
+    "Metadata/project_settings.config": strToU8(
+      JSON.stringify({
+        printer_model: "Bambu Lab P1S",
+        nozzle_diameter: ["0.4"],
+        filament_type: ["PLA", "PLA", "PETG"],
+        // Slot 2 carries Bambu's optional alpha pair; slot 3 is parked in the
+        // AMS but unused, so its colour must not show up.
+        filament_colour: ["#FF0000", "#000000FF", "#00FF00"],
+      }),
+    ),
+  });
+  const { readRange, size } = readerFor(zip);
+  const info = (await readSliceData(readRange, size))?.printerInfo;
+  assert.deepEqual(info?.filamentTypes, ["PLA", "PLA"]);
+  assert.deepEqual(info?.filamentColors, ["#ff0000", "#000000"]);
+  assert.equal(info?.requiresMultiNozzle, false);
+});
+
+// Colours are index-parallel to the types by contract, so a slot the config
+// never coloured drops the array rather than shifting every later swatch.
+test("readSliceData omits filament colours unless every used slot has one", async () => {
+  const zip = zipSync({
+    "Metadata/model_settings.config": strToU8(
+      `<config><object><metadata key="extruder" value="1"/>` +
+        `<part><metadata key="extruder" value="2"/></part></object></config>`,
+    ),
+    "Metadata/project_settings.config": strToU8(
+      JSON.stringify({
+        filament_type: ["PLA", "PETG"],
+        filament_colour: ["#FF0000", ""],
+      }),
+    ),
+  });
+  const { readRange, size } = readerFor(zip);
+  const info = (await readSliceData(readRange, size))?.printerInfo;
+  assert.deepEqual(info?.filamentTypes, ["PLA", "PETG"]);
+  assert.equal(info?.filamentColors, undefined);
+});
+
+// Multi-*colour* and multi-*nozzle* are different questions: an AMS feeds many
+// slots through one nozzle. Only slots mapped to different physical extruders
+// (filament_map, written by dual-nozzle machines like the H2D) need the
+// hardware — and nozzle_diameter then has one entry per extruder, so the
+// reported nozzle is the one the objects actually print from.
+test("readSliceData flags multi-nozzle only when slots span physical extruders", async () => {
+  const dualNozzle = (usedExtruders: number[]) =>
+    zipSync({
+      "Metadata/model_settings.config": strToU8(
+        `<config>${usedExtruders
+          .map((e) => `<object><metadata key="extruder" value="${e}"/></object>`)
+          .join("")}</config>`,
+      ),
+      "Metadata/project_settings.config": strToU8(
+        JSON.stringify({
+          printer_model: "Bambu Lab H2D",
+          nozzle_diameter: ["0.4", "0.6"],
+          filament_type: ["PLA", "PETG", "ABS"],
+          // Slots 1+2 hang off the left nozzle, slot 3 off the right one.
+          filament_map: ["1", "1", "2"],
+        }),
+      ),
+    });
+
+  const both = readerFor(dualNozzle([1, 3]));
+  const spanning = (await readSliceData(both.readRange, both.size))?.printerInfo;
+  assert.deepEqual(spanning?.filamentTypes, ["PLA", "ABS"]);
+  assert.equal(spanning?.requiresMultiNozzle, true);
+  assert.equal(spanning?.nozzleDiameterMm, 0.4);
+
+  // Two slots, one nozzle: a filament swap on the same extruder.
+  const oneSide = readerFor(dualNozzle([1, 2]));
+  const shared = (await readSliceData(oneSide.readRange, oneSide.size))?.printerInfo;
+  assert.equal(shared?.requiresMultiNozzle, false);
+
+  // Everything on the second extruder → its 0.6 nozzle, not the machine's first.
+  const right = readerFor(dualNozzle([3]));
+  const single = (await readSliceData(right.readRange, right.size))?.printerInfo;
+  assert.equal(single?.requiresMultiNozzle, false);
+  assert.equal(single?.nozzleDiameterMm, 0.6);
+});
+
+// PrusaSlicer states the distinction outright: single_extruder_multi_material
+// is an MMU multiplexing colours through one nozzle, while the same multi-slot
+// print without it is a toolchanger (XL). Its per-object extruders live in its
+// own model config — without honouring it, an MMU/XL profile's five parked
+// filament slots would all count as used.
+test("readSliceData tells a Prusa MMU apart from a toolchanger", async () => {
+  const prusa = (semm: string) =>
+    zipSync({
+      "Metadata/Slic3r_PE_model.config": strToU8(
+        `<config><object id="1"><metadata type="object" key="extruder" value="1"/>` +
+          // value="0" means "inherit the object's extruder" — not a slot.
+          `<volume><metadata type="volume" key="extruder" value="0"/></volume>` +
+          `</object><object id="2">` +
+          `<metadata type="object" key="extruder" value="3"/></object></config>`,
+      ),
+      "Metadata/Slic3r_PE.config": strToU8(
+        "printer_model = XL\nnozzle_diameter = 0.4,0.4,0.4,0.4,0.4\n" +
+          "filament_type = PLA;PETG;PLA;PLA;PLA\n" +
+          "filament_colour = #FF8000;#0000FF;#101010;#FFFFFF;#FFFFFF\n" +
+          `single_extruder_multi_material = ${semm}\n`,
+      ),
+    });
+
+  const mmu = readerFor(prusa("1"));
+  const multiplexed = (await readSliceData(mmu.readRange, mmu.size))?.printerInfo;
+  // Slots 2/4/5 are configured but unused; slots 1 and 3 are both PLA.
+  assert.deepEqual(multiplexed?.filamentTypes, ["PLA", "PLA"]);
+  assert.deepEqual(multiplexed?.filamentColors, ["#ff8000", "#101010"]);
+  assert.equal(multiplexed?.requiresMultiNozzle, false);
+
+  const xl = readerFor(prusa("0"));
+  const toolchanger = (await readSliceData(xl.readRange, xl.size))?.printerInfo;
+  assert.equal(toolchanger?.requiresMultiNozzle, true);
+});
+
 test("readSliceData counts plates from model_settings for unsliced projects", async () => {
   const zip = zipSync({
     "Metadata/model_settings.config": strToU8("<config><plate></plate></config>"),
@@ -118,6 +246,8 @@ test("readSliceData reads printer info from a PrusaSlicer project ini", async ()
     model: "MK4S",
     nozzleDiameterMm: 0.4,
     filamentTypes: ["PLA"],
+    filamentColors: undefined,
+    requiresMultiNozzle: false,
     usesSupport: undefined,
     bedSizeMm: { x: 250, y: 210 },
   });

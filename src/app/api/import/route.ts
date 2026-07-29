@@ -21,6 +21,7 @@ import {
 } from "@/lib/onshape/api";
 import { getBambuCredential } from "@/lib/bambu/credentials";
 import { getOnshapeAccessToken } from "@/lib/onshape/credentials";
+import { findDuplicatesForUrl, type DuplicateMatch } from "@/lib/duplicates";
 import { reportError } from "@/lib/telemetry";
 
 export const runtime = "nodejs";
@@ -43,6 +44,15 @@ export type OnshapeSelectionResponse = {
   selected: OnshapeBranchPick;
 };
 
+// First-POST answer when the catalog already holds the design this URL names
+// (issue #118): the client shows the existing model(s) and re-POSTs with
+// `confirmDuplicate` if the user still wants it. Flag-only — nothing is
+// blocked, and the dismissed match is recorded on save.
+export type DuplicateConfirmationResponse = {
+  needsDuplicateConfirmation: true;
+  duplicates: DuplicateMatch[];
+};
+
 export type ImportDraft = {
   source: string;
   sourceUrl: string;
@@ -60,6 +70,9 @@ export type ImportDraft = {
   bom: BomItemInput[];
   warnings: string[];
   onshapeMicroversion?: string | null;
+  // Models this import was flagged against and the user chose to import
+  // anyway; createModel records them for later admin review.
+  duplicateOfIds?: string[];
 };
 
 export async function POST(req: NextRequest) {
@@ -73,6 +86,11 @@ export async function POST(req: NextRequest) {
     // Set once the user has agreed to import a model with a lot of files
     // (the Continue/Cancel prompt in import-form.tsx).
     confirm?: boolean;
+    // Set once the user has agreed to import a design the catalog already
+    // holds. Deliberately a separate flag from `confirm`: the duplicate
+    // prompt comes first, and reusing `confirm` would silently answer the
+    // many-files prompt that may follow it.
+    confirmDuplicate?: boolean;
     // Onshape only: the tabs picked in the selection dialog. Absent on the
     // first POST — the route answers with the document's tab list instead of
     // importing, and the client re-POSTs with the chosen element ids.
@@ -83,6 +101,7 @@ export async function POST(req: NextRequest) {
     onshapeWvmId?: string;
   } | null;
   const confirmManyFiles = body?.confirm === true;
+  const confirmDuplicate = body?.confirmDuplicate === true;
   const onshapeElements = Array.isArray(body?.onshapeElements)
     ? body.onshapeElements.filter((v): v is string => typeof v === "string")
     : null;
@@ -105,6 +124,19 @@ export async function POST(req: NextRequest) {
   url.search = "";
 
   try {
+    // Is this design already in the catalog? Checked before any platform call
+    // — the same "don't do the expensive part yet" shape as the many-files and
+    // Onshape-tab round-trips. Matching is by platform + id, not by the URL
+    // string (a different print profile or Onshape branch is the same design).
+    // Collection URLs parse to no key and fall through to the error below.
+    const duplicates = await findDuplicatesForUrl(url);
+    if (duplicates.length > 0 && !confirmDuplicate) {
+      return NextResponse.json({
+        needsDuplicateConfirmation: true,
+        duplicates,
+      } satisfies DuplicateConfirmationResponse);
+    }
+
     let project: ImportedProject;
     if (parseMakerworldUrl(url)) {
       const cred = await getBambuCredential(session.user.id);
@@ -196,6 +228,9 @@ export async function POST(req: NextRequest) {
       bom: project.bom,
       warnings: [...project.warnings, ...staged.warnings],
       onshapeMicroversion: project.onshapeMicroversion ?? null,
+      // Non-empty only when the user imported past a flag (otherwise we
+      // returned above). The ids come from our own lookup, never the body.
+      duplicateOfIds: duplicates.map((d) => d.id),
     };
 
     return NextResponse.json(draft);

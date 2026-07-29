@@ -71,6 +71,9 @@ export type StagedImportFile = {
   filename: string;
   size: number;
   contentType: string;
+  // SHA-256 of the staged bytes (see StagedFile) — carried through the draft so
+  // createModel can store it and later uploads of the same file get flagged.
+  contentHash: string;
   kind: "model" | "image" | "pdf";
   onshapeElementId?: string;
   // Upstream identity + last-modified token for the source sync (mirrors

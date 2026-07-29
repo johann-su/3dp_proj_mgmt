@@ -204,6 +204,7 @@ export async function restoreSnapshot(
         imported: file.imported ?? false,
         sourceFileId: file.sourceFileId ?? null,
         sourceModifiedAt: file.sourceModifiedAt ?? null,
+        contentHash: file.contentHash ?? null,
         sliceStatus: file.sliceStatus,
         sliceSource: file.sliceSource,
         printTimeSeconds: file.printTimeSeconds,

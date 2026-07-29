@@ -76,6 +76,68 @@ The category travels as a **name** and is fed to `suggestCategory` as a source
 category, which matches it against the importing instance's own categories
 (ids don't survive the trip) — the same mechanism MakerWorld's categories use.
 
+## Duplicate detection
+
+`src/lib/duplicate-key.ts` (pure, unit-tested) + `src/lib/duplicates.ts` (the
+DB side): flags a model that already exists instead of letting the catalog
+accumulate copies (issue #118). **Flag-only, by design** — every signed-in user
+can already edit any model, so a copy is a cleanup task, not an error. Nothing
+is blocked, nothing is merged automatically, and continuing past a flag records
+the match for a moderator instead of dropping it.
+
+Two signals, one shared lookup helper:
+
+- **Same upstream design** (`POST /api/import`, before any platform call — the
+  same "don't do the expensive part yet" shape as the `needsConfirmation` /
+  `needsOnshapeSelection` round-trips). The comparison key is **platform + id,
+  never the `sourceUrl` string**: `validateSourceUrl` keeps the hash/pin, so
+  MakerWorld's print-profile `#hash`, Onshape's `/w|v/` pin and its `/e/` tab
+  all vary across imports of one design. `sourceKeyFromUrl` runs each
+  platform's own parser and reduces Onshape to the bare `documentId`. SQL
+  narrows candidates with a `LIKE` fragment that deliberately over-matches
+  (`/models/12` also hits model 123) and the re-parsed key decides — so the
+  fragment must never be treated as the match. Answer:
+  `{ needsDuplicateConfirmation: true, duplicates: [...] }`; the client
+  re-POSTs with `confirmDuplicate`, a **separate flag from `confirm`** because
+  the duplicate prompt comes first and reusing `confirm` would silently answer
+  the many-files prompt behind it.
+- **Same file bytes** (`createModel`/`updateModel`), which covers models with
+  no `sourceUrl` at all: direct upload and archive import both end at the create
+  form, so one check there covers both. `model_files.content_hash` is a SHA-256
+  digested as the bytes stream past in `stageStream`/`stageBuffer` — see
+  [`files.md`](./files.md). A raw byte hash **under-detects on purpose**: the
+  same geometry re-exported by a slicer differs in its embedded
+  timestamp/thumbnail/`project_settings.config`, so it won't hash-equal. That
+  catches "uploaded the exact same file again"; a mesh-level fingerprint over
+  the parsed `3D/3dmodel.model` would catch more and is a deliberate follow-up,
+  not a v1 blocker.
+
+Rules both signals share: **catalog-wide**, not scoped to the importing user
+(unlike the collection job's own per-user `sourceUrl` dedup below, which this
+issue deliberately left alone) — a shared library means someone re-importing
+what a colleague added should see the flag. Trashed models never match (a model
+the owner threw away shouldn't block re-adding it). Generated OpenSCAD variants
+are excluded from hash lookups: they're derived, already deduped among
+themselves by `generatedParamsHash`, and the archive importer skips them for a
+related reason.
+
+A URL import that was waved through will usually *also* hash-match the same
+model's files, so `createModel` suppresses a second prompt for models already
+listed in the draft's `duplicateOfIds` — one decision, one dialog.
+
+Dismissed flags land in `model_duplicates` (`model_id`, `duplicate_of_id`,
+`detected_via`) — a table, not a column on `models`, because a model can
+accumulate several matches. One row per pair (source-URL wins the `via` label
+when both signals fired), re-recorded idempotently via a unique index +
+`onConflictDoNothing`. **Settings → Duplicates**
+(`src/app/settings/duplicates/`, `isModerator`-gated on both the page and the
+actions) is the worklist: trash the copy (the same soft delete as the model
+page's own — restorable, never a purge, since a false positive must not be able
+to destroy someone's model from a settings list) or dismiss the flag. Rows whose
+copy is already trashed drop out of the list and the nav count together —
+nothing is duplicated while it sits in the trash, and restoring it brings the
+flag back.
+
 ## Source sync (MakerWorld/Printables)
 
 `POST /api/models/{id}/source-sync`, pure planner in

@@ -207,6 +207,7 @@ async function createImportedModel(
         imported: file.imported,
         sourceFileId: file.sourceFileId ?? null,
         sourceModifiedAt: file.sourceModifiedAt ?? null,
+        contentHash: file.kind === "model" ? file.contentHash : null,
         sliceStatus: sliceEligible(file.kind, file.filename)
           ? ("pending" as const)
           : null,

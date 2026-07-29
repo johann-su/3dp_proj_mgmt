@@ -17,6 +17,9 @@ export type ImportDraftPayload = {
   warnings: string[];
   // Onshape imports only — stored on the model to enable "Sync from Onshape".
   onshapeMicroversion?: string | null;
+  // Existing models this import was flagged as a duplicate of and imported
+  // anyway (issue #118); recorded on save for later admin review.
+  duplicateOfIds?: string[];
 };
 
 export const IMPORT_DRAFT_KEY = "printvault-import-draft";

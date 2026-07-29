@@ -53,6 +53,7 @@ export function buildSnapshot(model: SnapshotSource): ModelVersionSnapshot {
         imported: f.imported,
         sourceFileId: f.sourceFileId,
         sourceModifiedAt: f.sourceModifiedAt,
+        contentHash: f.contentHash,
         sliceStatus: f.sliceStatus,
         sliceSource: f.sliceSource,
         printTimeSeconds: f.printTimeSeconds,

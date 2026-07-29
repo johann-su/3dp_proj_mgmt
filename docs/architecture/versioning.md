@@ -37,6 +37,14 @@ migration.
 those helpers return, and never delete a non-variant model file's S3 object
 directly.
 
+**When adding a `model_files` column that a revert must restore**, add it to
+`VersionFileSnapshot`, `buildSnapshot` and `restoreSnapshot`'s insert together —
+a column left out of the snapshot is silently dropped by remove-then-revert (see
+`content_hash`). Note the one-off cost: `snapshotsEqual` compares snapshots as
+JSON, so a new field makes every pre-existing snapshot compare unequal and the
+first save after deploy records a version even when nothing changed. Old
+snapshots lack the key, hence the `?? null` fallbacks on read.
+
 Deletion is a trash bin: `deleteModel` just sets `models.deleted_at`; every
 listing hides trashed models (`deleted_at IS NULL` in
 `list-queries`/`search`/`smart-collections` plus the collection member/cover

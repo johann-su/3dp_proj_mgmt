@@ -4,6 +4,7 @@
 // of React so it stays unit-testable (see model-form-state.test.ts).
 
 import type { FileOrderRef, UploadedFile } from "@/app/models/actions";
+import type { SliceStatus } from "@/db/schema";
 import type { BomItemInput } from "@/lib/bom";
 
 export const MODEL_ACCEPT = ".3mf,.scad";
@@ -18,6 +19,9 @@ export type ExistingFile = {
   // Came with the model's source-platform import (model_files.imported) —
   // keeps the cloud badge visible in edit mode.
   imported: boolean;
+  // Only meaningful for .3mf model files: "pending" means the slicer is
+  // already queued to look at it, so the re-slice control has nothing to add.
+  sliceStatus?: SliceStatus | null;
 };
 
 // Prefilled values when editing; absent when creating a new model.
@@ -77,7 +81,12 @@ export type ModelFileEntry = {
   filename: string;
   size: number;
 } & (
-  | { type: "existing"; id: string; imported: boolean }
+  | {
+      type: "existing";
+      id: string;
+      imported: boolean;
+      sliceStatus?: SliceStatus | null;
+    }
   | { type: "staged"; staged: UploadedFile }
   | { type: "new"; file: File }
 );
@@ -158,6 +167,9 @@ export type ModelFormValues = {
   images: ImageEntry[];
   pdfFiles: PendingFile[];
   existingPdfFiles: ExistingFile[];
+  // Only the .3mf entries whose slice queueing the user flipped away from the
+  // default (keyed by ModelFileEntry.key) — see isQueuedForSlicing.
+  sliceOverrides: Record<string, boolean>;
 };
 
 // Whether the form differs from what was loaded. In create mode there is no
@@ -169,6 +181,10 @@ export function formIsDirty(
   initial: ModelFormInitial | undefined,
 ): boolean {
   if (!initial) return true;
+  // Slice queueing is applied by the save, so leaving without saving would
+  // silently drop it — that counts as an unsaved change. The map only holds
+  // entries that differ from the default, so toggling back clears it.
+  if (Object.keys(current.sliceOverrides).length > 0) return true;
   if (current.title !== initial.title) return true;
   if (current.description !== initial.description) return true;
   if (current.categoryId !== (initial.categoryId ?? "")) return true;
@@ -219,6 +235,78 @@ export function formIsDirty(
   if (current.existingPdfFiles.length !== initPdf.length) return true;
 
   return false;
+}
+
+// --- Slice queueing -------------------------------------------------------
+//
+// Every .3mf row carries a toggle for handing the file to the slicer when the
+// form is saved. The two sides of the form want opposite defaults, so the
+// state is stored as *overrides* of the default rather than a plain list:
+// that keeps the map empty for an untouched form (so it doesn't read as
+// dirty) and lets a toggle-and-toggle-back leave no trace.
+
+// Only .3mf files carry the geometry and embedded settings the slicer reads —
+// mirrors sliceEligible in @/lib/slicer, which a client component can't import
+// (it builds an S3 client at load time).
+function isSliceable(entry: ModelFileEntry): boolean {
+  return entry.filename.toLowerCase().endsWith(".3mf");
+}
+
+// A file being added is sliced by default (that's what an upload does anyway);
+// one already on the model is not — its estimates exist, so re-slicing is the
+// opt-in that backfills newly parsed fields or retries a failure.
+export function defaultQueuedForSlicing(entry: ModelFileEntry): boolean {
+  return isSliceable(entry) && entry.type !== "existing";
+}
+
+export function isQueuedForSlicing(
+  entry: ModelFileEntry,
+  overrides: Record<string, boolean>,
+): boolean {
+  if (!isSliceable(entry)) return false;
+  // Handed over by an earlier save and not finished yet. The toggle can't call
+  // that back, so it reads as queued whatever the override says.
+  if (entry.type === "existing" && entry.sliceStatus === "pending") return true;
+  return overrides[entry.key] ?? defaultQueuedForSlicing(entry);
+}
+
+export function toggleSliceQueue(
+  overrides: Record<string, boolean>,
+  entry: ModelFileEntry,
+): Record<string, boolean> {
+  const next = !isQueuedForSlicing(entry, overrides);
+  // Back to the default → drop the entry, so an untouched form stays clean.
+  const rest = { ...overrides };
+  delete rest[entry.key];
+  return next === defaultQueuedForSlicing(entry) ? rest : { ...rest, [entry.key]: next };
+}
+
+// The S3 keys of files being added that the user took *out* of the queue, for
+// createModel/updateModel (which otherwise queue every new .3mf). Walks the
+// entries the way orderFilesForCreate does: `uploaded` holds the freshly
+// uploaded files in wizard upload order, so consuming the model uploads one by
+// one pairs each "new" entry with the key it was stored under.
+export function skippedSliceKeys(
+  modelFileEntries: ModelFileEntry[],
+  overrides: Record<string, boolean>,
+  uploaded: UploadedFile[],
+): string[] {
+  const uploadedModels = uploaded.filter((f) => f.kind === "model");
+  let uploadedModelIndex = 0;
+  const keys: string[] = [];
+  for (const entry of modelFileEntries) {
+    const file =
+      entry.type === "staged"
+        ? entry.staged
+        : entry.type === "new"
+          ? uploadedModels[uploadedModelIndex++]
+          : undefined;
+    // Non-.3mf uploads are never queued anyway — leave them out of the list.
+    if (file && isSliceable(entry) && !isQueuedForSlicing(entry, overrides)) {
+      keys.push(file.key);
+    }
+  }
+  return keys;
 }
 
 // Edit mode: per-kind order lists for updateModel. newIndex values are

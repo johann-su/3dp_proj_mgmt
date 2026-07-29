@@ -11,8 +11,13 @@ import { ArrowLeft, ArrowRight, Eye, FileText, Pencil } from "lucide-react";
 import {
   createModel,
   updateModel,
+  type CreateModelInput,
+  type ModelSaveResult,
+  type UpdateModelInput,
   type UploadedFile,
 } from "@/app/models/actions";
+import type { DuplicateMatch } from "@/lib/duplicates";
+import { DuplicateMatchList } from "@/components/duplicate-match-list";
 import { extract3mfMetadata } from "@/lib/threemf";
 import { suggestCategory } from "@/lib/category-suggest";
 import { OTHER_CATEGORY_SLUG } from "@/lib/category-defaults";
@@ -24,12 +29,15 @@ import {
   PDF_ACCEPT,
   buildUpdateFileOrders,
   formIsDirty,
+  isQueuedForSlicing,
   mergeTags,
   newImageEntry,
   newModelFileEntry,
   orderFilesForCreate,
+  skippedSliceKeys,
   stagedImageEntry,
   stagedModelFileEntry,
+  toggleSliceQueue,
   uploadFile,
   type ExistingFile,
   type ImageEntry,
@@ -102,7 +110,13 @@ export function ModelForm({
           imported: f.imported,
           filename: f.filename,
           size: f.size,
+          sliceStatus: f.sliceStatus,
         })),
+  );
+  // Which .3mf files the save hands to the slicer, as overrides of the
+  // per-entry default (new: yes, already stored: no) — see model-form-state.
+  const [sliceOverrides, setSliceOverrides] = useState<Record<string, boolean>>(
+    {},
   );
   const [existingPdfFiles, setExistingPdfFiles] = useState<ExistingFile[]>(
     () => model?.files.filter((f) => f.kind === "pdf") ?? [],
@@ -135,7 +149,23 @@ export function ModelForm({
 
   const [sourceUrl, setSourceUrl] = useState<string | null>(null);
   const [onshapeMicroversion, setOnshapeMicroversion] = useState<string | null>(null);
+  // Models the URL importer flagged this draft against and the user imported
+  // anyway — recorded on save so an admin can scrub the copies later.
+  const [duplicateOfIds, setDuplicateOfIds] = useState<string[]>([]);
   const [showDiscardConfirm, setShowDiscardConfirm] = useState(false);
+  // Set when the save came back flagged: a model file here already lives on
+  // another model (issue #118). Flag-only — "Save anyway" re-runs the same
+  // save with confirmDuplicate.
+  const [pendingDuplicates, setPendingDuplicates] = useState<
+    DuplicateMatch[] | null
+  >(null);
+  // The save payload built by handleSubmit, kept so "Save anyway" can re-issue
+  // it without re-uploading the files (they are already staged in S3).
+  const pendingSaveRef = useRef<
+    | { mode: "create"; input: CreateModelInput }
+    | { mode: "update"; input: UpdateModelInput }
+    | null
+  >(null);
 
   const hasModelFile = modelFileEntries.length > 0;
 
@@ -150,6 +180,7 @@ export function ModelForm({
       images,
       pdfFiles,
       existingPdfFiles,
+      sliceOverrides,
     },
     model,
   );
@@ -196,6 +227,7 @@ export function ModelForm({
       setSourceCategories(draft.categories ?? []);
       setSourceUrl(draft.sourceUrl ?? null);
       setOnshapeMicroversion(draft.onshapeMicroversion ?? null);
+      setDuplicateOfIds(draft.duplicateOfIds ?? []);
       setModelFileEntries(
         (draft.files ?? [])
           .filter((f) => f.kind === "model")
@@ -287,6 +319,12 @@ export function ModelForm({
 
   function removeModelFile(key: string) {
     setModelFileEntries((prev) => prev.filter((entry) => entry.key !== key));
+  }
+
+  // Queues/unqueues one .3mf for slicing. Nothing runs until the form is
+  // saved — createModel/updateModel apply it (see handleSubmit).
+  function toggleSlicing(entry: ModelFileEntry) {
+    setSliceOverrides((prev) => toggleSliceQueue(prev, entry));
   }
 
   function renameModelFile(key: string, name: string) {
@@ -414,9 +452,14 @@ export function ModelForm({
         uploaded.push(await uploadFile(file, kind, filename));
       }
 
-      // On success the action redirects (handled by Next); it only returns
-      // a value when something went wrong.
-      let result: { error: string } | undefined;
+      // Files the user took out of the slice queue, by the S3 key they were
+      // stored under — everything else .3mf is sliced as usual.
+      const skipSliceKeys = skippedSliceKeys(
+        modelFileEntries,
+        sliceOverrides,
+        uploaded,
+      );
+
       if (model) {
         setStatus("Saving changes…");
         const keptIds = new Set([
@@ -433,40 +476,93 @@ export function ModelForm({
           pdfFiles.length,
           images,
         );
-        result = await updateModel({
-          modelId: model.id,
-          title,
-          description,
-          categoryId: categoryId || null,
-          tags: tags.split(","),
-          newFiles: uploaded,
-          removedFileIds: model.files
-            .filter((f) => !keptIds.has(f.id))
-            .map((f) => f.id),
-          renamedFiles: modelFileEntries
-            .filter((entry) => entry.type === "existing")
-            .map((entry) => ({ id: entry.id, filename: entry.filename })),
-          modelFileOrder,
-          imageOrder,
-          bom,
-        });
+        pendingSaveRef.current = {
+          mode: "update",
+          input: {
+            modelId: model.id,
+            title,
+            description,
+            categoryId: categoryId || null,
+            tags: tags.split(","),
+            newFiles: uploaded,
+            removedFileIds: model.files
+              .filter((f) => !keptIds.has(f.id))
+              .map((f) => f.id),
+            renamedFiles: modelFileEntries
+              .filter((entry) => entry.type === "existing")
+              .map((entry) => ({ id: entry.id, filename: entry.filename })),
+            modelFileOrder,
+            imageOrder,
+            bom,
+            // Existing .3mf files the user put back in the queue — re-sliced to
+            // refresh estimates and printer info (or retry a failure).
+            resliceFileIds: modelFileEntries.flatMap((entry) =>
+              entry.type === "existing" && isQueuedForSlicing(entry, sliceOverrides)
+                ? [entry.id]
+                : [],
+            ),
+            skipSliceKeys,
+          },
+        };
       } else {
         setStatus("Creating model…");
-        result = await createModel({
-          title,
-          description,
-          categoryId: categoryId || null,
-          tags: tags.split(","),
-          files: orderFilesForCreate(modelFileEntries, images, stagedPdfFiles, uploaded),
-          bom,
-          sourceUrl,
-          onshapeMicroversion,
-        });
+        pendingSaveRef.current = {
+          mode: "create",
+          input: {
+            title,
+            description,
+            categoryId: categoryId || null,
+            tags: tags.split(","),
+            files: orderFilesForCreate(
+              modelFileEntries,
+              images,
+              stagedPdfFiles,
+              uploaded,
+            ),
+            bom,
+            sourceUrl,
+            onshapeMicroversion,
+            skipSliceKeys,
+            duplicateOfIds,
+          },
+        };
       }
-      if (result?.error) {
-        setStatus(null);
-        toast.error(result.error);
-      }
+      await save(false);
+    } catch (err) {
+      if (isNextRedirectError(err)) return;
+      setStatus(null);
+      toast.error(err instanceof Error ? err.message : "Something went wrong");
+    }
+  }
+
+  // Issues the save built by handleSubmit. Split out so the duplicate prompt's
+  // "Save anyway" can re-run it with confirmDuplicate — the files are already
+  // staged in S3, so re-submitting the form from scratch would upload them all
+  // over again. On success the action redirects (thrown and handled by Next);
+  // it only returns a value when the save didn't happen.
+  async function save(confirmDuplicate: boolean) {
+    const pending = pendingSaveRef.current;
+    if (!pending) return;
+    const result: ModelSaveResult | undefined =
+      pending.mode === "create"
+        ? await createModel({ ...pending.input, confirmDuplicate })
+        : await updateModel({ ...pending.input, confirmDuplicate });
+    if (result && "duplicates" in result) {
+      setStatus(null);
+      setPendingDuplicates(result.duplicates);
+      return;
+    }
+    if (result?.error) {
+      setStatus(null);
+      toast.error(result.error);
+    }
+  }
+
+  async function confirmDuplicateSave() {
+    setPendingDuplicates(null);
+    setStatus(model ? "Saving changes…" : "Creating model…");
+    try {
+      await save(true);
     } catch (err) {
       if (isNextRedirectError(err)) return;
       setStatus(null);
@@ -498,11 +594,13 @@ export function ModelForm({
           {step === 1 && (
             <ModelFilePicker
               entries={modelFileEntries}
+              sliceOverrides={sliceOverrides}
               onAdd={addModelFiles}
               onRemove={removeModelFile}
               onRename={renameModelFile}
               onMove={moveModelFile}
               onReorder={reorderModelFile}
+              onToggleSlicing={toggleSlicing}
             />
           )}
 
@@ -734,6 +832,34 @@ export function ModelForm({
                 <AlertDialogCancel>Keep editing</AlertDialogCancel>
                 <AlertDialogAction onClick={() => router.push(cancelHref)}>
                   Discard
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
+
+          <AlertDialog
+            open={pendingDuplicates !== null}
+            onOpenChange={(open) => {
+              if (!open) setPendingDuplicates(null);
+            }}
+          >
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>This file already exists</AlertDialogTitle>
+                <AlertDialogDescription>
+                  {pendingDuplicates && pendingDuplicates.length > 1
+                    ? "The same model file is already attached to these models."
+                    : "The same model file is already attached to this model."}{" "}
+                  Saving adds another copy of it to the library.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              {pendingDuplicates && (
+                <DuplicateMatchList matches={pendingDuplicates} />
+              )}
+              <AlertDialogFooter>
+                <AlertDialogCancel>Keep editing</AlertDialogCancel>
+                <AlertDialogAction onClick={confirmDuplicateSave}>
+                  Save anyway
                 </AlertDialogAction>
               </AlertDialogFooter>
             </AlertDialogContent>

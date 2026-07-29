@@ -150,6 +150,33 @@ manifest the folder names supply the file kinds and the `README.md` supplies
 the title and description, so tags, the category and BOM sections come back
 empty.
 
+## Duplicate warnings
+
+The library is shared, so the same design tends to get added twice — once by
+whoever found it, once by whoever forgot it was already there. Two checks catch
+that and **warn without ever blocking**:
+
+- Pasting a **MakerWorld, Printables or Onshape link** that someone already
+  imported stops before downloading anything and shows the existing model, with
+  **Skip** or **Import anyway**. The check is per design, not per link, so a
+  different print profile, a different Onshape branch or tab, or a
+  version-pinned link all still count as the same design.
+- **Uploading a model file** that is byte-for-byte identical to one already in
+  the library warns the same way when you save, with **Save anyway**. This one
+  is exact by nature: re-exporting the same geometry from your slicer produces a
+  different file (embedded timestamps and previews change), so it catches
+  re-uploads of the same file rather than the same shape.
+
+Both checks look at the whole library, not just your own models, and ignore
+anything in the [trash](/features/versioning#trash) — a model you threw away
+never blocks adding it back.
+
+Choosing "import/save anyway" is remembered. [Moderators](/roles) get the list
+under **Settings → Duplicates**, where each entry links both models and offers
+to move the newer copy to the trash (restorable, like any other delete) or
+dismiss the warning as a false positive. Nothing is ever merged or deleted
+automatically.
+
 ## Markdown descriptions
 
 Descriptions (for both models and collections) are rendered as **GitHub-flavored

@@ -42,6 +42,73 @@ Legacy `.step` files (from before Onshape imports switched to 3MF) and files
 uploaded before this feature are skipped. The service is optional: without
 `SLICER_URL`, unsliced files simply show no estimates and stay `pending`.
 
+### Queueing a file for (re-)slicing
+
+Every `.3mf` row in the create/edit wizard carries a toggle for handing that
+file to the slicer **when the form is saved** — nothing runs on the click
+itself, so one save covers the whole edit. The two sides want opposite
+defaults, so the form stores *overrides* of a per-entry default
+(`model-form-state.ts`: `defaultQueuedForSlicing` / `isQueuedForSlicing` /
+`toggleSliceQueue`) rather than a plain list: a file being added is queued (an
+upload queues it anyway) and can be taken out; a file already on the model is
+not, and adding it back re-slices. Keeping the map empty for an untouched form
+is what stops it from reading as dirty, so a toggle-and-toggle-back leaves no
+trace.
+
+The two directions reach the actions differently, because a file being uploaded
+has no id yet: `skipSliceKeys` (S3 keys within `newFiles`, so `createModel`/
+`updateModel` insert `sliceStatus: null` instead of `"pending"`) and
+`resliceFileIds` (ids of kept files, which `updateModel` flips back to
+`"pending"`). Both are advisory — the server still gates on `sliceEligible` and
+on the ids belonging to the model.
+
+The re-slice flip happens **outside** the update transaction on purpose: the
+version snapshot covers `sliceStatus`/`printer_info`, so flipping it inside
+would record a version for what is only a request to recompute (the slicer's
+own writes land outside versioning too, for the same reason). Old estimates
+stay visible until the new ones replace them. Re-slicing a file that carries
+embedded Bambu/Orca predictions costs only a few ranged S3 reads — it re-reads
+`printer_info` and returns before the PrusaSlicer path, which is what makes it
+a cheap way to backfill newly parsed fields onto older models, even on an
+instance with no `SLICER_URL`.
+
+### Filaments: per slot, and the multi-nozzle question
+
+`printer_info.filamentTypes` is **one entry per filament slot the objects
+actually print from, in slot order, and deliberately not deduped** — red PLA in
+slot 1 plus black PLA in slot 2 is a two-colour print, and a deduped `["PLA"]`
+would read as a single-colour one. `filamentColors` holds the matching
+`filament_colour` hexes and is index-parallel by contract: it's dropped entirely
+(rather than padded) when any used slot has no usable colour, so the two arrays
+always zip 1:1 for the badges. Rows written before this shipped keep their old
+deduped types and no colours, so they under-report multi-colour until re-sliced.
+`filamentSummary()` in `src/lib/printer-info.ts` does the zipping and the
+multi-colour/multi-material call for both the model page and the MCP payload.
+
+Which slots count is decided by the archive's per-object `extruder` keys —
+Bambu/Orca's `model_settings.config`, PrusaSlicer's own
+`Slic3r_PE_model.config` (needed because an MMU/XL profile lists a filament per
+physical extruder whether or not it's used; a `value="0"` on a part means
+"inherit the object's extruder", not slot 0). No such entry → assume slot 1.
+
+`requiresMultiNozzle` answers a *hardware* question, not a colour count: an
+AMS/MMU multiplexes many filaments through one nozzle, while an H2D, Prusa XL or
+IDEX genuinely needs a second nozzle the visitor may not own. It is true only
+when the used slots sit on different physical extruders, which each slicer says
+differently:
+
+- **Bambu/Orca** — `filament_map` maps each slot to a physical extruder and is
+  only written by dual-nozzle machines. Without it, a single-slot print or a
+  one-entry `nozzle_diameter` (`nozzle_diameter` has one entry *per physical
+  extruder*) settles it as false; anything else stays undefined.
+- **PrusaSlicer/Orca ini** — `single_extruder_multi_material = 1` is the MMU
+  multiplexer, so false; the same multi-slot print with it `0` is a toolchanger.
+
+Undefined follows the `usesSupport` convention — a missing key means "the config
+didn't say", not false. `nozzleDiameterMm` stays "the nozzle actually used": on
+a dual-nozzle machine it indexes `nozzle_diameter` by the extruder the objects
+print from, not by the machine's first.
+
 ## "Open in slicer" deep links
 
 `src/app/models/[id]/file-download-menu.tsx` hands a `.3mf` to Bambu Studio /

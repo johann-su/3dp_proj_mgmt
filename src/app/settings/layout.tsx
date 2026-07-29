@@ -1,7 +1,8 @@
 import { redirect } from "next/navigation";
 import { getSession, mcpEnabled, signInRedirect } from "@/lib/auth";
 import { ensureInitialAdmin } from "@/lib/admin";
-import { isAdmin } from "@/lib/roles";
+import { isAdmin, isModerator } from "@/lib/roles";
+import { countOpenDuplicates } from "@/lib/duplicates";
 import { SettingsNav } from "./settings-nav";
 
 export default async function SettingsLayout({
@@ -17,6 +18,9 @@ export default async function SettingsLayout({
   const session = await getSession();
   if (!session) redirect(await signInRedirect());
 
+  const canModerate = isModerator(session.user.role);
+  const duplicateCount = canModerate ? await countOpenDuplicates() : 0;
+
   return (
     <div className="mx-auto max-w-5xl px-4 py-8">
       <h1 className="text-2xl font-semibold mb-6">Settings</h1>
@@ -25,6 +29,8 @@ export default async function SettingsLayout({
           <SettingsNav
             showMcp={mcpEnabled}
             showUsers={isAdmin(session.user.role)}
+            showDuplicates={canModerate}
+            duplicateCount={duplicateCount}
           />
         </aside>
         <div className="min-w-0">{children}</div>
