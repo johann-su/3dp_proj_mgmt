@@ -46,7 +46,11 @@ self-assign a role). **Moderator = owner-equivalent on content**:
 `canActAsOwner(session.user, ownerId)` is the standard owner gate and passes
 for moderators/admins — model trash/restore/purge, collection deletion, variant
 deletion, and the matching UI flags all use it; moderators also see (and their
-page load sweeps) *everyone's* trash. **Admin = moderator + user management**:
+page load sweeps) *everyone's* trash, and Settings → Duplicates
+(`src/app/settings/duplicates/`, `isModerator` on the page *and* both actions)
+is theirs to work through — see
+[`import.md`](./import.md#duplicate-detection). **Admin = moderator + user
+management**:
 Settings → Users (`src/app/settings/users/`) lists all accounts, edits roles
 (`setUserRole`) and deletes accounts (`deleteUser`) — the two mutations gated
 on `isAdmin`; admins cannot change their own role or delete their own account,

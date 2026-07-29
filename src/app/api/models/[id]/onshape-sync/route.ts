@@ -312,6 +312,7 @@ export async function POST(
             // when it hasn't moved. Onshape files never take part in the
             // MakerWorld/Printables source sync.
             sourceModifiedAt: microversionId ?? null,
+            contentHash: file.contentHash,
             // Newly exported 3MF files still need slice estimates; the model
             // page runs processPendingSlices in the background on next view.
             sliceStatus: sliceEligible("model", file.filename)

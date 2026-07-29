@@ -13,6 +13,16 @@ extension (`contentTypeForFilename`), never from a client header/value —
 `text/html` would be stored XSS. File routes also send
 `X-Content-Type-Options: nosniff`.
 
+`stageStream`/`stageBuffer` (`src/lib/storage.ts`) return a **SHA-256
+`contentHash`** alongside the size, both derived from the bytes as they stream
+to S3 so the object never has to be read back. `createModel`/`updateModel`
+store it on `kind: "model"` rows only (`model_files.content_hash`) — images and
+PDFs are legitimately shared between models — and use it to flag re-uploaded
+files as duplicates (see
+[`import.md`](./import.md#duplicate-detection)). Like `size`, the value
+round-trips through the client, so it is re-validated as 64-char lowercase hex
+on the way in; it is a dedup hint, not a trust boundary.
+
 ## Downloads & images
 
 Downloads and images stream from S3 through `GET /api/files/[id]`, so the S3

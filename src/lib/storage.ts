@@ -1,5 +1,5 @@
 import { Readable } from "node:stream";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { Upload } from "@aws-sdk/lib-storage";
 import { GetObjectCommand } from "@aws-sdk/client-s3";
 import { s3, S3_BUCKET } from "@/lib/s3";
@@ -11,6 +11,11 @@ export type StagedFile = {
   filename: string;
   size: number;
   contentType: string;
+  // Lowercase hex SHA-256 of the bytes, digested as they stream past on their
+  // way to S3 rather than by reading the object back. Stored on model files
+  // (model_files.content_hash) to flag re-uploads of the same file as
+  // duplicates — see @/lib/duplicates.
+  contentHash: string;
 };
 
 // Streams a file into the staging area of the bucket ("uploads/…") and
@@ -35,7 +40,13 @@ export async function stageBuffer(
     },
   });
   await upload.done();
-  return { key, filename, size: data.byteLength, contentType };
+  return {
+    key,
+    filename,
+    size: data.byteLength,
+    contentType,
+    contentHash: createHash("sha256").update(data).digest("hex"),
+  };
 }
 
 export async function stageStream(
@@ -46,10 +57,14 @@ export async function stageStream(
   const safeName = filename.replace(/[^a-zA-Z0-9._-]/g, "_");
   const key = `uploads/${randomUUID()}/${safeName}`;
 
+  // Size and content hash are both derived from the bytes as they pass
+  // through, so the object never has to be read back to learn either.
   let size = 0;
+  const digest = createHash("sha256");
   const counter = new TransformStream<Uint8Array, Uint8Array>({
     transform(chunk, controller) {
       size += chunk.byteLength;
+      digest.update(chunk);
       controller.enqueue(chunk);
     },
   });
@@ -67,7 +82,7 @@ export async function stageStream(
   });
   await upload.done();
 
-  return { key, filename, size, contentType };
+  return { key, filename, size, contentType, contentHash: digest.digest("hex") };
 }
 
 // Reads a small text file (e.g. a parametric .scad source) from S3. Returns

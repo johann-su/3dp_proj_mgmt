@@ -1,6 +1,7 @@
 import {
   bigint,
   boolean,
+  index,
   integer,
   jsonb,
   pgTable,
@@ -8,12 +9,14 @@ import {
   real,
   text,
   timestamp,
+  uniqueIndex,
   uuid,
   type AnyPgColumn,
 } from "drizzle-orm/pg-core";
 import { relations } from "drizzle-orm";
 import type { RuleGroup } from "@/lib/collection-rules";
 import type { BomItemInput } from "@/lib/bom";
+import type { DuplicateVia } from "@/lib/duplicate-key";
 import type { UserRole } from "@/lib/roles";
 
 // --- BetterAuth tables ---
@@ -326,8 +329,24 @@ export const modelFiles = pgTable("model_files", {
   // or an image/pdf fetched with ?download=1) — see src/lib/metrics.ts.
   // Inline image views (gallery thumbnails, next/image) don't count.
   downloadCount: integer("download_count").notNull().default(0),
+  // Lowercase hex SHA-256 of the stored bytes, computed while streaming to S3
+  // (src/lib/storage.ts) and used to flag a re-uploaded model file as a
+  // duplicate (issue #118). Only set for kind "model": images and PDFs are
+  // legitimately shared between models. Null on generated OpenSCAD variants
+  // (they have generatedParamsHash) and on every row inserted before the
+  // column existed — a null hash simply never matches.
+  //
+  // A raw byte hash under-detects on purpose: the same geometry re-exported by
+  // a slicer differs in its embedded timestamp/thumbnail/project_settings, so
+  // it won't hash-equal. That catches the common "uploaded the exact same
+  // file again" case; a mesh-level fingerprint is a deliberate follow-up.
+  contentHash: text("content_hash"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
-});
+}, (t) => [
+  // The duplicate lookup runs on every save; without this it seq-scans every
+  // file row in the instance.
+  index("model_files_content_hash_idx").on(t.contentHash),
+]);
 
 // --- Model versioning (issue #55) ---
 //
@@ -364,6 +383,7 @@ export type VersionFileSnapshot = {
   imported: boolean;
   sourceFileId: string | null;
   sourceModifiedAt: string | null;
+  contentHash: string | null;
   sliceStatus: SliceStatus | null;
   sliceSource: SliceSource | null;
   printTimeSeconds: number | null;
@@ -396,6 +416,45 @@ export const modelVersions = pgTable("model_versions", {
   snapshot: jsonb("snapshot").$type<ModelVersionSnapshot>().notNull(),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
+
+// --- Duplicate detection (issue #118) ---
+//
+// One dismissed duplicate flag: the user was told `model_id` looks like a copy
+// of `duplicate_of_id` and imported/saved it anyway. Detection is flag-only —
+// nothing is blocked and nothing is merged automatically (the whole catalog is
+// collaboratively editable, so a copy is a cleanup task, not an error), so the
+// rows exist purely to give a moderator a worklist: Settings → Duplicates.
+//
+// A table rather than a column on `models`: a model can accumulate several
+// dismissed matches over time, and each carries its own signal and timestamp.
+// Resolving a row means deleting it (the model is trashed, or the match is
+// dismissed as a false positive); both sides cascade, so trashing-then-purging
+// either model cleans up after itself.
+export const modelDuplicates = pgTable(
+  "model_duplicates",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    // The newly added copy — the one a moderator would trash.
+    modelId: uuid("model_id")
+      .notNull()
+      .references(() => models.id, { onDelete: "cascade" }),
+    // The model that was already there.
+    duplicateOfId: uuid("duplicate_of_id")
+      .notNull()
+      .references(() => models.id, { onDelete: "cascade" }),
+    detectedVia: text("detected_via").$type<DuplicateVia>().notNull(),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (t) => [
+    // Re-recording the same match is a no-op (an edit that re-adds the same
+    // file shouldn't stack up rows) — writers rely on onConflictDoNothing.
+    uniqueIndex("model_duplicates_pair_idx").on(
+      t.modelId,
+      t.duplicateOfId,
+      t.detectedVia,
+    ),
+  ],
+);
 
 // Bill of materials: filament, heat set inserts, screws, …
 export const bomItems = pgTable("bom_items", {

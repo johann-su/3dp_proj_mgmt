@@ -19,6 +19,7 @@ function file(overrides: Partial<VersionFileSnapshot> = {}): VersionFileSnapshot
     imported: false,
     sourceFileId: null,
     sourceModifiedAt: null,
+    contentHash: null,
     sliceStatus: null,
     sliceSource: null,
     printTimeSeconds: null,

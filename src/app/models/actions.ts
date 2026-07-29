@@ -34,6 +34,13 @@ import {
 } from "@/lib/s3";
 import { processPendingSlices, sliceEligible } from "@/lib/slicer";
 import { animatedImageKeys } from "@/lib/storage";
+import { isContentHash, type DuplicateVia } from "@/lib/duplicate-key";
+import {
+  existingModelIds,
+  findDuplicatesByContentHash,
+  recordDuplicateMatches,
+  type DuplicateMatch,
+} from "@/lib/duplicates";
 
 export type UploadedFile = {
   key: string;
@@ -53,7 +60,21 @@ export type UploadedFile = {
   // under the same sourceUrl gate as `imported`.
   sourceFileId?: string;
   sourceModifiedAt?: string;
+  // SHA-256 of the uploaded/staged bytes, produced server-side by
+  // stageStream/stageBuffer and echoed back through the client. Only stored
+  // for kind "model", where it powers upload duplicate detection; re-validated
+  // as hex, since it travels through the client like every other field here.
+  contentHash?: string;
 };
+
+// A save that didn't happen. `error` is a validation failure to show as a
+// toast; `duplicates` is the flag-only duplicate prompt (issue #118) — the
+// catalog already holds these models, and re-submitting with
+// `confirmDuplicate` saves anyway. On success both actions redirect and
+// return nothing.
+export type ModelSaveResult =
+  | { error: string }
+  | { duplicates: DuplicateMatch[] };
 
 export type CreateModelInput = {
   title: string;
@@ -68,6 +89,12 @@ export type CreateModelInput = {
   // S3 keys within `files` that should NOT be queued for slicing — every new
   // .3mf is queued unless the uploader turns it off in the wizard.
   skipSliceKeys?: string[];
+  // Set once the user has answered the duplicate prompt with "save anyway";
+  // the matches are then recorded instead of blocking the save.
+  confirmDuplicate?: boolean;
+  // Models the URL importer already flagged this import against (carried in
+  // the import draft). Recorded alongside any file-hash matches.
+  duplicateOfIds?: string[];
 };
 
 function validateSourceUrl(raw: string | null | undefined): string | null | undefined {
@@ -117,6 +144,9 @@ export type UpdateModelInput = {
   // S3 keys within newFiles that should NOT be queued for slicing — the
   // wizard queues every new .3mf unless the uploader turns it off.
   skipSliceKeys?: string[];
+  // See CreateModelInput — a new file matching another model's is flagged the
+  // same way on edit.
+  confirmDuplicate?: boolean;
 };
 
 // Merges a client-supplied order (kept-file ids interleaved with indices into
@@ -168,9 +198,18 @@ function validateUploads(files: UploadedFile[]): string | null {
   return null;
 }
 
+// Content hashes of the model files in an upload set. Only kind "model" is
+// hashed for dedup (images and PDFs are legitimately shared between models),
+// and the value is re-validated because it round-trips through the client.
+function modelFileHashes(files: UploadedFile[]): string[] {
+  return files.flatMap((f) =>
+    f.kind === "model" && isContentHash(f.contentHash) ? [f.contentHash] : [],
+  );
+}
+
 export async function createModel(
   input: CreateModelInput,
-): Promise<{ error: string } | never> {
+): Promise<ModelSaveResult | never> {
   const session = await getSession();
   if (!session) return { error: "You must be signed in" };
 
@@ -200,6 +239,36 @@ export async function createModel(
   const onshapeMicroversion = onshapeId(input.onshapeMicroversion);
 
   const tagNames = normalizeTagNames(input.tags);
+
+  // Duplicate detection, raw-upload half: is one of these model files already
+  // in the catalog? Flags, never blocks. /api/import covers the sourceUrl half
+  // before it stages anything and hands its matches over as duplicateOfIds —
+  // filtered here against real, untrashed models, since those ids ride in
+  // through the client draft and a bogus one would fail the FK and take the
+  // whole save down with it.
+  const sourceMatchIds = await existingModelIds(input.duplicateOfIds ?? []);
+  const hashMatches = await findDuplicatesByContentHash(modelFileHashes(uploads));
+
+  // A design imported past the URL prompt usually hash-matches that same
+  // model's files as well — asking again here would be the same question
+  // twice. Only genuinely new matches get a prompt.
+  const answered = new Set(sourceMatchIds);
+  const unanswered = hashMatches.filter((m) => !answered.has(m.id));
+  if (unanswered.length > 0 && !input.confirmDuplicate) {
+    return { duplicates: unanswered };
+  }
+
+  // Everything this model was flagged against and saved anyway, for the
+  // moderator worklist. Source-URL matches first — recordDuplicateMatches
+  // keeps one row per pair, and "same upstream design" is the better
+  // explanation to keep when both signals fired.
+  const dismissedMatches: { duplicateOfId: string; via: DuplicateVia }[] = [
+    ...sourceMatchIds.map((id) => ({
+      duplicateOfId: id,
+      via: "source_url" as const,
+    })),
+    ...hashMatches.map((d) => ({ duplicateOfId: d.id, via: "file_hash" as const })),
+  ];
 
   // Sniff image headers up front (outside the transaction) so animated covers
   // can be frozen to a poster frame in browse cards.
@@ -250,6 +319,10 @@ export async function createModel(
           imported: (!!sourceUrl && file.imported === true) || elementId !== null,
           sourceFileId: sourceString(file.sourceFileId, 300),
           sourceModifiedAt: sourceString(file.sourceModifiedAt, 64),
+          contentHash:
+            file.kind === "model" && isContentHash(file.contentHash)
+              ? file.contentHash
+              : null,
           sliceStatus:
             sliceEligible(file.kind, file.filename) && !skipSlice.has(file.key)
               ? ("pending" as const)
@@ -274,6 +347,8 @@ export async function createModel(
 
     await linkTags(tx, model.id, tagNames);
 
+    await recordDuplicateMatches(tx, model.id, dismissedMatches);
+
     // Version 1 — the append-only edit history starts at creation (issue #55).
     await recordVersion(tx, model.id, session.user.id, "create");
 
@@ -289,7 +364,7 @@ export async function createModel(
 
 export async function updateModel(
   input: UpdateModelInput,
-): Promise<{ error: string } | never> {
+): Promise<ModelSaveResult | never> {
   const session = await getSession();
   if (!session) return { error: "You must be signed in" };
 
@@ -330,6 +405,17 @@ export async function updateModel(
     kept.some((f) => f.kind === "model") ||
     input.newFiles.some((f) => f.kind === "model");
   if (!hasModelFile) return { error: "At least one model file (.3mf, .scad or .step) is required" };
+
+  // A file added here may already live on a *different* model — same prompt as
+  // createModel, scoped to exclude this one (re-adding a file the model
+  // already has is the user's business, not a cross-model duplicate).
+  const duplicates = await findDuplicatesByContentHash(
+    modelFileHashes(input.newFiles),
+    { excludeModelId: model.id },
+  );
+  if (duplicates.length > 0 && !input.confirmDuplicate) {
+    return { duplicates };
+  }
 
   // Sniff new image headers up front (outside the transaction) so animated
   // covers are frozen to a poster frame in browse cards.
@@ -380,6 +466,10 @@ export async function updateModel(
             contentType: contentTypeForFilename(file.filename),
             animated: animatedKeys.has(file.key),
             position: i,
+            contentHash:
+              file.kind === "model" && isContentHash(file.contentHash)
+                ? file.contentHash
+                : null,
             sliceStatus:
               sliceEligible(file.kind, file.filename) && !skipSlice.has(file.key)
                 ? ("pending" as const)
@@ -445,6 +535,12 @@ export async function updateModel(
 
     await tx.delete(modelTags).where(eq(modelTags.modelId, model.id));
     await linkTags(tx, model.id, tagNames);
+
+    await recordDuplicateMatches(
+      tx,
+      model.id,
+      duplicates.map((d) => ({ duplicateOfId: d.id, via: "file_hash" })),
+    );
 
     // Snapshot the post-edit state. Removed files keep their S3 objects —
     // earlier versions still reference the keys, so they stay revertable.
