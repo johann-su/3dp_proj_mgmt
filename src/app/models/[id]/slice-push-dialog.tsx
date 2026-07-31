@@ -161,14 +161,20 @@ export function SlicePushDialog({ modelId }: { modelId: string }) {
               </p>
               <CopyBox
                 label="Post-processing command"
-                value={`python3 slice-push.py --url "${endpoint}" --token "${fresh}";`}
+                value={`python3 /path/to/slice-push.py --url "${endpoint}" --token "${fresh}";`}
               />
               <p className="text-xs text-muted-foreground">
-                Point <code className="font-mono">slice-push.py</code> at wherever you
-                saved the script (it ships in{" "}
+                <strong>
+                  Replace <code className="font-mono">/path/to/</code> with the real
+                  path
+                </strong>{" "}
+                to where you saved{" "}
+                <code className="font-mono">slice-push.py</code> (it ships in{" "}
                 <code className="font-mono">scripts/</code> in the Print Vault
-                repository). <strong>Copy the token now</strong> — it is stored
-                hashed and cannot be shown again.
+                repository) — the slicer runs the script from its own working
+                directory, so a bare filename will not be found.{" "}
+                <strong>Copy the token now</strong> — it is stored hashed and
+                cannot be shown again.
               </p>
             </div>
           ) : (
