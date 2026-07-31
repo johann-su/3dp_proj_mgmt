@@ -17,11 +17,15 @@ A few conventions hold across the whole surface:
   `POST /api/import` means `POST https://models.example.com/api/import`.
 - **Authentication is by session cookie.** Almost every endpoint requires a
   signed-in [session](/roles) and returns `401 {"error":"Unauthorized"}`
-  without one — the whole catalog is private. The only alternative credential
-  is the **signed file token** accepted by the file-serving routes (for the
-  cookie-less consumers: the image optimizer and slicer deep links); it is
-  minted by the app, not something a client requests. There is no way to
-  authenticate a programmatic client other than carrying a real session cookie.
+  without one — the whole catalog is private. Two credentials work instead of a
+  cookie, both for consumers that cannot send one. The **signed file token**
+  accepted by the file-serving routes (the image optimizer and slicer deep
+  links) is minted by the app, not something a client requests. The
+  **[slice-push token](/features/slicing#push-from-slicer)** is the one
+  credential you can hand to a program of your own: it is created per model
+  from the model page, sent as `Authorization: Bearer …`, and works on exactly
+  one endpoint (`POST /api/models/{id}/slice-push`) for exactly one model.
+  There is no general-purpose API key.
 - **JSON in and out.** Request and response bodies are JSON unless noted (file
   uploads send raw bytes; downloads and the STL preview return binary; the BOM
   export returns CSV). Errors are `{ "error": "<message>" }` with a matching
@@ -327,6 +331,35 @@ and applies it, keeping the pre-sync state as a version.
 | `404` | Model not found |
 | `502` | Every download failed, or a platform error |
 | `500` | Unexpected sync failure |
+
+### `POST /api/models/<id>/slice-push`
+
+Attaches a freshly sliced file to the model as a new revision — the endpoint a
+slicer's post-processing script calls. See
+[Push from slicer](/features/slicing#push-from-slicer) for the setup and
+`scripts/slice-push.py` for the shipped client.
+
+**The only endpoint that does not take a session cookie for a write.** It
+authenticates with a per-model push token (`Authorization: Bearer pvpush_…`)
+created from the model page and revocable there or in Settings → Slicer push.
+A token is bound to one model: presenting it for a different `<id>` is a `401`.
+
+- **Query params** — `filename` (required; must end in `.3mf` or `.gcode`).
+  Directories are stripped and unsafe characters replaced.
+- **Body** — the raw file bytes, streamed. Capped at 256 MB.
+- A `.gcode` has its print time and filament weight read from the footer as it
+  streams; a `.3mf` is queued for the normal estimate pipeline instead. A push
+  whose filename matches a file already on the model **replaces** that file
+  (as a new version); otherwise it is appended.
+
+| Status | Body / meaning |
+|---|---|
+| `200` | `{ status: "replaced" \| "added", filename, printTimeSeconds, filamentGrams }` |
+| `400` | Missing/invalid `filename`, or an empty body |
+| `401` | Missing, malformed, revoked, or wrong-model token |
+| `404` | Model not found or trashed |
+| `413` | Larger than the 256 MB cap |
+| `502` | The upload to object storage failed |
 
 ## Collections
 

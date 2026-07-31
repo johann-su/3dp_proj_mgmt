@@ -109,6 +109,85 @@ didn't say", not false. `nozzleDiameterMm` stays "the nozzle actually used": on
 a dual-nozzle machine it indexes `nozzle_diameter` by the extruder the objects
 print from, not by the machine's first.
 
+## Slice-push: the return leg (issue #122)
+
+Deep links hand a file *out* to the slicer; slice-push brings it back.
+`POST /api/models/[id]/slice-push` accepts the file a slicer's
+**post-processing script** just produced and attaches it to the model as a new
+versioned revision, so a tuned print profile lands in the catalogue without a
+manual re-upload. It rides the slicer's own hook — no fork, no daemon, no
+polling of an undocumented cloud API (see the issue for why the Orca/Bambu
+cloud-backend routes were rejected).
+
+**The hook hands over `.gcode`, not a project file.** OrcaSlicer/PrusaSlicer
+run post-processing scripts inside `BackgroundSlicingProcess::finalize_gcode`,
+on a *temporary* G-code copy, **before** it is exported to the user's chosen
+path — so at hook time no final `.gcode` and no Bambu-style `.gcode.3mf` bundle
+exists yet. Don't design around getting the project file from the hook; you
+can't. The endpoint therefore accepts both:
+
+- **`.gcode`** — the hook's artifact. Its footer stats are scraped from a
+  rolling tail window **as the bytes stream past to S3** (`TailBuffer` +
+  `parseGcodeStats`, `src/lib/gcode-stats.ts`): a pushed G-code is routinely
+  hundreds of MB, so it is never buffered whole or read back out of S3.
+  Resolved inline to `sliceStatus: "ok"` / `sliceSource: "embedded"` — real
+  predictions from the user's own slicer for their own hardware, so the UI
+  shows them **without** the `~` it puts on our generic-profile estimates.
+  This path must keep working with no `SLICER_URL` at all, which is why the
+  parser lives in the app and not behind the slicer service.
+- **`.3mf`** — a project file or a `.gcode.3mf` bundle, pushed by hand or by a
+  slicer configured to export one. Marked `pending` and left to the existing
+  pipeline, which reads `slice_info`/`project_settings` as usual. No new
+  parsing.
+
+`parseGcodeStats` is a deliberate **near-duplicate** of the one in
+`slicer/lib.mjs` rather than a shared module: that one runs in the slicer
+service container (a separate deployable, no build step) and only ever reads
+G-code our own PrusaSlicer CLI produced, so it can assume PrusaSlicer's
+spelling. This one reads whatever a user's slicer wrote, so it also knows Bambu
+Studio's `key: value` forms. Adding a dialect belongs in *this* copy.
+
+Three things the route must keep doing:
+
+- **Authenticate by token, not session.** The script runs inside the slicer and
+  has no cookie — the same constraint that forces the token-in-path download
+  route. A **stored, revocable** token (`model_push_tokens`,
+  `src/lib/push-token.ts` for the pure crypto), not the HMAC in
+  `file-token.ts`: that one is short-lived, download-scoped, and being a pure
+  signature cannot be revoked without rotating the instance secret. Only the
+  SHA-256 of the secret is stored; the row is matched on **both** the hash and
+  the model id, so a valid token for model A cannot push to model B. This is
+  the only *write* surface in the app that takes something other than a
+  session — see [auth-and-access.md](./auth-and-access.md).
+- **Version like every other mutation.** One transaction,
+  `ensureBaselineVersion` first and `recordVersion` last (reason
+  `"slice-push"`), S3-deleting only the keys `recordVersion` returns. A repeat
+  push of the same plate **replaces the same-named file in place** rather than
+  appending (`findReplaceTarget`) — re-slicing exports the same name every
+  time, and appending would pile up near-identical rows and churn through the
+  30-version cap. The replaced file's old bytes stay in S3 because the snapshot
+  taken just before still references them. Generated OpenSCAD variants are
+  never replace targets: they're excluded from snapshots, so overwriting one
+  would drop bytes no snapshot could restore.
+- **Clear `imported` on the replaced row.** The bytes are now this instance's
+  own. Leaving the flag set would let the next MakerWorld/Printables source
+  sync overwrite the tuned file with the upstream one (`sync-diff.ts` gates on
+  `imported`) — losing exactly what the feature exists to keep.
+
+`.gcode` is **not** in `MODEL_EXTENSIONS` on purpose: `PUSH_EXTENSIONS`
+(`src/lib/slice-push.ts`) widens what a *token holder* may attach to one model,
+not what the create/edit upload picker accepts. A pushed `.gcode` row survives
+later edits because `validateUploads` only runs on newly uploaded files, and it
+stays inert in the `.3mf`-gated UI (3D preview, slicer deep links). Its stored
+content type falls through to `application/octet-stream`, which is what we
+want — never a `text/*` that a browser would render inline.
+
+The feature is **opt-in and off by default**: no token minted → no push surface
+exists. Tokens are minted from the model page ("Push from slicer") and revoked
+there or in Settings → Slicer push; the shipped hook script is
+`scripts/slice-push.py` (stdlib-only, and **always exits 0** so a push failure
+never breaks the user's slice).
+
 ## "Open in slicer" deep links
 
 `src/app/models/[id]/file-download-menu.tsx` hands a `.3mf` to Bambu Studio /

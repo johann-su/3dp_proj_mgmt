@@ -5,10 +5,11 @@ in the same PR that changes this behaviour.*
 
 (issue #55; `src/lib/model-versions.ts`, pure snapshot helpers in
 `src/lib/version-snapshot.ts`): every completed model mutation (create, edit,
-Onshape sync, revert) appends a `model_versions` row holding a full JSON
-snapshot of the mutable state — title, description, category, tags, BOM,
-gallery videos with their carousel slots (`models.videos`), and the ordered
-file list including each file's `s3Key`. `model_files` deliberately
+Onshape sync, source sync, slice-push, revert) appends a `model_versions` row
+holding a full JSON snapshot of the mutable state — title, description,
+category, tags, BOM, gallery videos with their carousel slots
+(`models.videos`), and the ordered file list including each file's `s3Key`.
+`model_files` deliberately
 keeps meaning **"the live files only"** (no query has to filter out historical
 rows): removing a file deletes its row but *not* its S3 object, because earlier
 snapshots still reference the key; the model page's History panel reverts to

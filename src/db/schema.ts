@@ -378,6 +378,7 @@ export type ModelVersionReason =
   | "edit"
   | "onshape-sync"
   | "source-sync"
+  | "slice-push"
   | "revert";
 
 // One file as recorded in a snapshot, in display order. Everything needed to
@@ -429,6 +430,52 @@ export const modelVersions = pgTable("model_versions", {
   snapshot: jsonb("snapshot").$type<ModelVersionSnapshot>().notNull(),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
+
+// --- Slice-push tokens (issue #122) ---
+//
+// A per-model credential a slicer's post-processing hook presents to
+// POST /api/models/:id/slice-push, which attaches the just-sliced file as a
+// new revision. The slicer fetches without cookies (the same constraint that
+// forces the token-in-path download route), so this is the one *write* surface
+// that authenticates without a session.
+//
+// Deliberately a stored token rather than the HMAC in src/lib/file-token.ts:
+// that one is short-lived, download-scoped and — being pure signature — cannot
+// be revoked without rotating the instance secret. A push token is long-lived
+// and lives as long as the user keeps it in their slicer config, so revocation
+// has to mean deleting a row.
+//
+// Only the SHA-256 of the secret is stored (like a password digest): a leaked
+// database gives no working tokens, and the plaintext is shown exactly once at
+// mint time. `prefix` is the secret's leading characters, kept in clear so the
+// settings list can tell two tokens apart without being able to reconstruct
+// either. Scoped to (model, user): the token grants edit-equivalent access to
+// one model, which matches the collaborative-editing rule, and dies with either
+// the model or the issuing account.
+export const modelPushTokens = pgTable(
+  "model_push_tokens",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    modelId: uuid("model_id")
+      .notNull()
+      .references(() => models.id, { onDelete: "cascade" }),
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    tokenHash: text("token_hash").notNull().unique(),
+    prefix: text("prefix").notNull(),
+    // User-supplied note for which machine/slicer install holds this token.
+    label: text("label"),
+    // Null until the token is first used — the signal that tells someone
+    // whether a token in the list is actually wired up to a slicer.
+    lastUsedAt: timestamp("last_used_at"),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (t) => [
+    // The model page lists a model's tokens on every load.
+    index("model_push_tokens_model_idx").on(t.modelId),
+  ],
+);
 
 // --- Duplicate detection (issue #118) ---
 //
@@ -613,11 +660,20 @@ export const modelsRelations = relations(models, ({ one, many }) => ({
   collectionModels: many(collectionModels),
   likes: many(modelLikes),
   versions: many(modelVersions),
+  pushTokens: many(modelPushTokens),
 }));
 
 export const modelLikesRelations = relations(modelLikes, ({ one }) => ({
   model: one(models, { fields: [modelLikes.modelId], references: [models.id] }),
   user: one(user, { fields: [modelLikes.userId], references: [user.id] }),
+}));
+
+export const modelPushTokensRelations = relations(modelPushTokens, ({ one }) => ({
+  model: one(models, {
+    fields: [modelPushTokens.modelId],
+    references: [models.id],
+  }),
+  user: one(user, { fields: [modelPushTokens.userId], references: [user.id] }),
 }));
 
 export const modelVersionsRelations = relations(modelVersions, ({ one }) => ({

@@ -2,13 +2,14 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Bot, Cloud, Copy, Shapes, UserCog, Users } from "lucide-react";
+import { Bot, Cloud, Copy, Shapes, Upload, UserCog, Users } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const items = [
   { href: "/settings", label: "Account", icon: UserCog },
   { href: "/settings/onshape", label: "Onshape", icon: Shapes },
   { href: "/settings/bambu", label: "Bambu Cloud", icon: Cloud },
+  { href: "/settings/slice-push", label: "Slicer push", icon: Upload },
 ];
 
 // These hide unless the instance offers them; the pages enforce it

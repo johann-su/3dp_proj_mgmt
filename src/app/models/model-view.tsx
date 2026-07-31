@@ -37,6 +37,7 @@ import { ExportButton } from "./[id]/export-button";
 import { LikeButton } from "./[id]/like-button";
 import { HistoryPanel, type ModelHistoryEntry } from "./[id]/history-panel";
 import { OnshapeSyncButton } from "./[id]/onshape-sync-button";
+import { SlicePushDialog } from "./[id]/slice-push-dialog";
 import { SourceSyncButton } from "./[id]/source-sync-button";
 
 export type { CollectionOption };
@@ -293,6 +294,9 @@ export function ModelView({ data }: { data: ModelViewData }) {
                 <LikeButton modelId={modelId} initialLiked={liked ?? false} />
                 <ShareButton />
                 <ExportButton modelId={modelId} />
+                {/* Setting up the return leg of the slicer round-trip is open
+                    to any signed-in user, like editing (issue #122). */}
+                <SlicePushDialog modelId={modelId} />
                 <Button asChild variant="outline" size="sm">
                   <Link href={`/models/${modelId}/edit`}>
                     <Pencil className="size-4" />

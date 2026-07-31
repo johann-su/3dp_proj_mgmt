@@ -39,6 +39,7 @@ const reasonLabels: Record<ModelVersionReason, string> = {
   edit: "Edited",
   "onshape-sync": "Onshape sync",
   "source-sync": "Source sync",
+  "slice-push": "Pushed from slicer",
   revert: "Reverted",
 };
 

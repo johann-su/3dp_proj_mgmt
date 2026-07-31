@@ -102,7 +102,20 @@ the operator out is worse than the door it closes; the resolution lives in
 module because `@/lib/auth` opens a DB pool at import time. Setting it without
 OIDC logs a warning at boot.
 
-**One surface authenticates without a session cookie**: the MCP server
+**Two surfaces authenticate without a session cookie.** The first is
+`POST /api/models/[id]/slice-push` (issue #122), which takes a **per-model push
+token** so a slicer's post-processing script — running inside OrcaSlicer, with
+no login — can send a freshly sliced file back as a new revision. It is the
+only *write* surface that takes something other than a session: the token is
+stored hashed and revocable in `model_push_tokens`, scoped to one
+`(model, user)` pair, and grants edit-equivalent access to that one model —
+which is access its issuer already has, since editing is collaborative.
+Destructive actions stay out of reach (there is no delete path behind the
+token), it is opt-in per model (no token minted → no push surface), and
+revocation is a row delete, in Settings → Slicer push or on the model page.
+See [slicing.md](./slicing.md).
+
+The second is the MCP server
 (`/api/mcp`, issue #96) takes an OAuth bearer token instead, minted by
 BetterAuth's `mcp` plugin, and a token carries the same whole-catalog read
 access its user has. The whole thing — plugin, endpoint, discovery documents,
