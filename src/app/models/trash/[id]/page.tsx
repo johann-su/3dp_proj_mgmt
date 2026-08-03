@@ -137,6 +137,7 @@ export default async function TrashPreviewPage({
     onshapeWvm: null,
     makerworldUrl: null,
     images: images.map((img) => ({ src: fileSrc(img.id) })),
+    videos: model.videos,
     modelFiles: printFiles
       .filter((f) => f.filename.toLowerCase().endsWith(".3mf"))
       .map((f) => ({

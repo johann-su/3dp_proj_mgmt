@@ -30,6 +30,7 @@ function exportZip(input: Partial<Parameters<typeof buildModelExportZip>[0]>) {
       sourceUrl: null,
       onshapeMicroversion: null,
       exportedAt: new Date("2026-07-27T10:00:00Z"),
+      videos: [],
       bomItems: [],
       files: [],
       ...input,

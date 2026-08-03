@@ -22,6 +22,7 @@ import { extract3mfMetadata } from "@/lib/threemf";
 import { suggestCategory } from "@/lib/category-suggest";
 import { OTHER_CATEGORY_SLUG } from "@/lib/category-defaults";
 import type { BomItemInput } from "@/lib/bom";
+import { canonicalYouTubeUrl, parseYouTubeUrl } from "@/lib/video";
 import { IMPORT_DRAFT_KEY, type ImportDraftPayload } from "./import-draft";
 import { BomEditor } from "./bom-editor";
 import { ModelPreview } from "./model-preview";
@@ -30,6 +31,9 @@ import {
   buildUpdateFileOrders,
   formIsDirty,
   isQueuedForSlicing,
+  mediaFromInitial,
+  mediaImages,
+  mediaVideos,
   mergeTags,
   newImageEntry,
   newModelFileEntry,
@@ -39,15 +43,16 @@ import {
   stagedModelFileEntry,
   toggleSliceQueue,
   uploadFile,
+  videoEntry,
   type ExistingFile,
-  type ImageEntry,
+  type MediaEntry,
   type ModelFileEntry,
   type ModelFormInitial,
   type PendingFile,
 } from "./model-form-state";
 import {
   FilePicker,
-  ImagePicker,
+  MediaPicker,
   ModelFilePicker,
   StepIndicator,
 } from "./model-form-pickers";
@@ -124,17 +129,22 @@ export function ModelForm({
   const [pdfFiles, setPdfFiles] = useState<PendingFile[]>([]);
   // PDFs pulled in by a URL import — already staged in S3 (create mode only).
   const [stagedPdfFiles, setStagedPdfFiles] = useState<UploadedFile[]>([]);
-  const [images, setImages] = useState<ImageEntry[]>(() =>
-    (model?.files ?? [])
-      .filter((f) => f.kind === "image")
-      .map((f) => ({
-        key: f.id,
-        type: "existing",
-        id: f.id,
-        src: `/api/files/${f.id}`,
-        filename: f.filename,
-        size: f.size,
-      })),
+  // The gallery, images and videos in one list — that list's order is the
+  // carousel's, and each video's index in it is the position saved with it.
+  const [media, setMedia] = useState<MediaEntry[]>(() =>
+    mediaFromInitial(
+      (model?.files ?? [])
+        .filter((f) => f.kind === "image")
+        .map((f) => ({
+          key: f.id,
+          type: "existing" as const,
+          id: f.id,
+          src: `/api/files/${f.id}`,
+          filename: f.filename,
+          size: f.size,
+        })),
+      model?.videos ?? [],
+    ),
   );
   const [categoryId, setCategoryId] = useState<string>(model?.categoryId ?? "");
   // Until the user picks a category themselves, the select tracks a live
@@ -177,7 +187,7 @@ export function ModelForm({
       tags,
       bom,
       modelFileEntries,
-      images,
+      media,
       pdfFiles,
       existingPdfFiles,
       sliceOverrides,
@@ -233,10 +243,15 @@ export function ModelForm({
           .filter((f) => f.kind === "model")
           .map(stagedModelFileEntry),
       );
-      setImages(
-        (draft.files ?? [])
-          .filter((f) => f.kind === "image")
-          .map(stagedImageEntry),
+      // Staged images and any videos the archive carried, woven back into
+      // the one order the exporting instance showed them in.
+      setMedia(
+        mediaFromInitial(
+          (draft.files ?? [])
+            .filter((f) => f.kind === "image")
+            .map(stagedImageEntry),
+          draft.videos ?? [],
+        ),
       );
       setStagedPdfFiles((draft.files ?? []).filter((f) => f.kind === "pdf"));
       setBom(draft.bom ?? []);
@@ -268,34 +283,50 @@ export function ModelForm({
   }, [categoryTouched, categories, title, tags, sourceCategories]);
 
   // New images render from object URLs; revoke them when the form unmounts.
-  const imagesRef = useRef(images);
+  const mediaRef = useRef(media);
   useEffect(() => {
-    imagesRef.current = images;
-  }, [images]);
+    mediaRef.current = media;
+  }, [media]);
   useEffect(
     () => () => {
-      for (const image of imagesRef.current) {
-        if (image.type === "new") URL.revokeObjectURL(image.src);
+      for (const entry of mediaRef.current) {
+        if (entry.type === "new") URL.revokeObjectURL(entry.src);
       }
     },
     [],
   );
 
   function addImages(files: File[]) {
-    setImages((prev) => [...prev, ...files.map(newImageEntry)]);
+    setMedia((prev) => [...prev, ...files.map(newImageEntry)]);
   }
 
-  function removeImage(key: string) {
-    setImages((prev) => {
-      const entry = prev.find((image) => image.key === key);
+  // Adds a pasted YouTube link as a gallery tile. Returns why it couldn't,
+  // for the field to show — the picker owns the input, this owns the list.
+  function addVideo(url: string): string | null {
+    const video = parseYouTubeUrl(url);
+    if (!video) {
+      return "Paste a YouTube link, e.g. https://www.youtube.com/watch?v=…";
+    }
+    // Same video twice is a mistake; say so rather than silently dropping it
+    // (the save would dedupe it away anyway).
+    if (media.some((entry) => entry.key === video.id)) {
+      return "That video is already in the gallery";
+    }
+    setMedia((prev) => [...prev, videoEntry(canonicalYouTubeUrl(video), video)]);
+    return null;
+  }
+
+  function removeMedia(key: string) {
+    setMedia((prev) => {
+      const entry = prev.find((item) => item.key === key);
       if (entry?.type === "new") URL.revokeObjectURL(entry.src);
-      return prev.filter((image) => image.key !== key);
+      return prev.filter((item) => item.key !== key);
     });
   }
 
-  function moveImage(key: string, direction: -1 | 1) {
-    setImages((prev) => {
-      const i = prev.findIndex((image) => image.key === key);
+  function moveMedia(key: string, direction: -1 | 1) {
+    setMedia((prev) => {
+      const i = prev.findIndex((item) => item.key === key);
       const j = i + direction;
       if (i === -1 || j < 0 || j >= prev.length) return prev;
       const next = [...prev];
@@ -304,11 +335,11 @@ export function ModelForm({
     });
   }
 
-  // Moves the dragged image to the position of the tile it is dragged over.
-  function reorderImage(key: string, targetKey: string) {
-    setImages((prev) => {
-      const from = prev.findIndex((image) => image.key === key);
-      const to = prev.findIndex((image) => image.key === targetKey);
+  // Moves the dragged tile to the position of the one it is dragged over.
+  function reorderMedia(key: string, targetKey: string) {
+    setMedia((prev) => {
+      const from = prev.findIndex((item) => item.key === key);
+      const to = prev.findIndex((item) => item.key === targetKey);
       if (from === -1 || to === -1 || from === to) return prev;
       const next = [...prev];
       const [moved] = next.splice(from, 1);
@@ -373,11 +404,11 @@ export function ModelForm({
           setTags((prev) => mergeTags(prev, meta.printerTag!));
         }
         if (meta.images.length > 0) {
-          setImages((prev) => {
+          setMedia((prev) => {
             const known = new Set(
               prev
-                .filter((image) => image.type === "new")
-                .map((image) => `${image.filename}:${image.size}`),
+                .filter((entry) => entry.type === "new")
+                .map((entry) => `${entry.filename}:${entry.size}`),
             );
             const fresh = meta.images.filter((f) => !known.has(`${f.name}:${f.size}`));
             return [...prev, ...fresh.map(newImageEntry)];
@@ -426,8 +457,10 @@ export function ModelForm({
 
     try {
       // Model files and images upload in display order so their positions
-      // (and the image cover) match what the user arranged.
+      // (and the image cover) match what the user arranged. Videos carry no
+      // bytes — only their slot in the media list travels with the save.
       const newModelFiles = modelFileEntries.filter((entry) => entry.type === "new");
+      const images = mediaImages(media);
       const newImages = images.filter((image) => image.type === "new");
       const toUpload: {
         file: File;
@@ -494,6 +527,7 @@ export function ModelForm({
             modelFileOrder,
             imageOrder,
             bom,
+            videos: mediaVideos(media),
             // Existing .3mf files the user put back in the queue — re-sliced to
             // refresh estimates and printer info (or retry a failure).
             resliceFileIds: modelFileEntries.flatMap((entry) =>
@@ -520,6 +554,7 @@ export function ModelForm({
               uploaded,
             ),
             bom,
+            videos: mediaVideos(media),
             sourceUrl,
             onshapeMicroversion,
             skipSliceKeys,
@@ -694,12 +729,13 @@ export function ModelForm({
                 icon={<FileText className="size-6" />}
               />
 
-              <ImagePicker
-                images={images}
-                onAdd={addImages}
-                onRemove={removeImage}
-                onMove={moveImage}
-                onReorder={reorderImage}
+              <MediaPicker
+                media={media}
+                onAddImages={addImages}
+                onAddVideo={addVideo}
+                onRemove={removeMedia}
+                onMove={moveMedia}
+                onReorder={reorderMedia}
               />
 
               {sourceUrl && (
@@ -728,7 +764,8 @@ export function ModelForm({
                 ),
               ],
               bom,
-              images: images.map((image) => ({ src: image.src })),
+              images: mediaImages(media).map((image) => ({ src: image.src })),
+              videos: mediaVideos(media),
               printFiles: modelFileEntries.map((entry) => ({
                 filename: entry.filename,
                 size: entry.size,

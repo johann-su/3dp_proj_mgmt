@@ -6,17 +6,22 @@ import {
   buildUpdateFileOrders,
   formIsDirty,
   isQueuedForSlicing,
+  mediaFromInitial,
+  mediaImages,
+  mediaVideos,
   mergeTags,
   orderFilesForCreate,
   skippedSliceKeys,
   splitExtension,
   toggleSliceQueue,
+  videoEntry,
   type ExistingFile,
   type ImageEntry,
   type ModelFileEntry,
   type ModelFormInitial,
   type ModelFormValues,
 } from "@/app/models/model-form-state";
+import { parseYouTubeUrl } from "@/lib/video";
 
 function uploadedFile(kind: UploadedFile["kind"], filename: string): UploadedFile {
   return {
@@ -98,7 +103,12 @@ test("mergeTags dedupes case-insensitively", () => {
   assert.equal(mergeTags("", "PLA"), "PLA");
 });
 
-// Baseline for the dirty tests: an edit view opened and left untouched.
+// Baseline for the dirty tests: an edit view opened and left untouched. The
+// gallery holds two images with a video sitting between them, which is the
+// arrangement the media list exists to preserve.
+const VIDEO = "https://www.youtube.com/watch?v=dQw4w9WgXcQ";
+const VIDEO_ENTRY = videoEntry(VIDEO, parseYouTubeUrl(VIDEO)!);
+
 function pristineEditState(): { current: ModelFormValues; initial: ModelFormInitial } {
   const initial: ModelFormInitial = {
     id: "m",
@@ -113,6 +123,7 @@ function pristineEditState(): { current: ModelFormValues; initial: ModelFormInit
       existingFile("i2", "image", "i2.png"),
       existingFile("p1", "pdf", "manual.pdf"),
     ],
+    videos: [{ url: VIDEO, position: 1 }],
     createdAt: new Date(0),
   };
   const current: ModelFormValues = {
@@ -122,7 +133,7 @@ function pristineEditState(): { current: ModelFormValues; initial: ModelFormInit
     tags: "pla",
     bom: [],
     modelFileEntries: [existingModelEntry("f1", "clip.3mf")],
-    images: [existingImageEntry("i1"), existingImageEntry("i2")],
+    media: [existingImageEntry("i1"), VIDEO_ENTRY, existingImageEntry("i2")],
     pdfFiles: [],
     existingPdfFiles: [existingFile("p1", "pdf", "manual.pdf")],
     sliceOverrides: {},
@@ -145,8 +156,53 @@ test("formIsDirty: renaming an existing file reads as dirty", () => {
 
 test("formIsDirty: reordering images reads as dirty (first image is the cover)", () => {
   const { current, initial } = pristineEditState();
-  current.images = [existingImageEntry("i2"), existingImageEntry("i1")];
+  current.media = [existingImageEntry("i2"), VIDEO_ENTRY, existingImageEntry("i1")];
   assert.equal(formIsDirty(current, initial), true);
+});
+
+// Videos live on the model row, not in the file lists — leaving without saving
+// would drop an added or removed link just as silently as a removed image.
+test("formIsDirty: adding or removing a gallery video reads as dirty", () => {
+  const { current, initial } = pristineEditState();
+  const other = "https://www.youtube.com/watch?v=aBcDeFgHiJk";
+  current.media = [...current.media, videoEntry(other, parseYouTubeUrl(other)!)];
+  assert.equal(formIsDirty(current, initial), true);
+
+  const cleared = pristineEditState();
+  cleared.current.media = cleared.current.media.filter((e) => e.type !== "video");
+  assert.equal(formIsDirty(cleared.current, cleared.initial), true);
+});
+
+// Neither list changed on its own — only the video's slot among the images
+// did, and that slot is what gets saved as its position.
+test("formIsDirty: moving a video between images reads as dirty", () => {
+  const { current, initial } = pristineEditState();
+  current.media = [existingImageEntry("i1"), existingImageEntry("i2"), VIDEO_ENTRY];
+  assert.equal(formIsDirty(current, initial), true);
+});
+
+// What the save actually writes: images keep their own relative order, and
+// each video's index in the media list is the position stored with it.
+test("mediaImages/mediaVideos split the one list back into what each save needs", () => {
+  const media = [existingImageEntry("i1"), VIDEO_ENTRY, existingImageEntry("i2")];
+  assert.deepEqual(
+    mediaImages(media).map((image) => image.key),
+    ["i1", "i2"],
+  );
+  assert.deepEqual(mediaVideos(media), [{ url: VIDEO, position: 1 }]);
+});
+
+// Reopening the edit form has to rebuild exactly the list the last save
+// flattened — otherwise a no-op edit would silently reshuffle the gallery.
+test("mediaFromInitial rebuilds the saved arrangement", () => {
+  const media = mediaFromInitial(
+    [existingImageEntry("i1"), existingImageEntry("i2")],
+    [{ url: VIDEO, position: 1 }],
+  );
+  assert.deepEqual(
+    media.map((entry) => entry.key),
+    ["i1", "dQw4w9WgXcQ", "i2"],
+  );
 });
 
 test("buildUpdateFileOrders: newIndex counter skips the PDF block", () => {

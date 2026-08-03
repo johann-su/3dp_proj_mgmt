@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
+import type { ModelVideo } from "@/lib/video";
 import { ImportError, type ImportedProject } from "@/lib/import/types";
 import { stageImportedAssets } from "@/lib/import/stage";
 import type { UploadedFile } from "@/app/models/actions";
@@ -68,6 +69,9 @@ export type ImportDraft = {
   // so the shared draft type is the wider UploadedFile.
   files: UploadedFile[];
   bom: BomItemInput[];
+  // Gallery videos with their carousel slots. Only the archive importer
+  // produces any — the platform importers don't scrape videos.
+  videos?: ModelVideo[];
   warnings: string[];
   onshapeMicroversion?: string | null;
   // Models this import was flagged against and the user chose to import

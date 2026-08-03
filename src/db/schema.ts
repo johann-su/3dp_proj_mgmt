@@ -18,6 +18,7 @@ import type { RuleGroup } from "@/lib/collection-rules";
 import type { BomItemInput } from "@/lib/bom";
 import type { DuplicateVia } from "@/lib/duplicate-key";
 import type { UserRole } from "@/lib/roles";
+import type { ModelVideo } from "@/lib/video";
 
 // --- BetterAuth tables ---
 
@@ -166,6 +167,12 @@ export const models = pgTable("models", {
   // models not imported from Onshape (and for version-pinned imports, which
   // are immutable snapshots).
   onshapeMicroversion: text("onshape_microversion"),
+  // YouTube links woven into the gallery carousel, each carrying its slot in
+  // the combined image+video order (see orderGalleryItems). Stored
+  // canonicalized (https://www.youtube.com/watch?v=<id>[&t=<s>]) and always
+  // re-parsed before anything is embedded — see src/lib/video.ts. A column
+  // rather than a table: no per-video metadata to hang off a row.
+  videos: jsonb("videos").$type<ModelVideo[]>().notNull().default([]),
   // Page view count, incremented on each model detail page load — see
   // src/lib/metrics.ts. Not surfaced in the UI yet.
   viewCount: integer("view_count").notNull().default(0),
@@ -398,6 +405,9 @@ export type ModelVersionSnapshot = {
   categoryId: string | null;
   tags: string[];
   bom: BomItemInput[];
+  // Gallery videos with their slots in the combined order. Absent in
+  // snapshots written before the feature — readers fall back to [].
+  videos: ModelVideo[];
   files: VersionFileSnapshot[];
 };
 

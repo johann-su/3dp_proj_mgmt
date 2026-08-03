@@ -19,6 +19,7 @@ import { canActAsOwner } from "@/lib/roles";
 import { otherCategoryId } from "@/lib/categories";
 import { linkTags, normalizeTagNames } from "@/lib/tags";
 import { sanitizeBomItems, type BomItemInput } from "@/lib/bom";
+import { sanitizeModelVideos, type ModelVideo } from "@/lib/video";
 import {
   deleteS3Keys,
   ensureBaselineVersion,
@@ -83,6 +84,9 @@ export type CreateModelInput = {
   tags: string[];
   files: UploadedFile[];
   bom?: BomItemInput[];
+  // Gallery videos, each with its slot in the combined image+video order.
+  // Re-validated and canonicalized here — see src/lib/video.ts.
+  videos?: ModelVideo[];
   sourceUrl?: string | null;
   // Workspace microversion at import time (Onshape imports only).
   onshapeMicroversion?: string | null;
@@ -138,6 +142,8 @@ export type UpdateModelInput = {
   modelFileOrder?: FileOrderRef[];
   imageOrder?: FileOrderRef[];
   bom?: BomItemInput[];
+  // See CreateModelInput — the full list, not a delta.
+  videos?: ModelVideo[];
   // Kept .3mf files to hand back to the slicer: their estimates and printer
   // info are re-read from scratch. Ids outside the kept set are ignored.
   resliceFileIds?: string[];
@@ -227,6 +233,9 @@ export async function createModel(
   if ("error" in bomResult) return { error: bomResult.error };
   const bom = bomResult.items;
 
+  const videoResult = sanitizeModelVideos(input.videos ?? []);
+  if ("error" in videoResult) return { error: videoResult.error };
+
   const sourceUrl = validateSourceUrl(input.sourceUrl);
   if (sourceUrl === undefined) {
     return { error: "Source URL must be a MakerWorld, Printables or Onshape link" };
@@ -289,6 +298,7 @@ export async function createModel(
         userId: session.user.id,
         sourceUrl,
         onshapeMicroversion,
+        videos: videoResult.videos,
       })
       .returning({ id: models.id });
 
@@ -378,6 +388,9 @@ export async function updateModel(
   if ("error" in bomResult) return { error: bomResult.error };
   const bom = bomResult.items;
 
+  const videoResult = sanitizeModelVideos(input.videos ?? []);
+  if ("error" in videoResult) return { error: videoResult.error };
+
   const tagNames = normalizeTagNames(input.tags);
 
   const model = await db.query.models.findFirst({
@@ -436,6 +449,7 @@ export async function updateModel(
         title,
         description: input.description.trim(),
         categoryId,
+        videos: videoResult.videos,
         updatedAt: new Date(),
       })
       .where(eq(models.id, model.id));

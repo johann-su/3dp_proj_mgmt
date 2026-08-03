@@ -156,6 +156,8 @@ export async function restoreSnapshot(
       title: snapshot.title,
       description: snapshot.description,
       categoryId: snapshot.categoryId ?? fallbackCategoryId,
+      // Snapshots written before gallery videos existed lack the key.
+      videos: snapshot.videos ?? [],
       updatedAt: new Date(),
     })
     .where(eq(models.id, modelId));

@@ -51,6 +51,7 @@ export async function GET(
       description: true,
       sourceUrl: true,
       onshapeMicroversion: true,
+      videos: true,
     },
     with: {
       // Ordered so the dedupe suffixes ("part-2.3mf") are stable across
@@ -122,6 +123,7 @@ export async function GET(
     category: model.category?.name ?? null,
     sourceUrl: model.sourceUrl,
     onshapeMicroversion: model.onshapeMicroversion,
+    videos: model.videos,
     exportedAt: new Date(),
     bomItems: model.bomItems,
     files,

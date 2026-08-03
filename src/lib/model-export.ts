@@ -15,6 +15,7 @@ import { strToU8, zipSync, type Zippable } from "fflate";
 import { bomToCsv, type BomItemInput } from "@/lib/bom";
 import { safeFileBase } from "@/lib/file-kind";
 import type { FileKind } from "@/db/schema";
+import type { ModelVideo } from "@/lib/video";
 
 export type ExportFile = {
   kind: FileKind;
@@ -47,6 +48,10 @@ export type ModelExportInput = {
   category: string | null;
   sourceUrl: string | null;
   onshapeMicroversion: string | null;
+  // Gallery videos with their slots in the combined order. Nothing to put in
+  // the zip tree — they are links, not files — so the manifest is the only
+  // place they survive the round trip.
+  videos: ModelVideo[];
   exportedAt: Date;
   bomItems: BomItemInput[];
   files: ExportFile[];
@@ -73,6 +78,7 @@ export type ModelExportManifest = {
     tags: string[];
     sourceUrl: string | null;
     onshapeMicroversion: string | null;
+    videos: ModelVideo[];
   };
   bom: BomItemInput[];
   files: {
@@ -235,6 +241,7 @@ export function buildModelExportZip(model: ModelExportInput): Uint8Array {
       tags: [...model.tags].sort(),
       sourceUrl: model.sourceUrl,
       onshapeMicroversion: model.onshapeMicroversion,
+      videos: model.videos,
     },
     // Projected field by field on purpose: callers pass whole bom_items rows,
     // and spreading those would publish this instance's row ids and model id
