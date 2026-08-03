@@ -118,3 +118,8 @@ Baseline security headers (CSP, HSTS, `frame-ancestors: none`, `nosniff`,
 at the proxy, so they hold however the app is fronted. The CSP keeps
 `'unsafe-inline'` for scripts and styles: Next inlines its bootstrap/flight
 payload, and tightening it means nonces, which means making every page dynamic.
+Everything else is same-origin bar one third party, the model gallery's
+YouTube videos (`src/lib/video.ts`): `frame-src` allows
+`https://www.youtube.com` (the player, framed only after a click) and `img-src`
+allows `https://i.ytimg.com` (poster frames). Both srcs are rebuilt from the
+parsed 11-character video id, never from the stored string.

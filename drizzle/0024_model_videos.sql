@@ -1,0 +1,15 @@
+-- Gallery videos: YouTube links woven into the model page's image carousel.
+--
+-- jsonb on models rather than a table: there is no per-video metadata to hang
+-- off a row (nothing is downloaded — only the link is stored), and a handful
+-- of entries per model don't earn a join. Each entry is
+-- {"url": "https://www.youtube.com/watch?v=<id>[&t=<seconds>]", "position": N},
+-- where `position` is the video's slot in the *combined* gallery order —
+-- images and videos share one sequence, so a video dragged between two images
+-- comes back out between those two images (src/lib/video.ts::orderGalleryItems
+-- resolves gaps and collisions on read; it never drops or duplicates an item).
+--
+-- URLs are stored canonicalized and re-parsed before anything is embedded, so
+-- a row that somehow holds a non-YouTube string renders as nothing rather than
+-- as an iframe. Existing models default to the empty array — no backfill.
+ALTER TABLE "models" ADD COLUMN "videos" jsonb DEFAULT '[]'::jsonb NOT NULL;

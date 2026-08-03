@@ -1,5 +1,6 @@
 import type { UploadedFile } from "@/app/models/actions";
 import type { BomItemInput } from "@/lib/bom";
+import type { ModelVideo } from "@/lib/video";
 
 // Draft produced by /models/import and handed to the create form via
 // sessionStorage. Files are already staged in S3 (UploadedFile shape).
@@ -14,6 +15,9 @@ export type ImportDraftPayload = {
   files: UploadedFile[];
   // Bill of materials scraped from the source; empty when none.
   bom?: BomItemInput[];
+  // Gallery videos with their carousel slots (archive imports carry them;
+  // the platform importers don't scrape videos).
+  videos?: ModelVideo[];
   warnings: string[];
   // Onshape imports only — stored on the model to enable "Sync from Onshape".
   onshapeMicroversion?: string | null;

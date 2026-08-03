@@ -17,23 +17,28 @@ import {
   Hourglass,
   ImageIcon,
   Pencil,
+  Plus,
   RotateCw,
+  SquarePlay,
   X,
 } from "lucide-react";
 import type { UploadedFile } from "@/app/models/actions";
 import {
   IMAGE_ACCEPT,
   isQueuedForSlicing,
+  isVideoEntry,
+  mediaImages,
   MODEL_ACCEPT,
   splitExtension,
   type ExistingFile,
-  type ImageEntry,
+  type MediaEntry,
   type ModelFileEntry,
   type PendingFile,
   pendingFile,
 } from "./model-form-state";
 import { cn } from "@/lib/utils";
 import { formatBytes } from "@/lib/format";
+import { MAX_MODEL_VIDEOS, youTubeThumbnailUrl } from "@/lib/video";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -534,25 +539,43 @@ export function ModelFilePicker({
   );
 }
 
-export function ImagePicker({
-  images,
-  onAdd,
+// The gallery: preview images and YouTube videos in one grid, because the
+// model page shows them as one carousel — a video dragged between two images
+// stays between those two images (its index here is the `position` saved with
+// it, see mediaVideos). Videos have no file behind them, so the picker carries
+// two add affordances: the file input, and a URL field that only accepts a
+// link src/lib/video.ts recognizes.
+export function MediaPicker({
+  media,
+  onAddImages,
+  onAddVideo,
   onRemove,
   onMove,
   onReorder,
 }: {
-  images: ImageEntry[];
-  onAdd: (files: File[]) => void;
+  media: MediaEntry[];
+  onAddImages: (files: File[]) => void;
+  // Returns an error to show under the field, or null when the video was added.
+  onAddVideo: (url: string) => string | null;
   onRemove: (key: string) => void;
   onMove: (key: string, direction: -1 | 1) => void;
   onReorder: (key: string, targetKey: string) => void;
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [draggedKey, setDraggedKey] = useState<string | null>(null);
+  const [videoDraft, setVideoDraft] = useState("");
+  const [videoError, setVideoError] = useState<string | null>(null);
+  const videoCount = media.filter(isVideoEntry).length;
+
+  function addVideo() {
+    const error = onAddVideo(videoDraft);
+    setVideoError(error);
+    if (!error) setVideoDraft("");
+  }
 
   return (
     <div className="grid gap-2">
-      <Label>Images</Label>
+      <Label>Images & videos</Label>
       <input
         ref={inputRef}
         type="file"
@@ -561,7 +584,7 @@ export function ImagePicker({
         className="hidden"
         onChange={(e) => {
           const picked = Array.from(e.target.files ?? []);
-          if (picked.length > 0) onAdd(picked);
+          if (picked.length > 0) onAddImages(picked);
           e.target.value = "";
         }}
       />
@@ -574,20 +597,63 @@ export function ImagePicker({
         Click to add preview images — the first image is the cover, drag
         thumbnails to reorder
       </button>
-      {images.length > 0 && (
+      <div className="flex gap-2">
+        <Input
+          id="video-url"
+          type="url"
+          inputMode="url"
+          aria-label="YouTube video link"
+          placeholder="…or paste a YouTube link: https://www.youtube.com/watch?v=…"
+          value={videoDraft}
+          disabled={videoCount >= MAX_MODEL_VIDEOS}
+          onChange={(e) => {
+            setVideoDraft(e.target.value);
+            setVideoError(null);
+          }}
+          // The picker sits inside the wizard's form, where Enter would
+          // otherwise submit the whole model.
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              addVideo();
+            }
+          }}
+        />
+        <Button
+          type="button"
+          variant="outline"
+          onClick={addVideo}
+          disabled={videoCount >= MAX_MODEL_VIDEOS || !videoDraft.trim()}
+        >
+          <Plus className="size-4" />
+          Add video
+        </Button>
+      </div>
+      {(videoError || videoCount >= MAX_MODEL_VIDEOS) && (
+        <p className={cn("text-xs", videoError ? "text-destructive" : "text-muted-foreground")}>
+          {videoError ?? `That's the maximum of ${MAX_MODEL_VIDEOS} videos.`}
+        </p>
+      )}
+      {media.length > 0 && (
         <ul className="grid grid-cols-3 sm:grid-cols-4 gap-2">
-          {images.map((image, i) => (
+          {media.map((entry, i) => {
+            const label = isVideoEntry(entry) ? entry.url : entry.filename;
+            return (
             <li
-              key={image.key}
+              key={entry.key}
               className={cn(
                 "relative rounded-md border overflow-hidden bg-muted cursor-grab",
-                draggedKey === image.key && "opacity-50",
+                draggedKey === entry.key && "opacity-50",
               )}
-              title={`${image.filename} (${formatBytes(image.size)})`}
+              title={
+                isVideoEntry(entry)
+                  ? entry.url
+                  : `${entry.filename} (${formatBytes(entry.size)})`
+              }
               draggable
               onDragStart={(e) => {
                 e.dataTransfer.effectAllowed = "move";
-                setDraggedKey(image.key);
+                setDraggedKey(entry.key);
               }}
               onDragEnd={() => setDraggedKey(null)}
               onDragOver={(e) => {
@@ -595,24 +661,44 @@ export function ImagePicker({
                 e.dataTransfer.dropEffect = "move";
               }}
               onDragEnter={() => {
-                if (draggedKey && draggedKey !== image.key) {
-                  onReorder(draggedKey, image.key);
+                if (draggedKey && draggedKey !== entry.key) {
+                  onReorder(draggedKey, entry.key);
                 }
               }}
               onDrop={(e) => e.preventDefault()}
             >
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src={image.src}
-                alt={image.filename}
-                className="aspect-square w-full object-cover"
-              />
-              {i === 0 && (
+              {isVideoEntry(entry) ? (
+                <>
+                  {/* Remote host — next/image would need its own allowlist to
+                      add nothing at this size. */}
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={youTubeThumbnailUrl(entry.video)}
+                    alt=""
+                    className="aspect-square w-full object-cover"
+                  />
+                  <span className="absolute inset-0 flex items-center justify-center bg-black/20">
+                    <span className="flex h-6 w-9 items-center justify-center rounded bg-red-600">
+                      <SquarePlay className="size-4 text-white" />
+                    </span>
+                  </span>
+                </>
+              ) : (
+                /* eslint-disable-next-line @next/next/no-img-element */
+                <img
+                  src={entry.src}
+                  alt={entry.filename}
+                  className="aspect-square w-full object-cover"
+                />
+              )}
+              {/* The cover is the first *image*: browse cards show a file, and
+                  a video sorted to the front doesn't change that. */}
+              {!isVideoEntry(entry) && mediaImages(media)[0]?.key === entry.key && (
                 <span className="absolute top-1 left-1 rounded bg-primary text-primary-foreground text-[10px] font-medium px-1.5 py-0.5">
                   Cover
                 </span>
               )}
-              {image.type === "staged" && (
+              {entry.type === "staged" && (
                 <span
                   className="absolute top-1 right-1 rounded bg-primary text-primary-foreground p-1"
                   title="Imported from source"
@@ -628,9 +714,9 @@ export function ImagePicker({
                       variant="secondary"
                       size="icon"
                       className="size-6"
-                      aria-label={`Move ${image.filename} left`}
+                      aria-label={`Move ${label} left`}
                       disabled={i === 0}
-                      onClick={() => onMove(image.key, -1)}
+                      onClick={() => onMove(entry.key, -1)}
                     >
                       <ChevronLeft className="size-3.5" />
                     </Button>
@@ -644,8 +730,8 @@ export function ImagePicker({
                       variant="secondary"
                       size="icon"
                       className="size-6"
-                      aria-label={`Remove ${image.filename}`}
-                      onClick={() => onRemove(image.key)}
+                      aria-label={`Remove ${label}`}
+                      onClick={() => onRemove(entry.key)}
                     >
                       <X className="size-3.5" />
                     </Button>
@@ -659,9 +745,9 @@ export function ImagePicker({
                       variant="secondary"
                       size="icon"
                       className="size-6"
-                      aria-label={`Move ${image.filename} right`}
-                      disabled={i === images.length - 1}
-                      onClick={() => onMove(image.key, 1)}
+                      aria-label={`Move ${label} right`}
+                      disabled={i === media.length - 1}
+                      onClick={() => onMove(entry.key, 1)}
                     >
                       <ChevronRight className="size-3.5" />
                     </Button>
@@ -670,7 +756,8 @@ export function ImagePicker({
                 </Tooltip>
               </div>
             </li>
-          ))}
+            );
+          })}
         </ul>
       )}
     </div>

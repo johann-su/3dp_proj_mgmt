@@ -6,8 +6,9 @@ in the same PR that changes this behaviour.*
 (issue #55; `src/lib/model-versions.ts`, pure snapshot helpers in
 `src/lib/version-snapshot.ts`): every completed model mutation (create, edit,
 Onshape sync, revert) appends a `model_versions` row holding a full JSON
-snapshot of the mutable state — title, description, category, tags, BOM, and
-the ordered file list including each file's `s3Key`. `model_files` deliberately
+snapshot of the mutable state — title, description, category, tags, BOM,
+gallery videos with their carousel slots (`models.videos`), and the ordered
+file list including each file's `s3Key`. `model_files` deliberately
 keeps meaning **"the live files only"** (no query has to filter out historical
 rows): removing a file deletes its row but *not* its S3 object, because earlier
 snapshots still reference the key; the model page's History panel reverts to
@@ -43,7 +44,11 @@ a column left out of the snapshot is silently dropped by remove-then-revert (see
 `content_hash`). Note the one-off cost: `snapshotsEqual` compares snapshots as
 JSON, so a new field makes every pre-existing snapshot compare unequal and the
 first save after deploy records a version even when nothing changed. Old
-snapshots lack the key, hence the `?? null` fallbacks on read.
+snapshots lack the key, hence the `?? null` fallbacks on read. The same applies
+to a **`models` column** that is part of the mutable state (`video_urls` is the
+worked example: `ModelVersionSnapshot.videos`, `buildSnapshot`,
+`restoreSnapshot`'s `update`, and a clause in `summarizeVersionChange` so the
+History line names the change).
 
 Deletion is a trash bin: `deleteModel` just sets `models.deleted_at`; every
 listing hides trashed models (`deleted_at IS NULL` in

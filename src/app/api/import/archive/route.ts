@@ -110,6 +110,7 @@ export async function POST(req: NextRequest) {
       categories: archive.categories,
       files,
       bom: archive.bom,
+      videos: archive.videos,
       warnings: archive.warnings,
       onshapeMicroversion: archive.onshapeMicroversion,
     };

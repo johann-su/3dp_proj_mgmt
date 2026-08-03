@@ -16,6 +16,7 @@ import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { ImageGallery } from "@/components/image-gallery";
 import type { ViewerFile } from "@/components/model-viewer";
+import type { ModelVideo } from "@/lib/video";
 import { Markdown } from "@/components/markdown";
 import { ShareButton } from "@/components/share-button";
 import {
@@ -56,6 +57,9 @@ export type ModelViewData = {
   onshapeWvm: string | null;
   makerworldUrl: string | null;
   images: Array<{ src: string }>;
+  // Gallery videos, each carrying its slot in the combined image+video
+  // carousel order.
+  videos: ModelVideo[];
   // Previewable .3mf files for the gallery's interactive 3D view (issue #35),
   // each carrying its real bed size for the plate reference (issue #80).
   modelFiles: ViewerFile[];
@@ -90,6 +94,7 @@ export function ModelView({ data }: { data: ModelViewData }) {
     onshapeWvm,
     makerworldUrl,
     images,
+    videos,
     modelFiles,
     bom,
     printFiles,
@@ -112,6 +117,7 @@ export function ModelView({ data }: { data: ModelViewData }) {
       <div className="order-2 min-w-0 lg:order-none">
         <ImageGallery
           images={images}
+          videos={videos}
           title={title}
           modelFiles={modelFiles}
           badge={

@@ -64,6 +64,7 @@ export default async function EditModelPage({
             // Drives the per-file "queue for slicing" toggle.
             sliceStatus: file.sliceStatus,
           })),
+          videos: model.videos,
           createdAt: model.createdAt,
         }}
       />

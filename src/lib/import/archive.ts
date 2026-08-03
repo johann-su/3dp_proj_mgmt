@@ -19,6 +19,7 @@
 
 import { strFromU8, unzipSync, type UnzipFileInfo } from "fflate";
 import { parseBomCsv, type BomItemInput } from "@/lib/bom";
+import { MAX_MODEL_VIDEOS, type ModelVideo } from "@/lib/video";
 import { allowedExtensions, fileExtension } from "@/lib/file-kind";
 import {
   EXPORT_FORMAT_VERSION,
@@ -66,6 +67,9 @@ export type ArchiveImport = {
   categories: string[];
   sourceUrl: string;
   onshapeMicroversion: string | null;
+  // Gallery videos off the manifest, with the slots they held in the
+  // exporting instance's carousel; createModel re-validates every link.
+  videos: ModelVideo[];
   bom: BomItemInput[];
   files: ArchiveFile[];
   warnings: string[];
@@ -172,6 +176,30 @@ function manifestBom(value: unknown): BomItemInput[] {
     imageUrl: asString(raw.imageUrl, 2000),
     section: asString(raw.section, 200),
   }));
+}
+
+// Gallery videos off the manifest. Like the BOM, not re-validated here — the
+// create action parses every link and drops what it can't embed; this only
+// has to make sure the shape is a list of {url, position}.
+function manifestVideos(value: unknown): ModelVideo[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .filter(isRecord)
+    .flatMap((raw) => {
+      const url = asString(raw.url, 2000);
+      return url
+        ? [
+            {
+              url,
+              position:
+                typeof raw.position === "number" && Number.isSafeInteger(raw.position)
+                  ? raw.position
+                  : 0,
+            },
+          ]
+        : [];
+    })
+    .slice(0, MAX_MODEL_VIDEOS);
 }
 
 function readManifest(
@@ -331,6 +359,7 @@ export function readModelArchive(
     // anything else.
     sourceUrl: asString(model?.sourceUrl, 2000) ?? "",
     onshapeMicroversion: asString(model?.onshapeMicroversion, 100),
+    videos: manifestVideos(model?.videos),
     bom,
     files,
     warnings,

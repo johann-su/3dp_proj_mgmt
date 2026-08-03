@@ -37,6 +37,7 @@ function snapshot(overrides: Partial<ModelVersionSnapshot> = {}): ModelVersionSn
     categoryId: "cat-1",
     tags: ["glider", "rc"],
     bom: [],
+    videos: [],
     files: [file()],
     ...overrides,
   };
@@ -49,6 +50,7 @@ test("buildSnapshot excludes generated variants and sorts tag names", () => {
     title: "Talon 1400",
     description: "A glider",
     categoryId: "cat-1",
+    videos: [],
     modelTags: [{ tag: { name: "rc" } }, { tag: { name: "glider" } }],
     bomItems: [
       { name: "M3 screw", quantity: "4", link: null, imageUrl: null, section: null },
@@ -104,6 +106,21 @@ test("field edits combine into one summary line", () => {
     summarizeVersionChange(prev, next),
     "renamed to “Talon 1400 v2”, tags updated",
   );
+});
+
+// Snapshots written before gallery videos existed have no `videos` key at
+// all; reading one as [] keeps the first save after the upgrade from claiming
+// a video change nobody made.
+test("gallery video changes are summarized, and a missing key reads as none", () => {
+  const prev = snapshot();
+  const next = snapshot({
+    videos: [{ url: "https://www.youtube.com/watch?v=dQw4w9WgXcQ", position: 1 }],
+  });
+  assert.equal(summarizeVersionChange(prev, next), "videos updated");
+
+  const legacy = snapshot();
+  delete (legacy as Partial<ModelVersionSnapshot>).videos;
+  assert.equal(summarizeVersionChange(legacy, snapshot()), "file details updated");
 });
 
 test("same file set with changed metadata degrades to a generic summary", () => {

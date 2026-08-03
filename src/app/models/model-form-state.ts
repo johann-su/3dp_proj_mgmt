@@ -6,6 +6,12 @@
 import type { FileOrderRef, UploadedFile } from "@/app/models/actions";
 import type { SliceStatus } from "@/db/schema";
 import type { BomItemInput } from "@/lib/bom";
+import {
+  orderGalleryItems,
+  parseYouTubeUrl,
+  type ModelVideo,
+  type YouTubeVideo,
+} from "@/lib/video";
 
 export const MODEL_ACCEPT = ".3mf,.scad";
 export const IMAGE_ACCEPT = ".png,.jpg,.jpeg,.webp,.gif";
@@ -33,6 +39,8 @@ export type ModelFormInitial = {
   tags: string[];
   bom: BomItemInput[];
   files: ExistingFile[];
+  // Gallery videos with their slots in the combined order (models.videos).
+  videos: ModelVideo[];
   createdAt: Date;
 };
 
@@ -70,6 +78,57 @@ export function stagedImageEntry(file: UploadedFile): ImageEntry {
     filename: file.filename,
     size: file.size,
   };
+}
+
+// A gallery video in the wizard. It sits in the same list as the images
+// because the gallery is one sequence — dragging a video between two images is
+// the whole point — but it has no file behind it, only the link.
+export type VideoEntry = {
+  key: string;
+  type: "video";
+  // Canonical watch URL, as stored (see canonicalYouTubeUrl).
+  url: string;
+  video: YouTubeVideo;
+};
+
+export function videoEntry(url: string, video: YouTubeVideo): VideoEntry {
+  // Keyed by video id: the same video can't appear twice in one gallery, so
+  // the id is stable across reorders in a way a random key wouldn't be.
+  return { key: video.id, type: "video", url, video };
+}
+
+// One slot in the gallery, as the media picker renders it.
+export type MediaEntry = ImageEntry | VideoEntry;
+
+export function isVideoEntry(entry: MediaEntry): entry is VideoEntry {
+  return entry.type === "video";
+}
+
+export function mediaImages(media: MediaEntry[]): ImageEntry[] {
+  return media.filter((entry): entry is ImageEntry => entry.type !== "video");
+}
+
+// The stored form of the wizard's videos: each one's index in the media list
+// *is* its position in the combined gallery order.
+export function mediaVideos(media: MediaEntry[]): ModelVideo[] {
+  return media.flatMap((entry, position) =>
+    entry.type === "video" ? [{ url: entry.url, position }] : [],
+  );
+}
+
+// The media list a saved model reopens with: its images and videos woven back
+// into the one order the gallery shows them in.
+export function mediaFromInitial(
+  images: ImageEntry[],
+  videos: ModelVideo[],
+): MediaEntry[] {
+  return orderGalleryItems(images, videos).flatMap<MediaEntry>((entry) => {
+    if (entry.kind === "image") return [entry.item];
+    const video = parseYouTubeUrl(entry.item.url);
+    // A stored link we can't parse has no tile to render — the same rule the
+    // gallery applies.
+    return video ? [videoEntry(entry.item.url, video)] : [];
+  });
 }
 
 // One model (.3mf/.step) file in the wizard, in display order: already
@@ -164,7 +223,8 @@ export type ModelFormValues = {
   tags: string;
   bom: BomItemInput[];
   modelFileEntries: ModelFileEntry[];
-  images: ImageEntry[];
+  // Images and videos in one list — the gallery's display order.
+  media: MediaEntry[];
   pdfFiles: PendingFile[];
   existingPdfFiles: ExistingFile[];
   // Only the .3mf entries whose slice queueing the user flipped away from the
@@ -216,16 +276,33 @@ export function formIsDirty(
   )
     return true;
 
-  // Images have no rename; order matters (first image is the cover).
-  const curImg = current.images.map((im) =>
-    im.type === "existing" ? im.id : " new",
+  // The gallery as one sequence: images (no rename, but order matters — the
+  // first image is the cover) and videos (canonicalized on save, so the URL
+  // compares directly). Marking each entry by kind means moving a video across
+  // an image reads as dirty too, even though neither list changed on its own.
+  const curMedia = current.media.map((entry) =>
+    entry.type === "video"
+      ? `v:${entry.url}`
+      : entry.type === "existing"
+        ? `i:${entry.id}`
+        : " new",
   );
-  const initImg = initial.files
-    .filter((f) => f.kind === "image")
-    .map((f) => f.id);
+  const initMedia = mediaFromInitial(
+    initial.files
+      .filter((f) => f.kind === "image")
+      .map((f) => ({
+        key: f.id,
+        type: "existing" as const,
+        id: f.id,
+        src: "",
+        filename: f.filename,
+        size: f.size,
+      })),
+    initial.videos,
+  ).map((entry) => (entry.type === "video" ? `v:${entry.url}` : `i:${entry.key}`));
   if (
-    curImg.length !== initImg.length ||
-    curImg.some((v, i) => v !== initImg[i])
+    curMedia.length !== initMedia.length ||
+    curMedia.some((v, i) => v !== initMedia[i])
   )
     return true;
 

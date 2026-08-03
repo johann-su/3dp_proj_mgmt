@@ -224,6 +224,7 @@ export default async function ModelPage({
     onshapeWvm,
     makerworldUrl,
     images: images.map((img) => ({ src: fileSrc(img.id) })),
+    videos: model.videos,
     // Every stored .3mf can be previewed interactively in the gallery; .step
     // and .scad geometry can't be rendered client-side, so they're excluded.
     modelFiles: printFiles

@@ -103,6 +103,41 @@ any PDF manuals, and the BOM. From here you can also
 the page (which, because the catalog is private, opens for other signed-in users
 at this exact page).
 
+## Gallery videos
+
+A model can also carry **YouTube videos** — a print timelapse, an assembly
+walkthrough, a review. Paste the link into the create or edit form's **Images &
+videos** field and it becomes a tile in the same grid as the images, showing the
+video's YouTube thumbnail. Any YouTube link works: `watch?v=`, `youtu.be/`, a
+Short, an embed URL, or a timestamped one, which starts playback where the link
+points. Up to ten videos per model.
+
+Images and videos are **one sequence**, not two lists: drag a video between two
+images and that is exactly where it sits in the carousel on the model page —
+same arrows, same thumbnail strip, same counter. The one thing a video can't be
+is the **cover**: browse cards and collections show an image file, so the first
+*image* keeps that badge even when a video sorts ahead of it.
+
+Nothing is downloaded or copied — only the link is stored, so a video that is
+later taken down or made private simply stops playing. Two things follow from
+that:
+
+- The player is **click-to-play**: the slide shows YouTube's poster frame, and
+  the embed itself is only mounted when someone presses play, so a model page
+  doesn't pull the player for every video attached to it.
+- YouTube is the **only** third party the app talks to at all
+  ([the CSP](/self-hosting) allows exactly its player frame and its thumbnail
+  host), and both URLs are rebuilt from the video id the link parsed to. A
+  stored value that isn't a YouTube video renders as nothing rather than as a
+  frame of someone else's choosing. Note the flip side of showing real
+  thumbnails: opening a model page that has videos does tell Google the page was
+  opened, before anyone presses play.
+
+Videos travel with the model, slots included: they are captured in
+[version snapshots](/features/versioning) (a revert restores the gallery as it
+was) and written to `metadata.json` in an [export](#exporting-a-model), so an
+archive round-trip brings them back in the same places.
+
 ## Exporting a model
 
 **Export** downloads the whole model as one `.zip`, so you have an offline copy

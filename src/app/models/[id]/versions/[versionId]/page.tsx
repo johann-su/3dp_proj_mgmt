@@ -119,6 +119,8 @@ export default async function ModelVersionPreviewPage({
     onshapeWvm: null,
     makerworldUrl: null,
     images: images.map((img) => ({ src: img.src })),
+    // Snapshots taken before gallery videos existed have no `videos` key.
+    videos: snapshot.videos ?? [],
     modelFiles: printFiles
       .filter((f) => f.filename.toLowerCase().endsWith(".3mf"))
       .map((f) => ({

@@ -22,6 +22,7 @@ function exported(input: Partial<Parameters<typeof buildModelExportZip>[0]> = {}
     sourceUrl: null,
     onshapeMicroversion: null,
     exportedAt: new Date("2026-07-27T10:00:00Z"),
+    videos: [],
     bomItems: [],
     files: [{ kind: "model", filename: "part.3mf", data: bytes("part") }],
     ...input,
@@ -68,6 +69,24 @@ test("a freshly exported model round-trips through the importer", () => {
       ["image", "a.png"],
     ],
   );
+});
+
+// Gallery videos are links, not files, so the zip tree can't carry them —
+// they exist only in the manifest, and an archive is meant to be a full
+// backup.
+test("gallery videos survive the round trip through the manifest", () => {
+  const draft = readModelArchive(
+    exported({
+      videos: [{ url: "https://www.youtube.com/watch?v=dQw4w9WgXcQ", position: 1 }],
+    }),
+  );
+  // The slot survives too: the video sat between two images, and re-importing
+  // must not shuffle it to the end of the gallery.
+  assert.deepEqual(draft.videos, [
+    { url: "https://www.youtube.com/watch?v=dQw4w9WgXcQ", position: 1 },
+  ]);
+  // Archives written before the field existed simply have no videos.
+  assert.deepEqual(readModelArchive(exported()).videos, []);
 });
 
 test("per-file source provenance survives the round trip", () => {

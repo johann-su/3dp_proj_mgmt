@@ -8,6 +8,7 @@ import type {
   VersionFileSnapshot,
 } from "@/db/schema";
 import type { BomItemInput } from "@/lib/bom";
+import type { ModelVideo } from "@/lib/video";
 
 // The loaded model shape buildSnapshot maps from — the fields captureSnapshot
 // reads (src/lib/model-versions.ts) and the same relations the model page
@@ -16,6 +17,7 @@ export type SnapshotSource = {
   title: string;
   description: string;
   categoryId: string | null;
+  videos: ModelVideo[];
   modelTags: { tag: { name: string } }[];
   bomItems: BomItemInput[];
   files: (VersionFileSnapshot & { generatedFromId: string | null })[];
@@ -40,6 +42,7 @@ export function buildSnapshot(model: SnapshotSource): ModelVersionSnapshot {
       imageUrl: item.imageUrl,
       section: item.section,
     })),
+    videos: model.videos,
     files: model.files
       .filter((f) => f.generatedFromId === null)
       .map((f) => ({
@@ -113,6 +116,11 @@ export function summarizeVersionChange(
   }
   if (JSON.stringify(prev.bom) !== JSON.stringify(next.bom)) {
     parts.push("BOM updated");
+  }
+  // Snapshots predating gallery videos have no `videos` key — read as [], so
+  // a version that only added the field doesn't claim a change.
+  if (JSON.stringify(prev.videos ?? []) !== JSON.stringify(next.videos ?? [])) {
+    parts.push("videos updated");
   }
 
   if (parts.length === 0) {

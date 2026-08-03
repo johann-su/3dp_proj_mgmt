@@ -3,19 +3,23 @@ import type { NextConfig } from "next";
 // Next's dev server compiles with eval(); production bundles don't need it.
 const dev = process.env.NODE_ENV !== "production";
 
-// Everything the app loads is same-origin: Tailwind ships a static stylesheet,
-// next/font self-hosts, and every image goes through /api/files (see
-// images.localPatterns below) — so there is no CDN to allowlist. 'unsafe-inline'
-// stays because Next inlines its bootstrap/flight scripts and React inlines
-// style attributes; tightening that needs a nonce, which means making every
-// page dynamic. blob: covers the three.js model preview's object URLs.
+// Nearly everything the app loads is same-origin: Tailwind ships a static
+// stylesheet, next/font self-hosts, and every uploaded image goes through
+// /api/files (see images.localPatterns below). The exception is gallery videos
+// (src/lib/video.ts): YouTube's poster frames from i.ytimg.com, and the player
+// itself, which is framed only after the viewer clicks play. Both srcs are
+// built from a parsed 11-character video id, never from a stored string.
+// 'unsafe-inline' stays because Next inlines its bootstrap/flight scripts and
+// React inlines style attributes; tightening that needs a nonce, which means
+// making every page dynamic. blob: covers the three.js preview's object URLs.
 const csp = [
   "default-src 'self'",
   `script-src 'self' 'unsafe-inline'${dev ? " 'unsafe-eval'" : ""}`,
   "style-src 'self' 'unsafe-inline'",
-  "img-src 'self' data: blob:",
+  "img-src 'self' data: blob: https://i.ytimg.com",
   "font-src 'self' data:",
   "connect-src 'self'",
+  "frame-src 'self' https://www.youtube.com",
   "worker-src 'self' blob:",
   "object-src 'none'",
   "base-uri 'self'",

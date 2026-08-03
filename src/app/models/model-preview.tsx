@@ -2,6 +2,7 @@
 
 import { Eye } from "lucide-react";
 import type { BomItemInput } from "@/lib/bom";
+import type { ModelVideo } from "@/lib/video";
 import { ModelView, type ModelViewData } from "./model-view";
 
 export type ModelPreviewData = {
@@ -11,6 +12,7 @@ export type ModelPreviewData = {
   tags: string[];
   bom: BomItemInput[];
   images: { src: string }[];
+  videos: ModelVideo[];
   printFiles: { filename: string; size: number }[];
   pdfFiles: { filename: string; size: number }[];
   userName: string;
@@ -34,6 +36,7 @@ export function ModelPreview({ data }: { data: ModelPreviewData }) {
     onshapeWvm: null,
     makerworldUrl: null,
     images: data.images,
+    videos: data.videos,
     // Files aren't stored yet in the create wizard, so there's nothing to load.
     modelFiles: [],
     bom: data.bom.filter((item) => item.name.trim()),
