@@ -3,8 +3,11 @@ import assert from "node:assert/strict";
 import {
   allowedExtensions,
   contentTypeForFilename,
+  GALLERY_KINDS,
+  isGalleryKind,
   safeFileBase,
   sanitizeRename,
+  VIDEO_EXTENSIONS,
 } from "@/lib/file-kind";
 
 test("contentTypeForFilename maps allowlisted extensions, ignoring case", () => {
@@ -64,4 +67,35 @@ test("safeFileBase falls back to 'model' when nothing safe is left", () => {
   // Titles can be non-Latin or pure punctuation — never emit an empty name.
   assert.equal(safeFileBase("★★★"), "model");
   assert.equal(safeFileBase(""), "model");
+});
+
+// Gallery videos are uploaded files like photos, so the same rule applies:
+// the served content type comes from the extension. video/* is safe to serve
+// inline (a browser never renders it as markup) — text/* would not be.
+test("video extensions map to their container's video/* type", () => {
+  assert.equal(contentTypeForFilename("print.MP4"), "video/mp4");
+  assert.equal(contentTypeForFilename("timelapse.webm"), "video/webm");
+  assert.equal(contentTypeForFilename("clip.mov"), "video/quicktime");
+  for (const ext of VIDEO_EXTENSIONS) {
+    assert.ok(contentTypeForFilename(`x${ext}`).startsWith("video/"));
+  }
+});
+
+test("allowedExtensions gates each kind to its own list", () => {
+  // A crafted upload can't smuggle a video past the image gate or vice versa.
+  assert.deepEqual(allowedExtensions("video"), VIDEO_EXTENSIONS);
+  assert.ok(!allowedExtensions("image").includes(".mp4"));
+  assert.ok(!allowedExtensions("video").includes(".png"));
+  assert.ok(!allowedExtensions("model").includes(".mp4"));
+});
+
+// Images and videos share one carousel and one `position` sequence, so the
+// cover queries and the reorder logic both key off this set rather than
+// testing for "image" alone.
+test("images and videos are the gallery kinds; nothing else is", () => {
+  assert.deepEqual(GALLERY_KINDS, ["image", "video"]);
+  assert.ok(isGalleryKind("image"));
+  assert.ok(isGalleryKind("video"));
+  assert.ok(!isGalleryKind("model"));
+  assert.ok(!isGalleryKind("pdf"));
 });

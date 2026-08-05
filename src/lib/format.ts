@@ -20,6 +20,22 @@ export function formatDuration(totalSeconds: number) {
   return minutes === 0 ? `${hours} h` : `${hours} h ${minutes} min`;
 }
 
+// Playback clock for the gallery's video player: 4 -> "0:04", 3725 -> "1:02:05".
+// Distinct from formatDuration, which rounds to human "1 h 31 min" for print
+// estimates — a player has to show the exact second it is sitting on, and the
+// hour field only appears when there is one.
+export function formatClock(totalSeconds: number) {
+  // NaN/Infinity until a video's metadata loads, and a live stream's duration
+  // stays Infinite forever; both render as a placeholder rather than "NaN:aN".
+  if (!Number.isFinite(totalSeconds) || totalSeconds < 0) return "0:00";
+  const whole = Math.floor(totalSeconds);
+  const seconds = whole % 60;
+  const minutes = Math.floor(whole / 60) % 60;
+  const hours = Math.floor(whole / 3600);
+  const mm = hours > 0 ? String(minutes).padStart(2, "0") : String(minutes);
+  return `${hours > 0 ? `${hours}:` : ""}${mm}:${String(seconds).padStart(2, "0")}`;
+}
+
 // 3.72 -> "3.7 g", 25.4 -> "25 g"
 export function formatGrams(grams: number) {
   return `${grams >= 10 ? Math.round(grams) : Math.max(grams, 0.1).toFixed(1)} g`;

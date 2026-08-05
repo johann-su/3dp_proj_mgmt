@@ -124,6 +124,95 @@
   --sidebar-ring: #08bf08;
 }
 
+/* The gallery video player's scrubber (src/components/image-gallery.tsx).
+   A real <input type="range"> so keyboard and screen-reader support come for
+   free, restyled to a thin bar. It lives here rather than in Tailwind classes
+   because the track and thumb are pseudo-elements.
+
+   The played portion is a hard-stop gradient driven by --played, which the
+   component sets as an inline style. Its colour is var(--primary), so a theme
+   change recolours the bar — that is the whole point of doing this instead of
+   keeping the browser's own controls, whose played-portion colour is drawn by
+   the UA and can't be styled.
+
+   The *unplayed* remainder is deliberately not a theme variable: this bar only
+   ever sits on top of video, under a dark gradient, so it wants a translucent
+   white in both light and dark themes. --primary-foreground would track the
+   theme but points the wrong way — a theme with a light primary sets it dark,
+   which would put a near-black track on near-black footage. */
+.media-scrubber {
+  -webkit-appearance: none;
+  appearance: none;
+  background: linear-gradient(
+    to right,
+    var(--primary) 0%,
+    var(--primary) var(--played, 0%),
+    rgb(255 255 255 / 0.35) var(--played, 0%),
+    rgb(255 255 255 / 0.35) 100%
+  );
+  border-radius: 9999px;
+  height: 0.25rem;
+  cursor: pointer;
+}
+
+/* The volume slider: the same control stood on end. `writing-mode` is the
+   standard way to do this (the old -webkit-appearance: slider-vertical would
+   undo the custom track styling above), and `direction: rtl` puts the minimum
+   at the bottom so louder is up. The gradient runs `to top` to match — the
+   background is drawn in physical coordinates and doesn't rotate with the
+   writing mode. */
+.media-scrubber-vertical {
+  writing-mode: vertical-rl;
+  direction: rtl;
+  width: 0.25rem;
+  height: 4.5rem;
+  background: linear-gradient(
+    to top,
+    var(--primary) 0%,
+    var(--primary) var(--played, 0%),
+    rgb(255 255 255 / 0.35) var(--played, 0%),
+    rgb(255 255 255 / 0.35) 100%
+  );
+}
+
+/* The box the volume slider floats in: the theme's accent, which is a ~12%
+   grey — so it reads as translucent frosted glass over the video rather than a
+   solid panel. The blur is what makes that legible on busy footage; the tint
+   alone is too faint to separate the box from the picture behind it. */
+.media-volume-box {
+  background-color: var(--accent);
+  border: 1px solid var(--border);
+  /* Unprefixed only — Lightning CSS adds the -webkit- form for the browsers
+     that need it. Writing both by hand made it emit *only* the prefixed one. */
+  backdrop-filter: blur(8px);
+}
+
+.media-scrubber::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 0.75rem;
+  height: 0.75rem;
+  border-radius: 9999px;
+  background: var(--primary);
+  /* No border/shadow: the thumb sits on the bar it fills, so the same colour
+     reads as one control rather than a dot on a line. */
+  border: none;
+}
+
+.media-scrubber::-moz-range-thumb {
+  width: 0.75rem;
+  height: 0.75rem;
+  border-radius: 9999px;
+  background: var(--primary);
+  border: none;
+}
+
+/* Firefox draws its own track on top of the element background. */
+.media-scrubber::-moz-range-track {
+  background: transparent;
+  height: 0.25rem;
+}
+
 @layer base {
   * {
     @apply border-border outline-ring/50;

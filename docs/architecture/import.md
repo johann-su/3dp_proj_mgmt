@@ -17,7 +17,14 @@ the browser (fflate) and title/description (`3D/3dmodel.model`), printer name
 images server-side and stages them to S3 for the create form. MakerWorld uses
 the anonymous `api.bambulab.com/v1/design-service/design/{id}` JSON API (the
 makerworld.com pages themselves are Cloudflare-gated); Printables uses its
-public GraphQL API, which also yields anonymous file download links. MakerWorld
+public GraphQL API, which also yields anonymous file download links. A
+MakerWorld design's gallery **videos** come from `designExtension.design_video`
+(direct CDN `.mp4` links, same shape as `design_pictures`) and are downloaded
+and stored as `kind: "video"` files rather than hotlinked — the CDN URL isn't
+guaranteed stable. They are appended *after* the photos so the design's cover
+image stays the model's cover; `selectVideoUrls` drops anything whose extension
+isn't a playable video, and staging caps them at `MAX_VIDEO_BYTES` (200 MB).
+MakerWorld
 file downloads require a Bambu Cloud login: a user connects their account at
 **Settings → Bambu Cloud** (`src/app/settings/bambu/`, backed by
 `src/lib/bambu/`), which logs in via `api.bambulab.com` (handling email-code and

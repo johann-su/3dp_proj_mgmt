@@ -9,8 +9,8 @@ export type CollectionCardData = {
   collectionModels: {
     model: {
       id: string;
-      // Token-signed image URL, signed server-side (see ModelCardData.files).
-      files: { id: string; src: string; animated?: boolean }[];
+      // Token-signed file URL, signed server-side (see ModelCardData.files).
+      files: { id: string; src: string; animated?: boolean; kind?: string }[];
     };
   }[];
   // Smart collections (rule-based membership) hydrate only their first few
@@ -70,6 +70,7 @@ export function CollectionCard({
                           src={file.src}
                           alt=""
                           animated={file.animated}
+                          video={file.kind === "video"}
                           sizes="(max-width: 640px) 50vw, (max-width: 1024px) 25vw, 12vw"
                           className="object-cover transition-transform group-hover:scale-105"
                         />

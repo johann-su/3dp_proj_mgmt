@@ -1,6 +1,12 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { formatBytes, formatDate, formatDuration, formatGrams } from "@/lib/format";
+import {
+  formatBytes,
+  formatClock,
+  formatDate,
+  formatDuration,
+  formatGrams,
+} from "@/lib/format";
 
 test("formatBytes uses B/KB/MB/GB with sensible precision", () => {
   assert.equal(formatBytes(512), "512 B");
@@ -32,4 +38,25 @@ test("formatDate is pinned to UTC regardless of the host timezone", () => {
   // to different calendar days on a UTC server vs. a UTC+ browser (or vice
   // versa) if the zone weren't fixed, tripping a React hydration mismatch.
   assert.equal(formatDate(new Date("2026-07-06T23:30:00Z")), "Jul 6, 2026");
+});
+
+// The gallery video player's clock. Unlike formatDuration (which rounds to
+// "1 h 31 min" for print estimates) this shows the exact second, because it
+// tracks a playhead.
+test("formatClock pads seconds and only shows hours when there are some", () => {
+  assert.equal(formatClock(4), "0:04");
+  assert.equal(formatClock(65), "1:05");
+  assert.equal(formatClock(600), "10:00");
+  // Past an hour the minutes field pads too, so 1:02:05 can't read as 1:2:05.
+  assert.equal(formatClock(3725), "1:02:05");
+});
+
+// A <video> reports NaN duration until metadata loads and Infinity for a
+// stream; neither may render as "NaN:aN" in the control bar.
+test("formatClock renders a placeholder for durations that aren't a number", () => {
+  assert.equal(formatClock(NaN), "0:00");
+  assert.equal(formatClock(Infinity), "0:00");
+  assert.equal(formatClock(-5), "0:00");
+  // Sub-second playback positions floor to 0:00 rather than rounding up.
+  assert.equal(formatClock(0.4), "0:00");
 });

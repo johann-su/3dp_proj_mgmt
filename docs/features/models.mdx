@@ -46,6 +46,7 @@ container format keeps ingestion simple. The accepted extensions:
 |---|---|---|
 | Model files | `.3mf`, `.step` / `.stp`, `.scad` | `.3mf` is primary. `.step` exists for Onshape exports. `.scad` is [parametric OpenSCAD](/features/parametric) source. |
 | Images | `.png`, `.jpg` / `.jpeg`, `.webp`, `.gif` | Preview images. `.gif` may be animated. |
+| Videos | `.mp4`, `.webm`, `.mov` | Gallery videos. Played by the browser as-is — nothing is transcoded, so `.mov` won't play in Firefox. |
 | Documents | `.pdf` | Build instructions / manuals. |
 
 Extensions are validated **server-side** on upload, and the stored content type
@@ -105,20 +106,33 @@ at this exact page).
 
 ## Gallery videos
 
-A model can also carry **YouTube videos** — a print timelapse, an assembly
-walkthrough, a review. Paste the link into the create or edit form's **Images &
-videos** field and it becomes a tile in the same grid as the images, showing the
-video's YouTube thumbnail. Any YouTube link works: `watch?v=`, `youtu.be/`, a
-Short, an embed URL, or a timestamped one, which starts playback where the link
-points. Up to ten videos per model.
+A model can carry videos as well as photos — a print timelapse, an assembly
+walkthrough, a review. There are two kinds, and they sit in the same grid:
 
-Images and videos are **one sequence**, not two lists: drag a video between two
-images and that is exactly where it sits in the carousel on the model page —
-same arrows, same thumbnail strip, same counter. The one thing a video can't be
-is the **cover**: browse cards and collections show an image file, so the first
-*image* keeps that badge even when a video sorts ahead of it.
+- **Uploaded videos** — pick an `.mp4`, `.webm` or `.mov` in the create or edit
+  form's **Images & videos** field, exactly like a photo. The file is stored
+  with the model and played from this app, so it keeps working regardless of
+  what any other site does. Imported automatically from
+  [MakerWorld](/integrations/makerworld-printables) when a design has one.
+- **YouTube links** — paste the link into the same field and it becomes a tile
+  showing the video's YouTube thumbnail. Any YouTube link works: `watch?v=`,
+  `youtu.be/`, a Short, an embed URL, or a timestamped one, which starts
+  playback where the link points. Up to ten linked videos per model.
 
-Nothing is downloaded or copied — only the link is stored, so a video that is
+Photos and videos are **one sequence**, not separate lists: drag a video between
+two photos and that is exactly where it sits in the carousel on the model page —
+same arrows, same thumbnail strip, same counter.
+
+An **uploaded video can be the cover**. Put it first and browse cards show a
+still frame from it, which plays — muted, looping — while the pointer is over the
+card, the same way an animated `.gif` cover does. A *linked* video can't be a
+cover: there is no stored file to show on a card, so the first uploaded file
+keeps that badge even when a YouTube tile sorts ahead of it.
+
+Videos in the carousel play in place, with the browser's own controls. Nothing
+autoplays there — only the card cover does, and only on hover.
+
+For YouTube links nothing is downloaded or copied — only the link is stored, so a video that is
 later taken down or made private simply stops playing. Two things follow from
 that:
 
@@ -135,8 +149,9 @@ that:
 
 Videos travel with the model, slots included: they are captured in
 [version snapshots](/features/versioning) (a revert restores the gallery as it
-was) and written to `metadata.json` in an [export](#exporting-a-model), so an
-archive round-trip brings them back in the same places.
+was), and an [export](#exporting-a-model) carries uploaded videos in `videos/`
+and linked ones in `metadata.json`, so an archive round-trip brings them back in
+the same places.
 
 ## Exporting a model
 
@@ -154,6 +169,7 @@ bom.csv        the bill of materials (only if the model has one)
 files/         the .3mf / .step / .scad files
 documents/     PDF manuals
 images/        the gallery images
+videos/        the gallery videos
 ```
 
 It always exports the model **as it is now**;

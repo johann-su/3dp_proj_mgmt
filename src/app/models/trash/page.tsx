@@ -8,6 +8,7 @@ import { models } from "@/db/schema";
 import { getSession, signInRedirect } from "@/lib/auth";
 import { isModerator } from "@/lib/roles";
 import { fileSrc } from "@/lib/file-token";
+import { GALLERY_KINDS } from "@/lib/file-kind";
 import { formatDate } from "@/lib/format";
 import { sweepExpiredTrash, TRASH_RETENTION_DAYS } from "@/lib/model-versions";
 import { TrashActions } from "./trash-actions";
@@ -44,7 +45,7 @@ export default async function TrashPage() {
     with: {
       user: { columns: { name: true } },
       files: {
-        where: (f, { eq: eqOp }) => eqOp(f.kind, "image"),
+        where: (f, { inArray }) => inArray(f.kind, GALLERY_KINDS),
         orderBy: (f, { asc }) => asc(f.position),
         limit: 1,
       },

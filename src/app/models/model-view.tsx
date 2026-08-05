@@ -14,7 +14,7 @@ import type { BomItemInput } from "@/lib/bom";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
-import { ImageGallery } from "@/components/image-gallery";
+import { ImageGallery, type GalleryMedia } from "@/components/image-gallery";
 import type { ViewerFile } from "@/components/model-viewer";
 import type { ModelVideo } from "@/lib/video";
 import { Markdown } from "@/components/markdown";
@@ -56,8 +56,9 @@ export type ModelViewData = {
   sourceName: string | null;
   onshapeWvm: string | null;
   makerworldUrl: string | null;
-  images: Array<{ src: string }>;
-  // Gallery videos, each carrying its slot in the combined image+video
+  // Stored gallery files — photos and uploaded videos in one order.
+  media: GalleryMedia[];
+  // Linked (YouTube) gallery videos, each carrying its slot in the combined
   // carousel order.
   videos: ModelVideo[];
   // Previewable .3mf files for the gallery's interactive 3D view (issue #35),
@@ -93,7 +94,7 @@ export function ModelView({ data }: { data: ModelViewData }) {
     sourceName,
     onshapeWvm,
     makerworldUrl,
-    images,
+    media,
     videos,
     modelFiles,
     bom,
@@ -116,7 +117,7 @@ export function ModelView({ data }: { data: ModelViewData }) {
     <div className="flex flex-col gap-8 lg:grid lg:grid-cols-[1fr_400px]">
       <div className="order-2 min-w-0 lg:order-none">
         <ImageGallery
-          images={images}
+          media={media}
           videos={videos}
           title={title}
           modelFiles={modelFiles}

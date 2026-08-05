@@ -32,18 +32,18 @@ import {
   formIsDirty,
   isQueuedForSlicing,
   mediaFromInitial,
-  mediaImages,
-  mediaVideos,
+  mediaFiles,
+  mediaLinkedVideos,
   mergeTags,
-  newImageEntry,
+  newMediaFileEntry,
   newModelFileEntry,
   orderFilesForCreate,
   skippedSliceKeys,
-  stagedImageEntry,
+  stagedMediaFileEntry,
   stagedModelFileEntry,
   toggleSliceQueue,
   uploadFile,
-  videoEntry,
+  linkedVideoEntry,
   type ExistingFile,
   type MediaEntry,
   type ModelFileEntry,
@@ -129,12 +129,13 @@ export function ModelForm({
   const [pdfFiles, setPdfFiles] = useState<PendingFile[]>([]);
   // PDFs pulled in by a URL import — already staged in S3 (create mode only).
   const [stagedPdfFiles, setStagedPdfFiles] = useState<UploadedFile[]>([]);
-  // The gallery, images and videos in one list — that list's order is the
-  // carousel's, and each video's index in it is the position saved with it.
+  // The gallery — uploaded photos/videos and linked videos in one list. That
+  // list's order is the carousel's, and each linked video's index in it is
+  // the position saved with it.
   const [media, setMedia] = useState<MediaEntry[]>(() =>
     mediaFromInitial(
       (model?.files ?? [])
-        .filter((f) => f.kind === "image")
+        .filter((f) => f.kind === "image" || f.kind === "video")
         .map((f) => ({
           key: f.id,
           type: "existing" as const,
@@ -142,6 +143,7 @@ export function ModelForm({
           src: `/api/files/${f.id}`,
           filename: f.filename,
           size: f.size,
+          kind: f.kind === "video" ? ("video" as const) : ("image" as const),
         })),
       model?.videos ?? [],
     ),
@@ -243,13 +245,13 @@ export function ModelForm({
           .filter((f) => f.kind === "model")
           .map(stagedModelFileEntry),
       );
-      // Staged images and any videos the archive carried, woven back into
-      // the one order the exporting instance showed them in.
+      // Staged photos/videos and any linked videos the archive carried, woven
+      // back into the one order the exporting instance showed them in.
       setMedia(
         mediaFromInitial(
           (draft.files ?? [])
-            .filter((f) => f.kind === "image")
-            .map(stagedImageEntry),
+            .filter((f) => f.kind === "image" || f.kind === "video")
+            .map(stagedMediaFileEntry),
           draft.videos ?? [],
         ),
       );
@@ -297,7 +299,7 @@ export function ModelForm({
   );
 
   function addImages(files: File[]) {
-    setMedia((prev) => [...prev, ...files.map(newImageEntry)]);
+    setMedia((prev) => [...prev, ...files.map(newMediaFileEntry)]);
   }
 
   // Adds a pasted YouTube link as a gallery tile. Returns why it couldn't,
@@ -312,7 +314,7 @@ export function ModelForm({
     if (media.some((entry) => entry.key === video.id)) {
       return "That video is already in the gallery";
     }
-    setMedia((prev) => [...prev, videoEntry(canonicalYouTubeUrl(video), video)]);
+    setMedia((prev) => [...prev, linkedVideoEntry(canonicalYouTubeUrl(video), video)]);
     return null;
   }
 
@@ -411,7 +413,7 @@ export function ModelForm({
                 .map((entry) => `${entry.filename}:${entry.size}`),
             );
             const fresh = meta.images.filter((f) => !known.has(`${f.name}:${f.size}`));
-            return [...prev, ...fresh.map(newImageEntry)];
+            return [...prev, ...fresh.map(newMediaFileEntry)];
           });
         }
         if (meta.title || meta.description || meta.printerTag || meta.images.length > 0) {
@@ -456,15 +458,16 @@ export function ModelForm({
     }
 
     try {
-      // Model files and images upload in display order so their positions
-      // (and the image cover) match what the user arranged. Videos carry no
-      // bytes — only their slot in the media list travels with the save.
+      // Model files and gallery media upload in display order so their
+      // positions (and the cover) match what the user arranged. Linked videos
+      // carry no bytes — only their slot in the media list travels with the
+      // save.
       const newModelFiles = modelFileEntries.filter((entry) => entry.type === "new");
-      const images = mediaImages(media);
-      const newImages = images.filter((image) => image.type === "new");
+      const mediaFileEntries = mediaFiles(media);
+      const newMedia = mediaFileEntries.filter((entry) => entry.type === "new");
       const toUpload: {
         file: File;
-        kind: "model" | "image" | "pdf";
+        kind: "model" | "image" | "pdf" | "video";
         filename: string;
       }[] = [
         ...newModelFiles.map((entry) => ({
@@ -473,10 +476,12 @@ export function ModelForm({
           filename: entry.filename,
         })),
         ...pdfFiles.map((f) => ({ file: f.file, kind: "pdf" as const, filename: f.name })),
-        ...newImages.map((image) => ({
-          file: image.file,
-          kind: "image" as const,
-          filename: image.file.name,
+        ...newMedia.map((entry) => ({
+          file: entry.file,
+          // Photo or video — the picker classified it by extension, and the
+          // upload route re-checks that against the same allowlist.
+          kind: entry.kind,
+          filename: entry.file.name,
         })),
       ];
       const uploaded: UploadedFile[] = [];
@@ -500,14 +505,14 @@ export function ModelForm({
             .filter((entry) => entry.type === "existing")
             .map((entry) => entry.id),
           ...existingPdfFiles.map((f) => f.id),
-          ...images
-            .filter((image) => image.type === "existing")
-            .map((image) => image.id),
+          ...mediaFileEntries
+            .filter((entry) => entry.type === "existing")
+            .map((entry) => entry.id),
         ]);
-        const { modelFileOrder, imageOrder } = buildUpdateFileOrders(
+        const { modelFileOrder, mediaOrder } = buildUpdateFileOrders(
           modelFileEntries,
           pdfFiles.length,
-          images,
+          mediaFileEntries,
         );
         pendingSaveRef.current = {
           mode: "update",
@@ -525,9 +530,9 @@ export function ModelForm({
               .filter((entry) => entry.type === "existing")
               .map((entry) => ({ id: entry.id, filename: entry.filename })),
             modelFileOrder,
-            imageOrder,
+            mediaOrder,
             bom,
-            videos: mediaVideos(media),
+            videos: mediaLinkedVideos(media),
             // Existing .3mf files the user put back in the queue — re-sliced to
             // refresh estimates and printer info (or retry a failure).
             resliceFileIds: modelFileEntries.flatMap((entry) =>
@@ -549,12 +554,12 @@ export function ModelForm({
             tags: tags.split(","),
             files: orderFilesForCreate(
               modelFileEntries,
-              images,
+              mediaFileEntries,
               stagedPdfFiles,
               uploaded,
             ),
             bom,
-            videos: mediaVideos(media),
+            videos: mediaLinkedVideos(media),
             sourceUrl,
             onshapeMicroversion,
             skipSliceKeys,
@@ -764,8 +769,11 @@ export function ModelForm({
                 ),
               ],
               bom,
-              images: mediaImages(media).map((image) => ({ src: image.src })),
-              videos: mediaVideos(media),
+              media: mediaFiles(media).map((entry) => ({
+                src: entry.src,
+                kind: entry.kind,
+              })),
+              videos: mediaLinkedVideos(media),
               printFiles: modelFileEntries.map((entry) => ({
                 filename: entry.filename,
                 size: entry.size,

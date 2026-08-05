@@ -16,10 +16,11 @@ export type ModelCardData = {
   sourceUrl: string | null;
   user: { name: string };
   category: { name: string } | null;
-  // `src` is the token-signed image URL (see fileSrc in @/lib/file-token),
+  // `src` is the token-signed file URL (see fileSrc in @/lib/file-token),
   // signed server-side because this card also renders inside client
-  // components (FeedGrid's infinite scroll).
-  files: { id: string; src: string; animated?: boolean }[];
+  // components (FeedGrid's infinite scroll). The first entry is the cover and
+  // may be a video, which plays on hover (see CoverImage).
+  files: { id: string; src: string; animated?: boolean; kind?: string }[];
   modelTags: { tag: { id: string; name: string } }[];
   // True when the model ships a `.scad` source, i.e. it's customizable via the
   // OpenSCAD parametric flow. Surfaced as a badge so browse cards flag it.
@@ -38,6 +39,7 @@ export function ModelCard({ model }: { model: ModelCardData }) {
               src={cover.src}
               alt={model.title}
               animated={cover.animated}
+              video={cover.kind === "video"}
               sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 25vw"
               className="object-cover transition-transform group-hover:scale-105"
             />

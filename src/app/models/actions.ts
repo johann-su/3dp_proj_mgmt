@@ -32,6 +32,7 @@ import {
   contentTypeForFilename,
   fileExtension,
   sanitizeRename,
+  GALLERY_KINDS,
 } from "@/lib/s3";
 import { processPendingSlices, sliceEligible } from "@/lib/slicer";
 import { animatedImageKeys } from "@/lib/storage";
@@ -140,7 +141,9 @@ export type UpdateModelInput = {
   // removed). Ids outside the kept set are ignored.
   renamedFiles?: { id: string; filename: string }[];
   modelFileOrder?: FileOrderRef[];
-  imageOrder?: FileOrderRef[];
+  // The gallery order — images and videos interleaved, since they share one
+  // carousel and one `position` sequence.
+  mediaOrder?: FileOrderRef[];
   bom?: BomItemInput[];
   // See CreateModelInput — the full list, not a delta.
   videos?: ModelVideo[];
@@ -156,18 +159,21 @@ export type UpdateModelInput = {
 };
 
 // Merges a client-supplied order (kept-file ids interleaved with indices into
-// newFiles) with any files of that kind the client didn't reference, which
-// are appended at the end. Kept generic over `kind` so model files and
-// images can each keep their own relative order within the shared,
-// otherwise-flat `position` column.
+// newFiles) with any files of those kinds the client didn't reference, which
+// are appended at the end. Takes a *set* of kinds so model files and gallery
+// media can each keep their own relative order within the shared,
+// otherwise-flat `position` column — images and videos pass GALLERY_KINDS
+// together, because the carousel interleaves them into one sequence and a
+// video dragged between two photos has to keep that slot.
 function resolveFileOrder(
-  kind: FileKind,
+  kinds: readonly FileKind[],
   kept: { id: string; kind: FileKind }[],
   newFiles: UploadedFile[],
   insertedIds: string[],
   orderRefs: FileOrderRef[] | undefined,
 ): string[] {
-  const keptIds = new Set(kept.filter((f) => f.kind === kind).map((f) => f.id));
+  const inGroup = (kind: FileKind | undefined) => !!kind && kinds.includes(kind);
+  const keptIds = new Set(kept.filter((f) => inGroup(f.kind)).map((f) => f.id));
   const ordered: string[] = [];
   const seen = new Set<string>();
   const push = (id: string | undefined) => {
@@ -179,13 +185,13 @@ function resolveFileOrder(
   for (const ref of orderRefs ?? []) {
     if ("existingId" in ref) {
       if (keptIds.has(ref.existingId)) push(ref.existingId);
-    } else if (newFiles[ref.newIndex]?.kind === kind) {
+    } else if (inGroup(newFiles[ref.newIndex]?.kind)) {
       push(insertedIds[ref.newIndex]);
     }
   }
   for (const id of keptIds) push(id);
   newFiles.forEach((file, i) => {
-    if (file.kind === kind) push(insertedIds[i]);
+    if (inGroup(file.kind)) push(insertedIds[i]);
   });
   return ordered;
 }
@@ -494,23 +500,25 @@ export async function updateModel(
       for (const row of inserted) insertedIds[row.position] = row.id;
     }
 
-    // Recompute positions: model files and images each follow the order
-    // chosen in the wizard (resolveFileOrder appends anything the client
-    // didn't reference); PDFs just keep kept-then-new, since there's no
-    // reorder UI for them.
+    // Recompute positions: model files and gallery media each follow the
+    // order chosen in the wizard (resolveFileOrder appends anything the
+    // client didn't reference); PDFs just keep kept-then-new, since there's
+    // no reorder UI for them.
     const orderedModelIds = resolveFileOrder(
-      "model",
+      ["model"],
       kept,
       input.newFiles,
       insertedIds,
       input.modelFileOrder,
     );
-    const orderedImageIds = resolveFileOrder(
-      "image",
+    // Images and videos resolve as one group: `mediaOrder` interleaves them,
+    // and the first entry is the model's cover whichever kind it is.
+    const orderedMediaIds = resolveFileOrder(
+      GALLERY_KINDS,
       kept,
       input.newFiles,
       insertedIds,
-      input.imageOrder,
+      input.mediaOrder,
     );
     const orderedIds = [
       ...orderedModelIds,
@@ -518,7 +526,7 @@ export async function updateModel(
       ...input.newFiles
         .map((file, i) => (file.kind === "pdf" ? insertedIds[i] : null))
         .filter((id): id is string => id !== null),
-      ...orderedImageIds,
+      ...orderedMediaIds,
     ];
     for (const [position, id] of orderedIds.entries()) {
       // Only kept (pre-existing) files can be renamed; newly inserted ones

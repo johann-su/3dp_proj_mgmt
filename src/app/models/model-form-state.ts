@@ -15,13 +15,17 @@ import {
 
 export const MODEL_ACCEPT = ".3mf,.scad";
 export const IMAGE_ACCEPT = ".png,.jpg,.jpeg,.webp,.gif";
+export const VIDEO_ACCEPT = ".mp4,.webm,.mov";
+// One picker takes both: photos and videos are the same gallery (see
+// MediaFileEntry), so they are chosen through the same file input.
+export const MEDIA_ACCEPT = `${IMAGE_ACCEPT},${VIDEO_ACCEPT}`;
 export const PDF_ACCEPT = ".pdf";
 
 export type ExistingFile = {
   id: string;
   filename: string;
   size: number;
-  kind: "model" | "image" | "pdf";
+  kind: "model" | "image" | "pdf" | "video";
   // Came with the model's source-platform import (model_files.imported) —
   // keeps the cloud badge visible in edit mode.
   imported: boolean;
@@ -44,21 +48,36 @@ export type ModelFormInitial = {
   createdAt: Date;
 };
 
-// One image in the wizard, in display order: already stored on the model
-// (edit mode), staged in S3 by a URL import (create mode), or freshly
-// picked (src is an object URL then).
-export type ImageEntry = {
+// One uploaded gallery file in the wizard, in display order: already stored
+// on the model (edit mode), staged in S3 by a URL import (create mode), or
+// freshly picked (src is an object URL then). Photos and videos share this
+// type — they are one carousel and one `position` sequence, so `kind` is a
+// field rather than a separate list to keep them orderable against each other.
+export type MediaFileEntry = {
   key: string;
   src: string;
   filename: string;
   size: number;
+  kind: "image" | "video";
 } & (
   | { type: "existing"; id: string }
   | { type: "staged"; staged: UploadedFile }
   | { type: "new"; file: File }
 );
 
-export function newImageEntry(file: File): ImageEntry {
+// Which gallery kind a picked file is. Keyed off the extension, not the
+// browser's File.type: the server derives the stored content type the same
+// way (contentTypeForFilename), so agreeing with it here means the wizard
+// can't stage something the save will then reject.
+export function mediaKindForFilename(filename: string): "image" | "video" {
+  return VIDEO_ACCEPT.split(",").some((ext) =>
+    filename.toLowerCase().endsWith(ext),
+  )
+    ? "video"
+    : "image";
+}
+
+export function newMediaFileEntry(file: File): MediaFileEntry {
   return {
     key: crypto.randomUUID(),
     type: "new",
@@ -66,10 +85,11 @@ export function newImageEntry(file: File): ImageEntry {
     src: URL.createObjectURL(file),
     filename: file.name,
     size: file.size,
+    kind: mediaKindForFilename(file.name),
   };
 }
 
-export function stagedImageEntry(file: UploadedFile): ImageEntry {
+export function stagedMediaFileEntry(file: UploadedFile): MediaFileEntry {
   return {
     key: file.key,
     type: "staged",
@@ -77,13 +97,15 @@ export function stagedImageEntry(file: UploadedFile): ImageEntry {
     src: `/api/uploads/preview?key=${encodeURIComponent(file.key)}`,
     filename: file.filename,
     size: file.size,
+    kind: file.kind === "video" ? "video" : "image",
   };
 }
 
-// A gallery video in the wizard. It sits in the same list as the images
-// because the gallery is one sequence — dragging a video between two images is
-// the whole point — but it has no file behind it, only the link.
-export type VideoEntry = {
+// A *linked* gallery video in the wizard — a YouTube URL. It sits in the same
+// list as the uploaded files because the gallery is one sequence, but it has
+// no file behind it, only the link. Distinct from a MediaFileEntry of kind
+// "video", which is a real uploaded/imported file in S3.
+export type LinkedVideoEntry = {
   key: string;
   type: "video";
   // Canonical watch URL, as stored (see canonicalYouTubeUrl).
@@ -91,43 +113,50 @@ export type VideoEntry = {
   video: YouTubeVideo;
 };
 
-export function videoEntry(url: string, video: YouTubeVideo): VideoEntry {
+export function linkedVideoEntry(url: string, video: YouTubeVideo): LinkedVideoEntry {
   // Keyed by video id: the same video can't appear twice in one gallery, so
   // the id is stable across reorders in a way a random key wouldn't be.
   return { key: video.id, type: "video", url, video };
 }
 
 // One slot in the gallery, as the media picker renders it.
-export type MediaEntry = ImageEntry | VideoEntry;
+export type MediaEntry = MediaFileEntry | LinkedVideoEntry;
 
-export function isVideoEntry(entry: MediaEntry): entry is VideoEntry {
+export function isLinkedVideo(entry: MediaEntry): entry is LinkedVideoEntry {
   return entry.type === "video";
 }
 
-export function mediaImages(media: MediaEntry[]): ImageEntry[] {
-  return media.filter((entry): entry is ImageEntry => entry.type !== "video");
+// An uploaded video file (as opposed to a YouTube link or a photo).
+// Deliberately not a type predicate: `entry is MediaFileEntry` would tell TS
+// the *false* branch holds no MediaFileEntry at all, narrowing photos away.
+export function isVideoFile(entry: MediaEntry): boolean {
+  return entry.type !== "video" && entry.kind === "video";
 }
 
-// The stored form of the wizard's videos: each one's index in the media list
-// *is* its position in the combined gallery order.
-export function mediaVideos(media: MediaEntry[]): ModelVideo[] {
+export function mediaFiles(media: MediaEntry[]): MediaFileEntry[] {
+  return media.filter((entry): entry is MediaFileEntry => entry.type !== "video");
+}
+
+// The stored form of the wizard's linked videos: each one's index in the media
+// list *is* its position in the combined gallery order.
+export function mediaLinkedVideos(media: MediaEntry[]): ModelVideo[] {
   return media.flatMap((entry, position) =>
     entry.type === "video" ? [{ url: entry.url, position }] : [],
   );
 }
 
-// The media list a saved model reopens with: its images and videos woven back
-// into the one order the gallery shows them in.
+// The media list a saved model reopens with: its uploaded files and linked
+// videos woven back into the one order the gallery shows them in.
 export function mediaFromInitial(
-  images: ImageEntry[],
+  files: MediaFileEntry[],
   videos: ModelVideo[],
 ): MediaEntry[] {
-  return orderGalleryItems(images, videos).flatMap<MediaEntry>((entry) => {
+  return orderGalleryItems(files, videos).flatMap<MediaEntry>((entry) => {
     if (entry.kind === "image") return [entry.item];
     const video = parseYouTubeUrl(entry.item.url);
     // A stored link we can't parse has no tile to render — the same rule the
     // gallery applies.
-    return video ? [videoEntry(entry.item.url, video)] : [];
+    return video ? [linkedVideoEntry(entry.item.url, video)] : [];
   });
 }
 
@@ -199,7 +228,7 @@ export function mergeTags(existing: string, addition: string) {
 
 export async function uploadFile(
   file: File,
-  kind: "model" | "image" | "pdf",
+  kind: "model" | "image" | "pdf" | "video",
   filename: string = file.name,
 ): Promise<UploadedFile> {
   const params = new URLSearchParams({ filename, kind });
@@ -276,10 +305,11 @@ export function formIsDirty(
   )
     return true;
 
-  // The gallery as one sequence: images (no rename, but order matters — the
-  // first image is the cover) and videos (canonicalized on save, so the URL
-  // compares directly). Marking each entry by kind means moving a video across
-  // an image reads as dirty too, even though neither list changed on its own.
+  // The gallery as one sequence: uploaded photos/videos (no rename, but order
+  // matters — the first entry is the cover) and linked videos (canonicalized
+  // on save, so the URL compares directly). Marking each entry by kind means
+  // moving a video across a photo reads as dirty too, even though neither
+  // list changed on its own.
   const curMedia = current.media.map((entry) =>
     entry.type === "video"
       ? `v:${entry.url}`
@@ -289,7 +319,7 @@ export function formIsDirty(
   );
   const initMedia = mediaFromInitial(
     initial.files
-      .filter((f) => f.kind === "image")
+      .filter((f) => f.kind === "image" || f.kind === "video")
       .map((f) => ({
         key: f.id,
         type: "existing" as const,
@@ -297,6 +327,7 @@ export function formIsDirty(
         src: "",
         filename: f.filename,
         size: f.size,
+        kind: f.kind === "video" ? ("video" as const) : ("image" as const),
       })),
     initial.videos,
   ).map((entry) => (entry.type === "video" ? `v:${entry.url}` : `i:${entry.key}`));
@@ -386,15 +417,17 @@ export function skippedSliceKeys(
   return keys;
 }
 
-// Edit mode: per-kind order lists for updateModel. newIndex values are
+// Edit mode: per-group order lists for updateModel. newIndex values are
 // indices into the uploaded/newFiles array, which lists new model files
-// first, then new PDFs, then new images (the wizard's upload order) — so the
-// running counter skips the PDF block between the two lists.
+// first, then new PDFs, then new gallery media (the wizard's upload order) —
+// so the running counter skips the PDF block between the two lists.
 export function buildUpdateFileOrders(
   modelFileEntries: ModelFileEntry[],
   newPdfCount: number,
-  images: ImageEntry[],
-): { modelFileOrder: FileOrderRef[]; imageOrder: FileOrderRef[] } {
+  // Photos and videos in one list: they resolve as a single order group, so a
+  // video's slot between two photos survives the round-trip.
+  media: MediaFileEntry[],
+): { modelFileOrder: FileOrderRef[]; mediaOrder: FileOrderRef[] } {
   let uploadIndex = 0;
   const modelFileOrder: FileOrderRef[] = modelFileEntries.map((entry) =>
     entry.type === "existing"
@@ -402,29 +435,34 @@ export function buildUpdateFileOrders(
       : { newIndex: uploadIndex++ },
   );
   uploadIndex += newPdfCount;
-  const imageOrder: FileOrderRef[] = images.map((image) =>
-    image.type === "existing"
-      ? { existingId: image.id }
+  const mediaOrder: FileOrderRef[] = media.map((entry) =>
+    entry.type === "existing"
+      ? { existingId: entry.id }
       : { newIndex: uploadIndex++ },
   );
-  return { modelFileOrder, imageOrder };
+  return { modelFileOrder, mediaOrder };
 }
 
 // Create mode: the flat file list for createModel. Order determines position
-// (and the image cover = first image): model files and images each follow
-// the order arranged in the wizard (staged and new interleaved), then PDFs.
-// `uploaded` holds the freshly uploaded files in wizard upload order (model
-// files, then PDFs, then images), so walking the entries and consuming the
-// matching kind one by one restores the arrangement.
+// (and the cover = the first gallery entry, photo or video): model files and
+// gallery media each follow the order arranged in the wizard (staged and new
+// interleaved), then PDFs. `uploaded` holds the freshly uploaded files in
+// wizard upload order (model files, then PDFs, then gallery media), so
+// walking the entries and consuming the matching group one by one restores
+// the arrangement.
 export function orderFilesForCreate(
   modelFileEntries: ModelFileEntry[],
-  images: ImageEntry[],
+  media: MediaFileEntry[],
   stagedPdfFiles: UploadedFile[],
   uploaded: UploadedFile[],
 ): UploadedFile[] {
   const uploadedModels = uploaded.filter((f) => f.kind === "model");
   const uploadedPdfs = uploaded.filter((f) => f.kind === "pdf");
-  const uploadedImages = uploaded.filter((f) => f.kind === "image");
+  // Photos and videos are consumed from one queue, in the order the picker
+  // uploaded them, so their interleaving survives.
+  const uploadedMedia = uploaded.filter(
+    (f) => f.kind === "image" || f.kind === "video",
+  );
 
   let uploadedModelIndex = 0;
   const orderedModelFiles: UploadedFile[] = [];
@@ -433,12 +471,12 @@ export function orderFilesForCreate(
     else if (entry.type === "new")
       orderedModelFiles.push(uploadedModels[uploadedModelIndex++]);
   }
-  let uploadedImageIndex = 0;
-  const orderedImages: UploadedFile[] = [];
-  for (const image of images) {
-    if (image.type === "staged") orderedImages.push(image.staged);
-    else if (image.type === "new")
-      orderedImages.push(uploadedImages[uploadedImageIndex++]);
+  let uploadedMediaIndex = 0;
+  const orderedMedia: UploadedFile[] = [];
+  for (const entry of media) {
+    if (entry.type === "staged") orderedMedia.push(entry.staged);
+    else if (entry.type === "new")
+      orderedMedia.push(uploadedMedia[uploadedMediaIndex++]);
   }
-  return [...orderedModelFiles, ...stagedPdfFiles, ...uploadedPdfs, ...orderedImages];
+  return [...orderedModelFiles, ...stagedPdfFiles, ...uploadedPdfs, ...orderedMedia];
 }

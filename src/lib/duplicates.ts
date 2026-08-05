@@ -128,6 +128,9 @@ function loadCandidates(where: ReturnType<typeof and>, limit = MAX_CANDIDATES) {
     with: {
       user: { columns: { name: true } },
       files: {
+        // Images only, unlike the browse cards: the duplicate dialog draws a
+        // 48px thumbnail through next/image, which has no frame to pull out
+        // of a video. A video-covered model just shows the placeholder box.
         where: (f, { eq: is }) => is(f.kind, "image"),
         orderBy: (f, { asc }) => asc(f.position),
         limit: 1,

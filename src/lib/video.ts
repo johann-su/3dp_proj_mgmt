@@ -127,6 +127,16 @@ export function youTubeThumbnailUrl(
   return `https://i.ytimg.com/vi/${video.id}/${size === "lg" ? "hq" : "mq"}default.jpg`;
 }
 
+// The src to use when an *uploaded* video is shown but not playing (a card
+// cover at rest, a carousel thumbnail). No poster image is generated when a
+// video is uploaded, so the still is taken from the file: the media fragment
+// makes the browser seek a hair past the start and paint that frame. Without
+// it Safari leaves the element blank until something forces a decode, and a
+// video cover renders as a black box.
+export function posterSrc(src: string): string {
+  return `${src}#t=0.1`;
+}
+
 // Validates and canonicalizes what a save was given. Returns the cleaned list
 // or an error string, like sanitizeBomItems. Duplicates are dropped by video
 // id (the same video twice in one carousel is a mistake, not an intent), and

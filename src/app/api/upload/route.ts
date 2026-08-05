@@ -13,9 +13,12 @@ export async function POST(req: NextRequest) {
 
   const filename = req.nextUrl.searchParams.get("filename");
   const kind = req.nextUrl.searchParams.get("kind");
-  if (!filename || (kind !== "model" && kind !== "image" && kind !== "pdf")) {
+  if (
+    !filename ||
+    (kind !== "model" && kind !== "image" && kind !== "pdf" && kind !== "video")
+  ) {
     return NextResponse.json(
-      { error: "filename and kind (model|image|pdf) are required" },
+      { error: "filename and kind (model|image|pdf|video) are required" },
       { status: 400 },
     );
   }

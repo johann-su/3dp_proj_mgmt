@@ -97,11 +97,12 @@ const FOLDERS: Record<FileKind, string> = {
   model: "files",
   pdf: "documents",
   image: "images",
+  video: "videos",
 };
 
-// Payloads that carry their own compression (.3mf is itself a zip; images and
-// PDFs are compressed formats) are stored rather than deflated — deflating
-// them again costs CPU on every export for roughly nothing.
+// Payloads that carry their own compression (.3mf is itself a zip; images,
+// video and PDFs are compressed formats) are stored rather than deflated —
+// deflating them again costs CPU on every export for roughly nothing.
 const STORED_EXTENSIONS = new Set([
   ".3mf",
   ".png",
@@ -110,6 +111,9 @@ const STORED_EXTENSIONS = new Set([
   ".webp",
   ".gif",
   ".pdf",
+  ".mp4",
+  ".webm",
+  ".mov",
 ]);
 
 // Splits a filename into base + extension, preserving the original case (unlike
