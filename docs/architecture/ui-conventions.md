@@ -19,6 +19,12 @@ and the ubiquitous shadcn dialog/sheet "X" close button (self-evident, has
 `sr-only` text already, and a tooltip on every modal close button is more noise
 than help).
 
+**Media-player exception**: the gallery video player's transport buttons
+(play/pause, mute, full screen in `image-gallery.tsx`) carry `aria-label`s but
+no tooltip. They are the same universally-understood glyphs as the dialog "X",
+they sit in a bar that already overlays the video, and a tooltip firing as the
+pointer crosses them on the way to the scrubber covers the thing being watched.
+
 **Sidebar exception**: don't add a tooltip when the sidebar is expanded and the
 button already shows a text label next to the icon — `SidebarMenuButton`'s own
 `tooltip` prop already handles this correctly (`src/components/ui/sidebar.tsx`:

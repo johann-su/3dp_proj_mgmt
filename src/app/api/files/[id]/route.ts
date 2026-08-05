@@ -3,10 +3,11 @@ import { GetObjectCommand } from "@aws-sdk/client-s3";
 import { eq } from "drizzle-orm";
 import { db } from "@/db";
 import { modelFiles } from "@/db/schema";
-import { s3, S3_BUCKET, contentTypeForFilename } from "@/lib/s3";
+import { s3, S3_BUCKET, contentTypeForFilename, isGalleryKind } from "@/lib/s3";
 import { getSession } from "@/lib/auth";
 import { verifyFileToken } from "@/lib/file-token";
 import { incrementFileDownloadCount } from "@/lib/metrics";
+import { parseByteRange, toS3Range } from "@/lib/http-range";
 
 export const runtime = "nodejs";
 
@@ -39,8 +40,22 @@ export async function GET(
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
 
+  // Seeking a video sends a Range header; answer it with 206 + Content-Range
+  // rather than the whole object (Safari won't play a source that doesn't).
+  const range = parseByteRange(req.headers.get("range"), file.size);
+  if (range === "unsatisfiable") {
+    return new Response(null, {
+      status: 416,
+      headers: { "Content-Range": `bytes */${file.size}` },
+    });
+  }
+
   const object = await s3.send(
-    new GetObjectCommand({ Bucket: S3_BUCKET, Key: file.s3Key }),
+    new GetObjectCommand({
+      Bucket: S3_BUCKET,
+      Key: file.s3Key,
+      ...(range ? { Range: toS3Range(range) } : {}),
+    }),
   );
   if (!object.Body) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
@@ -49,8 +64,9 @@ export async function GET(
   const asAttachment =
     file.kind === "model" || req.nextUrl.searchParams.get("download") === "1";
   // Only count real downloads, not inline image views (gallery thumbnails,
-  // the next/image optimizer).
-  if (asAttachment) after(() => incrementFileDownloadCount(file.id));
+  // the next/image optimizer) — and not each of the many range requests a
+  // video player makes while scrubbing.
+  if (asAttachment && !range) after(() => incrementFileDownloadCount(file.id));
 
   const headers = new Headers();
   // Content type comes from the allowlisted extension, not the stored value:
@@ -60,6 +76,12 @@ export async function GET(
   headers.set("X-Content-Type-Options", "nosniff");
   if (object.ContentLength !== undefined) {
     headers.set("Content-Length", String(object.ContentLength));
+  }
+  // Advertised unconditionally so a player knows it may seek before it has
+  // issued its first range request.
+  headers.set("Accept-Ranges", "bytes");
+  if (range) {
+    headers.set("Content-Range", `bytes ${range.start}-${range.end}/${file.size}`);
   }
   headers.set(
     "Content-Disposition",
@@ -74,10 +96,13 @@ export async function GET(
   // serve one user's fetch to anonymous clients under the token-less URL.
   headers.set(
     "Cache-Control",
-    file.kind === "image" && viaToken
+    isGalleryKind(file.kind) && viaToken
       ? "public, max-age=31536000, immutable"
       : "private, max-age=3600",
   );
 
-  return new Response(object.Body.transformToWebStream(), { headers });
+  return new Response(object.Body.transformToWebStream(), {
+    status: range ? 206 : 200,
+    headers,
+  });
 }

@@ -9,6 +9,9 @@
 
 import { htmlishToMarkdown } from "@/lib/html";
 import type { BomItemInput } from "@/lib/bom";
+// From file-kind, not s3: this module is unit-tested, and @/lib/s3 builds an
+// S3 client from env at load time.
+import { fileExtension, VIDEO_EXTENSIONS } from "@/lib/file-kind";
 import {
   apiBase,
   fetchProfileDownload,
@@ -108,6 +111,11 @@ export function collectScadModelFiles(
 
 type DesignExtension = {
   design_pictures?: DesignPicture[];
+  // Gallery videos the designer uploaded — direct file links (an .mp4 on
+  // MakerWorld's CDN), same shape as design_pictures. Downloaded and stored
+  // like a photo rather than hotlinked: the CDN URL is not guaranteed stable
+  // and the model page must keep working without makerworld.com.
+  design_video?: DesignPicture[];
   model_files?: DesignModelFile[];
   // Attached documents: assembly guide(s) and, when the maker uploads one, a
   // BOM sheet. Both are download links (usually PDFs).
@@ -199,6 +207,24 @@ export function selectImageUrls(design: MakerworldDesign): string[] {
   const urls = [design.coverUrl, ...pictures.map((p) => p.url)].filter(
     (u): u is string => typeof u === "string" && u.startsWith("http"),
   );
+  return [...new Set(urls)];
+}
+
+// The design's gallery videos, deduped and in upstream order. Only entries
+// that actually name a video file are kept: `design_video` is the only place
+// MakerWorld hands out a media URL whose extension we don't otherwise
+// constrain, and staging would drop a non-video anyway — filtering here keeps
+// the import from reporting a download it was never going to keep.
+export function selectVideoUrls(design: MakerworldDesign): string[] {
+  const videos = design.designExtension?.design_video ?? [];
+  const urls = videos
+    .map((v) => v.url)
+    .filter(
+      (u): u is string =>
+        typeof u === "string" &&
+        u.startsWith("http") &&
+        VIDEO_EXTENSIONS.includes(fileExtension(u.split("?")[0])),
+    );
   return [...new Set(urls)];
 }
 
@@ -522,6 +548,17 @@ export async function importFromMakerworld(
     filename: imageUrl.split("/").pop()?.split("?")[0] || `image-${i + 1}.jpg`,
     kind: "image",
   }));
+
+  // Videos follow the photos: MakerWorld shows its video first, but the cover
+  // is what browse cards render, and a design's cover image is the picture the
+  // designer chose for exactly that. The order stays editable in the wizard.
+  assets.push(
+    ...selectVideoUrls(design).map((videoUrl, i) => ({
+      url: videoUrl,
+      filename: videoUrl.split("/").pop()?.split("?")[0] || `video-${i + 1}.mp4`,
+      kind: "video" as const,
+    })),
+  );
 
   // Attached PDFs (assembly guide / BOM sheet) import as document files.
   assets.push(...selectDocs(design));

@@ -24,10 +24,11 @@ import {
 } from "lucide-react";
 import type { UploadedFile } from "@/app/models/actions";
 import {
-  IMAGE_ACCEPT,
+  MEDIA_ACCEPT,
   isQueuedForSlicing,
-  isVideoEntry,
-  mediaImages,
+  isLinkedVideo,
+  isVideoFile,
+  mediaFiles,
   MODEL_ACCEPT,
   splitExtension,
   type ExistingFile,
@@ -539,12 +540,13 @@ export function ModelFilePicker({
   );
 }
 
-// The gallery: preview images and YouTube videos in one grid, because the
-// model page shows them as one carousel — a video dragged between two images
-// stays between those two images (its index here is the `position` saved with
-// it, see mediaVideos). Videos have no file behind them, so the picker carries
-// two add affordances: the file input, and a URL field that only accepts a
-// link src/lib/video.ts recognizes.
+// The gallery: uploaded photos and videos plus linked YouTube videos in one
+// grid, because the model page shows them as one carousel — anything dragged
+// between two photos stays there (an uploaded file's index here is its
+// `position`; a linked video's is the `position` saved with it, see
+// mediaLinkedVideos). A linked video has no file behind it, so the picker
+// carries two add affordances: the file input (photos *and* video files), and
+// a URL field that only accepts a link src/lib/video.ts recognizes.
 export function MediaPicker({
   media,
   onAddImages,
@@ -554,6 +556,7 @@ export function MediaPicker({
   onReorder,
 }: {
   media: MediaEntry[];
+  // Photos and video files alike — the picker sorts them out by extension.
   onAddImages: (files: File[]) => void;
   // Returns an error to show under the field, or null when the video was added.
   onAddVideo: (url: string) => string | null;
@@ -565,7 +568,9 @@ export function MediaPicker({
   const [draggedKey, setDraggedKey] = useState<string | null>(null);
   const [videoDraft, setVideoDraft] = useState("");
   const [videoError, setVideoError] = useState<string | null>(null);
-  const videoCount = media.filter(isVideoEntry).length;
+  // Only *linked* videos count against the cap — uploaded video files are
+  // model_files like any photo, bounded by the upload size limit instead.
+  const videoCount = media.filter(isLinkedVideo).length;
 
   function addVideo() {
     const error = onAddVideo(videoDraft);
@@ -579,7 +584,7 @@ export function MediaPicker({
       <input
         ref={inputRef}
         type="file"
-        accept={IMAGE_ACCEPT}
+        accept={MEDIA_ACCEPT}
         multiple
         className="hidden"
         onChange={(e) => {
@@ -594,7 +599,7 @@ export function MediaPicker({
         className="border border-dashed rounded-lg p-6 text-sm text-muted-foreground hover:bg-accent/50 transition-colors flex flex-col items-center gap-2"
       >
         <ImageIcon className="size-6" />
-        Click to add preview images — the first image is the cover, drag
+        Click to add photos or videos — the first one is the cover, drag
         thumbnails to reorder
       </button>
       <div className="flex gap-2">
@@ -637,7 +642,7 @@ export function MediaPicker({
       {media.length > 0 && (
         <ul className="grid grid-cols-3 sm:grid-cols-4 gap-2">
           {media.map((entry, i) => {
-            const label = isVideoEntry(entry) ? entry.url : entry.filename;
+            const label = isLinkedVideo(entry) ? entry.url : entry.filename;
             return (
             <li
               key={entry.key}
@@ -646,7 +651,7 @@ export function MediaPicker({
                 draggedKey === entry.key && "opacity-50",
               )}
               title={
-                isVideoEntry(entry)
+                isLinkedVideo(entry)
                   ? entry.url
                   : `${entry.filename} (${formatBytes(entry.size)})`
               }
@@ -667,7 +672,7 @@ export function MediaPicker({
               }}
               onDrop={(e) => e.preventDefault()}
             >
-              {isVideoEntry(entry) ? (
+              {isLinkedVideo(entry) ? (
                 <>
                   {/* Remote host — next/image would need its own allowlist to
                       add nothing at this size. */}
@@ -683,6 +688,24 @@ export function MediaPicker({
                     </span>
                   </span>
                 </>
+              ) : isVideoFile(entry) ? (
+                <>
+                  {/* preload="metadata" is enough for the browser to paint the
+                      first frame as a poster; the tile never plays, so there
+                      is no reason to fetch more of the file than that. */}
+                  <video
+                    src={entry.src}
+                    muted
+                    playsInline
+                    preload="metadata"
+                    className="aspect-square w-full bg-black object-cover"
+                  />
+                  <span className="absolute inset-0 flex items-center justify-center bg-black/20">
+                    <span className="flex h-6 w-9 items-center justify-center rounded bg-black/70">
+                      <SquarePlay className="size-4 text-white" />
+                    </span>
+                  </span>
+                </>
               ) : (
                 /* eslint-disable-next-line @next/next/no-img-element */
                 <img
@@ -691,9 +714,10 @@ export function MediaPicker({
                   className="aspect-square w-full object-cover"
                 />
               )}
-              {/* The cover is the first *image*: browse cards show a file, and
-                  a video sorted to the front doesn't change that. */}
-              {!isVideoEntry(entry) && mediaImages(media)[0]?.key === entry.key && (
+              {/* The cover is the first uploaded file — photo or video. A
+                  linked video can't be one: browse cards show a stored file,
+                  and there is nothing of a YouTube link to show there. */}
+              {!isLinkedVideo(entry) && mediaFiles(media)[0]?.key === entry.key && (
                 <span className="absolute top-1 left-1 rounded bg-primary text-primary-foreground text-[10px] font-medium px-1.5 py-0.5">
                   Cover
                 </span>

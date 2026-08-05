@@ -3,7 +3,7 @@ import type { BomItemInput } from "@/lib/bom";
 export type RemoteAsset = {
   url: string;
   filename: string;
-  kind: "model" | "image" | "pdf";
+  kind: "model" | "image" | "pdf" | "video";
   // Extra request headers for sources that gate downloads behind auth
   // (Onshape API downloads need the user's Basic auth header).
   headers?: Record<string, string>;

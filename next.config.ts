@@ -4,11 +4,12 @@ import type { NextConfig } from "next";
 const dev = process.env.NODE_ENV !== "production";
 
 // Nearly everything the app loads is same-origin: Tailwind ships a static
-// stylesheet, next/font self-hosts, and every uploaded image goes through
-// /api/files (see images.localPatterns below). The exception is gallery videos
-// (src/lib/video.ts): YouTube's poster frames from i.ytimg.com, and the player
-// itself, which is framed only after the viewer clicks play. Both srcs are
-// built from a parsed 11-character video id, never from a stored string.
+// stylesheet, next/font self-hosts, and every uploaded image and video goes
+// through /api/files (see images.localPatterns below). The exception is
+// *linked* gallery videos (src/lib/video.ts): YouTube's poster frames from
+// i.ytimg.com, and the player itself, which is framed only after the viewer
+// clicks play. Both srcs are built from a parsed 11-character video id, never
+// from a stored string.
 // 'unsafe-inline' stays because Next inlines its bootstrap/flight scripts and
 // React inlines style attributes; tightening that needs a nonce, which means
 // making every page dynamic. blob: covers the three.js preview's object URLs.
@@ -17,6 +18,11 @@ const csp = [
   `script-src 'self' 'unsafe-inline'${dev ? " 'unsafe-eval'" : ""}`,
   "style-src 'self' 'unsafe-inline'",
   "img-src 'self' data: blob: https://i.ytimg.com",
+  // Uploaded gallery videos, all same-origin through /api/files. blob: is for
+  // the create/edit wizard, which previews a freshly picked video from an
+  // object URL before it has been uploaded anywhere — without this the
+  // default-src fallback would block it.
+  "media-src 'self' blob:",
   "font-src 'self' data:",
   "connect-src 'self'",
   "frame-src 'self' https://www.youtube.com",

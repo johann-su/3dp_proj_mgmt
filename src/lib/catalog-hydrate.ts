@@ -2,6 +2,7 @@ import { db } from "@/db";
 import type { ModelCardData } from "@/components/model-card";
 import type { CollectionCardData } from "@/components/collection-card";
 import { fileSrc } from "@/lib/file-token";
+import { GALLERY_KINDS } from "@/lib/file-kind";
 import { parametricExtra } from "@/lib/parametric";
 import { smartCollectionPreviews } from "@/lib/smart-collections";
 
@@ -32,7 +33,7 @@ export async function hydrateCatalogRows(
             user: { columns: { name: true } },
             category: true,
             files: {
-              where: (fl, { eq }) => eq(fl.kind, "image"),
+              where: (fl, { inArray }) => inArray(fl.kind, GALLERY_KINDS),
               orderBy: (fl, { asc }) => asc(fl.position),
               limit: 1,
             },
@@ -51,7 +52,7 @@ export async function hydrateCatalogRows(
                   columns: { id: true, deletedAt: true },
                   with: {
                     files: {
-                      where: (fl, { eq }) => eq(fl.kind, "image"),
+                      where: (fl, { inArray }) => inArray(fl.kind, GALLERY_KINDS),
                       orderBy: (fl, { asc }) => asc(fl.position),
                       limit: 1,
                     },
@@ -77,6 +78,7 @@ export async function hydrateCatalogRows(
           id: f.id,
           src: fileSrc(f.id),
           animated: f.animated,
+          kind: f.kind,
         })),
         modelTags: m.modelTags,
         parametric: m.parametric,
@@ -112,6 +114,7 @@ export async function hydrateCatalogRows(
                     id: f.id,
                     src: fileSrc(f.id),
                     animated: f.animated,
+                    kind: f.kind,
                   })),
                 },
               })),

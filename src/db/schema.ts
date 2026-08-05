@@ -216,7 +216,10 @@ export const onshapeCredentials = pgTable("onshape_credentials", {
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
 
-export type FileKind = "model" | "image" | "pdf";
+// "image" and "video" are both gallery media and share one position sequence
+// (see GALLERY_KINDS in src/lib/file-kind.ts) — the carousel shows them as one
+// list, and either can be the model's cover.
+export type FileKind = "model" | "image" | "pdf" | "video";
 
 // Print-estimate lifecycle of a .3mf model file (see src/lib/slicer.ts):
 // pending  queued for the slicer service (or the service is unreachable)

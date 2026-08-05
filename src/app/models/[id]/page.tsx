@@ -104,7 +104,11 @@ export default async function ModelPage({
           }))
           .reverse();
 
-  const images = model.files.filter((f) => f.kind === "image");
+  // Photos and uploaded videos in one list — they share the carousel and
+  // the `position` sequence, and either can be the cover.
+  const media = model.files.filter(
+    (f) => f.kind === "image" || f.kind === "video",
+  );
   const printFiles = model.files.filter((f) => f.kind === "model");
   const pdfFiles = model.files.filter((f) => f.kind === "pdf");
   // Owner-equivalent for the destructive bits (delete the model, delete any
@@ -223,7 +227,10 @@ export default async function ModelPage({
     sourceName,
     onshapeWvm,
     makerworldUrl,
-    images: images.map((img) => ({ src: fileSrc(img.id) })),
+    media: media.map((f) => ({
+      src: fileSrc(f.id),
+      kind: f.kind === "video" ? ("video" as const) : ("image" as const),
+    })),
     videos: model.videos,
     // Every stored .3mf can be previewed interactively in the gallery; .step
     // and .scad geometry can't be rendered client-side, so they're excluded.

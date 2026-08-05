@@ -9,6 +9,7 @@ import {
   selectBomItems,
   selectDocs,
   selectImageUrls,
+  selectVideoUrls,
 } from "@/lib/import/makerworld";
 
 test("importFromMakerworld downloads the OpenSCAD source of parametric designs", async (t) => {
@@ -461,4 +462,52 @@ test("makerworld import stamps the same sync ids on its staged assets", async (t
   assert.equal(profile?.sourceModifiedAt, "2025-06-24T05:17:29Z");
   const doc = project.assets.find((a) => a.kind === "pdf");
   assert.equal(doc?.sourceFileId, "doc:Guide.pdf");
+});
+
+// MakerWorld hands out gallery videos as direct CDN file links under
+// designExtension.design_video — the same shape as design_pictures. They are
+// downloaded and stored like a photo, so what matters here is that only real
+// video files survive the selection.
+test("selectVideoUrls keeps the design's video files, in order and deduped", () => {
+  assert.deepEqual(
+    selectVideoUrls({
+      designExtension: {
+        design_video: [
+          { url: "https://cdn/clip.mp4" },
+          { url: "https://cdn/second.webm" },
+          { url: "https://cdn/clip.mp4" },
+        ],
+      },
+    }),
+    ["https://cdn/clip.mp4", "https://cdn/second.webm"],
+  );
+
+  // A query string doesn't hide the extension — CDN links carry one.
+  assert.deepEqual(
+    selectVideoUrls({
+      designExtension: { design_video: [{ url: "https://cdn/clip.mp4?sign=abc" }] },
+    }),
+    ["https://cdn/clip.mp4?sign=abc"],
+  );
+});
+
+// Staging would drop these anyway (it re-checks the extension), but filtering
+// here keeps the import from reporting a download it was never going to keep.
+test("selectVideoUrls drops entries that don't name a playable video file", () => {
+  assert.deepEqual(
+    selectVideoUrls({
+      designExtension: {
+        design_video: [
+          { url: "https://cdn/not-a-video.jpg" },
+          { url: "https://cdn/no-extension" },
+          { url: "data:video/mp4;base64,AAAA" },
+          { url: "https://cdn/good.mov" },
+        ],
+      },
+    }),
+    ["https://cdn/good.mov"],
+  );
+
+  // A design with no videos at all is the common case.
+  assert.deepEqual(selectVideoUrls({}), []);
 });

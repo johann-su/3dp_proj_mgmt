@@ -4,13 +4,22 @@
 
 import { stageBuffer, stageStream } from "@/lib/storage";
 import { normalizeThreeMf } from "@/lib/threemf-normalize";
-import { fileExtension, IMAGE_EXTENSIONS, PDF_EXTENSIONS } from "@/lib/s3";
+import {
+  fileExtension,
+  IMAGE_EXTENSIONS,
+  PDF_EXTENSIONS,
+  VIDEO_EXTENSIONS,
+} from "@/lib/s3";
 import { extractScadFiles } from "./scad-archive";
 import { IMPORT_USER_AGENT, type ImportedProject, type RemoteAsset } from "./types";
 
 const MAX_MODEL_BYTES = 1024 * 1024 * 1024; // 1 GB
 const MAX_IMAGE_BYTES = 30 * 1024 * 1024;
 const MAX_PDF_BYTES = 100 * 1024 * 1024;
+// Gallery videos (MakerWorld's design_video). Generous next to an image but
+// far below a model file: these are short clips of a print, and the whole
+// file is served to a <video> element on the model page.
+const MAX_VIDEO_BYTES = 200 * 1024 * 1024;
 
 const CONTENT_TYPES: Record<string, string> = {
   ".png": "image/png",
@@ -23,6 +32,9 @@ const CONTENT_TYPES: Record<string, string> = {
   ".stp": "model/step",
   ".scad": "application/x-openscad",
   ".pdf": "application/pdf",
+  ".mp4": "video/mp4",
+  ".webm": "video/webm",
+  ".mov": "video/quicktime",
 };
 
 // MakerWorld's raw-model download serves a single .scad or, when a design has
@@ -64,6 +76,7 @@ const MAX_BYTES: Record<RemoteAsset["kind"], number> = {
   model: MAX_MODEL_BYTES,
   image: MAX_IMAGE_BYTES,
   pdf: MAX_PDF_BYTES,
+  video: MAX_VIDEO_BYTES,
 };
 
 export type StagedImportFile = {
@@ -74,7 +87,7 @@ export type StagedImportFile = {
   // SHA-256 of the staged bytes (see StagedFile) — carried through the draft so
   // createModel can store it and later uploads of the same file get flagged.
   contentHash: string;
-  kind: "model" | "image" | "pdf";
+  kind: "model" | "image" | "pdf" | "video";
   onshapeElementId?: string;
   // Upstream identity + last-modified token for the source sync (mirrors
   // RemoteAsset; scad archive entries derive their id from the entry name).
@@ -120,9 +133,13 @@ export async function stageImportedAssets(
         continue;
       }
       const ext = fileExtension(asset.filename);
-      // Extension-gate images and PDFs: createModel derives the stored content
-      // type from the extension and rejects a kind/extension mismatch, so a
-      // stray non-.pdf "document" or non-image "image" must be dropped here.
+      // Extension-gate gallery media and PDFs: createModel derives the stored
+      // content type from the extension and rejects a kind/extension
+      // mismatch, so a stray non-.pdf "document", non-image "image" or
+      // non-video "video" must be dropped here.
+      if (asset.kind === "video" && !VIDEO_EXTENSIONS.includes(ext)) {
+        continue;
+      }
       if (asset.kind === "image" && !IMAGE_EXTENSIONS.includes(ext)) {
         continue;
       }

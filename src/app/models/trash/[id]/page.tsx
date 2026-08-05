@@ -64,7 +64,9 @@ export default async function TrashPreviewPage({
   // Scoped like the trash list itself — owner or moderator/admin only.
   if (!canActAsOwner(session.user, model.userId)) notFound();
 
-  const images = model.files.filter((f) => f.kind === "image");
+  const media = model.files.filter(
+    (f) => f.kind === "image" || f.kind === "video",
+  );
   const printFiles = model.files.filter((f) => f.kind === "model");
   const pdfFiles = model.files.filter((f) => f.kind === "pdf");
 
@@ -136,7 +138,10 @@ export default async function TrashPreviewPage({
     // gates already require modelId anyway.
     onshapeWvm: null,
     makerworldUrl: null,
-    images: images.map((img) => ({ src: fileSrc(img.id) })),
+    media: media.map((f) => ({
+      src: fileSrc(f.id),
+      kind: f.kind === "video" ? ("video" as const) : ("image" as const),
+    })),
     videos: model.videos,
     modelFiles: printFiles
       .filter((f) => f.filename.toLowerCase().endsWith(".3mf"))

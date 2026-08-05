@@ -79,7 +79,7 @@ export default async function ModelVersionPreviewPage({
     ...file,
     src: versionFileSrc(versionId, i),
   }));
-  const images = files.filter((f) => f.kind === "image");
+  const media = files.filter((f) => f.kind === "image" || f.kind === "video");
   const printFiles = files.filter((f) => f.kind === "model");
   const pdfFiles = files.filter((f) => f.kind === "pdf");
 
@@ -118,7 +118,10 @@ export default async function ModelVersionPreviewPage({
     // historical preview would be confusing (it acts on the live model).
     onshapeWvm: null,
     makerworldUrl: null,
-    images: images.map((img) => ({ src: img.src })),
+    media: media.map((f) => ({
+      src: f.src,
+      kind: f.kind === "video" ? ("video" as const) : ("image" as const),
+    })),
     // Snapshots taken before gallery videos existed have no `videos` key.
     videos: snapshot.videos ?? [],
     modelFiles: printFiles

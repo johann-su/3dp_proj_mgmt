@@ -11,13 +11,30 @@ export const MODEL_EXTENSIONS = [".3mf", ".step", ".stp", ".scad"];
 export const IMAGE_EXTENSIONS = [".png", ".jpg", ".jpeg", ".webp", ".gif"];
 // Optional documents attached to a model (build instructions, manual, …)
 export const PDF_EXTENSIONS = [".pdf"];
+// Gallery videos (a print in motion, an assembly clip). Deliberately only the
+// three containers every target browser plays natively — the file is served
+// straight to a <video> element, and there is no transcoding step to rescue a
+// format the browser refuses. .mov is here because phone cameras produce it;
+// its H.264 payload plays in Safari and Chrome, though not Firefox.
+export const VIDEO_EXTENSIONS = [".mp4", ".webm", ".mov"];
 
-export function allowedExtensions(kind: "model" | "image" | "pdf") {
+// Kinds that share the model's one gallery sequence (see GALLERY_KINDS): a
+// video dragged between two photos keeps that slot, so they cannot be ordered
+// independently of each other.
+export const GALLERY_KINDS: ("image" | "video")[] = ["image", "video"];
+
+export function isGalleryKind(kind: string): kind is "image" | "video" {
+  return kind === "image" || kind === "video";
+}
+
+export function allowedExtensions(kind: "model" | "image" | "pdf" | "video") {
   return kind === "model"
     ? MODEL_EXTENSIONS
     : kind === "pdf"
       ? PDF_EXTENSIONS
-      : IMAGE_EXTENSIONS;
+      : kind === "video"
+        ? VIDEO_EXTENSIONS
+        : IMAGE_EXTENSIONS;
 }
 
 export function fileExtension(filename: string) {
@@ -41,6 +58,11 @@ const EXTENSION_CONTENT_TYPES: Record<string, string> = {
   ".webp": "image/webp",
   ".gif": "image/gif",
   ".pdf": "application/pdf",
+  // Served inline to a <video> element. Safe to render inline for the same
+  // reason images are: a browser never treats video/* as markup.
+  ".mp4": "video/mp4",
+  ".webm": "video/webm",
+  ".mov": "video/quicktime",
 };
 
 export function contentTypeForFilename(filename: string): string {

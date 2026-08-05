@@ -6,6 +6,7 @@ import { db } from "@/db";
 import { collections } from "@/db/schema";
 import { getSession, signInRedirect } from "@/lib/auth";
 import { fileSrc } from "@/lib/file-token";
+import { GALLERY_KINDS } from "@/lib/file-kind";
 import { smartCollectionPreviews } from "@/lib/smart-collections";
 import { CollectionCard, type CollectionCardData } from "@/components/collection-card";
 
@@ -26,7 +27,7 @@ export default async function MyCollectionsPage() {
             columns: { id: true, deletedAt: true },
             with: {
               files: {
-                where: (f, { eq }) => eq(f.kind, "image"),
+                where: (f, { inArray }) => inArray(f.kind, GALLERY_KINDS),
                 orderBy: (f, { asc }) => asc(f.position),
                 limit: 1,
               },
@@ -63,6 +64,7 @@ export default async function MyCollectionsPage() {
                 id: f.id,
                 src: fileSrc(f.id),
                 animated: f.animated,
+                kind: f.kind,
               })),
             },
           })),

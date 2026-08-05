@@ -6,6 +6,7 @@ import { db } from "@/db";
 import { models } from "@/db/schema";
 import { getSession, signInRedirect } from "@/lib/auth";
 import { fileSrc } from "@/lib/file-token";
+import { GALLERY_KINDS } from "@/lib/file-kind";
 import { parametricExtra } from "@/lib/parametric";
 import { ModelCard } from "@/components/model-card";
 
@@ -24,7 +25,7 @@ export default async function MyModelsPage() {
       user: { columns: { name: true } },
       category: true,
       files: {
-        where: (f, { eq }) => eq(f.kind, "image"),
+        where: (f, { inArray }) => inArray(f.kind, GALLERY_KINDS),
         orderBy: (f, { asc }) => asc(f.position),
         limit: 1,
       },
@@ -62,6 +63,7 @@ export default async function MyModelsPage() {
                   id: f.id,
                   src: fileSrc(f.id),
                   animated: f.animated,
+                  kind: f.kind,
                 })),
               }}
             />

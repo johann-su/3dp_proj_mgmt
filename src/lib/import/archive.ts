@@ -37,6 +37,7 @@ const KIND_BY_FOLDER: Record<string, FileKind> = {
   files: "model",
   documents: "pdf",
   images: "image",
+  videos: "video",
 };
 
 // Guards on what a single upload may expand to. The route caps the compressed

@@ -7,16 +7,17 @@ import {
   formIsDirty,
   isQueuedForSlicing,
   mediaFromInitial,
-  mediaImages,
-  mediaVideos,
+  mediaFiles,
+  mediaLinkedVideos,
   mergeTags,
   orderFilesForCreate,
   skippedSliceKeys,
   splitExtension,
   toggleSliceQueue,
-  videoEntry,
+  linkedVideoEntry,
+  mediaKindForFilename,
   type ExistingFile,
-  type ImageEntry,
+  type MediaFileEntry,
   type ModelFileEntry,
   type ModelFormInitial,
   type ModelFormValues,
@@ -67,7 +68,7 @@ function newModelEntry(filename: string): ModelFileEntry {
   };
 }
 
-function existingImageEntry(id: string): ImageEntry {
+function existingImageEntry(id: string): MediaFileEntry {
   return {
     key: id,
     type: "existing",
@@ -75,10 +76,11 @@ function existingImageEntry(id: string): ImageEntry {
     src: `/api/files/${id}`,
     filename: `${id}.png`,
     size: 10,
+    kind: "image",
   };
 }
 
-function newImageEntryFixture(filename: string): ImageEntry {
+function newImageEntryFixture(filename: string): MediaFileEntry {
   return {
     key: `new-${filename}`,
     type: "new",
@@ -86,6 +88,7 @@ function newImageEntryFixture(filename: string): ImageEntry {
     src: `blob:${filename}`,
     filename,
     size: 10,
+    kind: "image",
   };
 }
 
@@ -107,7 +110,7 @@ test("mergeTags dedupes case-insensitively", () => {
 // gallery holds two images with a video sitting between them, which is the
 // arrangement the media list exists to preserve.
 const VIDEO = "https://www.youtube.com/watch?v=dQw4w9WgXcQ";
-const VIDEO_ENTRY = videoEntry(VIDEO, parseYouTubeUrl(VIDEO)!);
+const VIDEO_ENTRY = linkedVideoEntry(VIDEO, parseYouTubeUrl(VIDEO)!);
 
 function pristineEditState(): { current: ModelFormValues; initial: ModelFormInitial } {
   const initial: ModelFormInitial = {
@@ -165,7 +168,7 @@ test("formIsDirty: reordering images reads as dirty (first image is the cover)",
 test("formIsDirty: adding or removing a gallery video reads as dirty", () => {
   const { current, initial } = pristineEditState();
   const other = "https://www.youtube.com/watch?v=aBcDeFgHiJk";
-  current.media = [...current.media, videoEntry(other, parseYouTubeUrl(other)!)];
+  current.media = [...current.media, linkedVideoEntry(other, parseYouTubeUrl(other)!)];
   assert.equal(formIsDirty(current, initial), true);
 
   const cleared = pristineEditState();
@@ -181,15 +184,16 @@ test("formIsDirty: moving a video between images reads as dirty", () => {
   assert.equal(formIsDirty(current, initial), true);
 });
 
-// What the save actually writes: images keep their own relative order, and
-// each video's index in the media list is the position stored with it.
-test("mediaImages/mediaVideos split the one list back into what each save needs", () => {
+// What the save actually writes: uploaded files keep their own relative
+// order, and each linked video's index in the media list is the position
+// stored with it.
+test("mediaFiles/mediaLinkedVideos split the one list back into what each save needs", () => {
   const media = [existingImageEntry("i1"), VIDEO_ENTRY, existingImageEntry("i2")];
   assert.deepEqual(
-    mediaImages(media).map((image) => image.key),
+    mediaFiles(media).map((entry) => entry.key),
     ["i1", "i2"],
   );
-  assert.deepEqual(mediaVideos(media), [{ url: VIDEO, position: 1 }]);
+  assert.deepEqual(mediaLinkedVideos(media), [{ url: VIDEO, position: 1 }]);
 });
 
 // Reopening the edit form has to rebuild exactly the list the last save
@@ -206,15 +210,15 @@ test("mediaFromInitial rebuilds the saved arrangement", () => {
 });
 
 test("buildUpdateFileOrders: newIndex counter skips the PDF block", () => {
-  // Uploads are ordered model files, then PDFs, then images — image
+  // Uploads are ordered model files, then PDFs, then gallery media — media
   // newIndex values must land past the PDFs.
-  const { modelFileOrder, imageOrder } = buildUpdateFileOrders(
+  const { modelFileOrder, mediaOrder } = buildUpdateFileOrders(
     [newModelEntry("a.3mf"), existingModelEntry("f1", "clip.3mf")],
     2,
     [existingImageEntry("i1"), newImageEntryFixture("shot.png")],
   );
   assert.deepEqual(modelFileOrder, [{ newIndex: 0 }, { existingId: "f1" }]);
-  assert.deepEqual(imageOrder, [{ existingId: "i1" }, { newIndex: 3 }]);
+  assert.deepEqual(mediaOrder, [{ existingId: "i1" }, { newIndex: 3 }]);
 });
 
 test("orderFilesForCreate interleaves staged and new files in arranged order", () => {
@@ -234,7 +238,15 @@ test("orderFilesForCreate interleaves staged and new files in arranged order", (
     // Arranged: imported image demoted behind the new cover shot.
     [
       newImageEntryFixture("local.png"),
-      { key: "si", type: "staged", staged: stagedImage, src: "x", filename: "imported.png", size: 10 },
+      {
+        key: "si",
+        type: "staged",
+        staged: stagedImage,
+        src: "x",
+        filename: "imported.png",
+        size: 10,
+        kind: "image",
+      },
     ],
     [stagedPdf],
     // Upload order is fixed (models, PDFs, images) regardless of arrangement.
@@ -309,5 +321,68 @@ test("skippedSliceKeys pairs unqueued entries with their uploaded keys", () => {
   assert.deepEqual(
     skippedSliceKeys(entries, { f1: true }, [firstUpload, secondUpload]),
     [],
+  );
+});
+
+// The picker classifies a picked file by extension, agreeing with the
+// server's contentTypeForFilename — if the two disagreed, the wizard could
+// upload something under a kind the save then rejects.
+test("mediaKindForFilename tells videos from photos by extension", () => {
+  assert.equal(mediaKindForFilename("timelapse.mp4"), "video");
+  assert.equal(mediaKindForFilename("CLIP.MOV"), "video");
+  assert.equal(mediaKindForFilename("print.webm"), "video");
+  assert.equal(mediaKindForFilename("shot.png"), "image");
+  // Not a video just because the name says so — the extension decides.
+  assert.equal(mediaKindForFilename("video-of-the-print.jpg"), "image");
+});
+
+// Photos and videos are one order group, so a video's slot among the photos
+// has to survive the round-trip through the save. It would not if videos were
+// ordered separately: the newIndex values are positions in one upload list.
+test("buildUpdateFileOrders keeps a video's slot between two photos", () => {
+  const videoFile: MediaFileEntry = {
+    key: "v1",
+    type: "existing",
+    id: "v1",
+    src: "/api/files/v1",
+    filename: "clip.mp4",
+    size: 10,
+    kind: "video",
+  };
+  const { mediaOrder } = buildUpdateFileOrders(
+    [],
+    0,
+    [existingImageEntry("i1"), videoFile, newImageEntryFixture("new.png")],
+  );
+  assert.deepEqual(mediaOrder, [
+    { existingId: "i1" },
+    { existingId: "v1" },
+    { newIndex: 0 },
+  ]);
+});
+
+// Create mode: the same interleaving, but the new files arrive as one
+// uploaded list (models, then PDFs, then gallery media in picker order), so
+// photos and videos must be consumed from a single queue.
+test("orderFilesForCreate interleaves new photos and videos in arranged order", () => {
+  const uploadedModel = uploadedFile("model", "part.3mf");
+  const uploadedVideo = uploadedFile("video", "clip.mp4");
+  const uploadedImage = uploadedFile("image", "shot.png");
+
+  const files = orderFilesForCreate(
+    [newModelEntry("part.3mf")],
+    // Arranged with the video first — it is the cover.
+    [
+      { ...newImageEntryFixture("clip.mp4"), kind: "video" },
+      newImageEntryFixture("shot.png"),
+    ],
+    [],
+    // Upload order puts the video after the photo; the arrangement wins.
+    [uploadedModel, uploadedImage, uploadedVideo],
+  );
+
+  assert.deepEqual(
+    files.map((f) => f.filename),
+    ["part.3mf", "shot.png", "clip.mp4"],
   );
 });

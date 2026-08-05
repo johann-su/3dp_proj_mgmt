@@ -3,6 +3,7 @@ import { db } from "@/db";
 import type { ModelCardData } from "@/components/model-card";
 import { parseRuleTree, ruleTreeToSql } from "@/lib/collection-rules";
 import { fileSrc } from "@/lib/file-token";
+import { GALLERY_KINDS } from "@/lib/file-kind";
 import { parametricExtra } from "@/lib/parametric";
 
 // Runtime queries for smart collections: the stored rule tree is compiled to
@@ -45,7 +46,7 @@ export async function smartCollectionModelCards(
       user: { columns: { name: true } },
       category: true,
       files: {
-        where: (f, { eq }) => eq(f.kind, "image"),
+        where: (f, { inArray }) => inArray(f.kind, GALLERY_KINDS),
         orderBy: (f, { asc }) => asc(f.position),
         limit: 1,
       },
@@ -66,6 +67,7 @@ export async function smartCollectionModelCards(
           id: f.id,
           src: fileSrc(f.id),
           animated: f.animated,
+          kind: f.kind,
         })),
         modelTags: m.modelTags,
         parametric: m.parametric,
@@ -119,7 +121,7 @@ export async function smartCollectionPreviews(
           columns: { id: true },
           with: {
             files: {
-              where: (f, { eq }) => eq(f.kind, "image"),
+              where: (f, { inArray }) => inArray(f.kind, GALLERY_KINDS),
               orderBy: (f, { asc }) => asc(f.position),
               limit: 1,
             },
@@ -129,7 +131,12 @@ export async function smartCollectionPreviews(
   const coversByModel = new Map(
     coverRows.map((m) => [
       m.id,
-      m.files.map((f) => ({ id: f.id, src: fileSrc(f.id), animated: f.animated })),
+      m.files.map((f) => ({
+        id: f.id,
+        src: fileSrc(f.id),
+        animated: f.animated,
+        kind: f.kind,
+      })),
     ]),
   );
 

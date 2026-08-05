@@ -3,9 +3,10 @@ import { GetObjectCommand } from "@aws-sdk/client-s3";
 import { eq } from "drizzle-orm";
 import { db } from "@/db";
 import { modelVersions } from "@/db/schema";
-import { s3, S3_BUCKET, contentTypeForFilename } from "@/lib/s3";
+import { s3, S3_BUCKET, contentTypeForFilename, isGalleryKind } from "@/lib/s3";
 import { getSession } from "@/lib/auth";
 import { verifyFileToken, versionFileTokenId } from "@/lib/file-token";
+import { parseByteRange, toS3Range } from "@/lib/http-range";
 
 export const runtime = "nodejs";
 
@@ -46,8 +47,22 @@ export async function GET(
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
 
+  // Range requests for the same reason as /api/files/[id]: a historical video
+  // is played by the same <video> element on the version-preview page.
+  const range = parseByteRange(req.headers.get("range"), file.size);
+  if (range === "unsatisfiable") {
+    return new Response(null, {
+      status: 416,
+      headers: { "Content-Range": `bytes */${file.size}` },
+    });
+  }
+
   const object = await s3.send(
-    new GetObjectCommand({ Bucket: S3_BUCKET, Key: file.s3Key }),
+    new GetObjectCommand({
+      Bucket: S3_BUCKET,
+      Key: file.s3Key,
+      ...(range ? { Range: toS3Range(range) } : {}),
+    }),
   );
   if (!object.Body) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
@@ -64,19 +79,26 @@ export async function GET(
   if (object.ContentLength !== undefined) {
     headers.set("Content-Length", String(object.ContentLength));
   }
+  headers.set("Accept-Ranges", "bytes");
+  if (range) {
+    headers.set("Content-Range", `bytes ${range.start}-${range.end}/${file.size}`);
+  }
   headers.set(
     "Content-Disposition",
     `${asAttachment ? "attachment" : "inline"}; filename="${encodeURIComponent(file.filename)}"`,
   );
   // Snapshots are immutable, so the caching story matches /api/files/[id]:
-  // token-keyed image responses may be cached publicly, everything else stays
-  // private.
+  // token-keyed gallery responses may be cached publicly, everything else
+  // stays private.
   headers.set(
     "Cache-Control",
-    file.kind === "image" && viaToken
+    isGalleryKind(file.kind) && viaToken
       ? "public, max-age=31536000, immutable"
       : "private, max-age=3600",
   );
 
-  return new Response(object.Body.transformToWebStream(), { headers });
+  return new Response(object.Body.transformToWebStream(), {
+    status: range ? 206 : 200,
+    headers,
+  });
 }

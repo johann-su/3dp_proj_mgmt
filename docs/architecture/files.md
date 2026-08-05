@@ -7,7 +7,12 @@ Update in the same PR that changes this behaviour.*
 
 Uploads stream through `POST /api/upload` to S3 (no browser↔S3 CORS setup
 needed); only signed-in users can upload, and file extensions are validated
-server-side. Stored content types are always derived from the allowlisted
+server-side. Kinds are `model`, `image`, `pdf` and `video`; **`image` and
+`video` are one gallery group** (`GALLERY_KINDS`, `src/lib/file-kind.ts`) —
+they share the model's `position` sequence, either can be the cover, and any
+new cover query must select both (`inArray(f.kind, GALLERY_KINDS)`), not
+`kind = "image"`. The `kind` column is plain text, so adding a kind needs no
+migration. Stored content types are always derived from the allowlisted
 extension (`contentTypeForFilename`), never from a client header/value —
 `/api/files` serves images inline on our origin, so an uploader-chosen
 `text/html` would be stored XSS. File routes also send
@@ -26,7 +31,12 @@ on the way in; it is a dedup hint, not a trust boundary.
 ## Downloads & images
 
 Downloads and images stream from S3 through `GET /api/files/[id]`, so the S3
-endpoint never needs to be reachable from the browser. The route accepts a
+endpoint never needs to be reachable from the browser. Both file routes
+**answer byte-range requests** (`src/lib/http-range.ts` parses the header, the
+route passes it to S3 and replies `206` + `Content-Range`, or `416` for a start
+past the end): a `<video>` seeks by range, and Safari refuses to play a source
+whose server doesn't do this at all. Ranged responses are deliberately *not*
+counted as downloads — one scrub would otherwise register dozens. The route accepts a
 session cookie (browser links/downloads) **or a signed file token**
 (`src/lib/file-token.ts`: HMAC over file id + expiry, keyed off
 `BETTER_AUTH_SECRET`, expiry bucketed to week boundaries so URLs stay
