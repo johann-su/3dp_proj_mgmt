@@ -9,7 +9,7 @@ const items = [
   { href: "/settings", label: "Account", icon: UserCog },
   { href: "/settings/onshape", label: "Onshape", icon: Shapes },
   { href: "/settings/bambu", label: "Bambu Cloud", icon: Cloud },
-  { href: "/settings/slice-push", label: "Slicer push", icon: Upload },
+  { href: "/settings/slice-push", label: "Push from slicer", icon: Upload },
 ];
 
 // These hide unless the instance offers them; the pages enforce it

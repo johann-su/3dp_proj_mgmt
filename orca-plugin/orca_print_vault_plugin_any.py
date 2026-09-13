@@ -555,10 +555,15 @@ def collect_meta(ctx) -> dict:
     return meta
 
 
-def push_entry(entry: dict, model_id: str, on_progress=None) -> str:
+def push_entry(entry: dict, model_id: str, on_progress=None, client: VaultClient | None = None) -> str:
     """Uploads one queued (or just-sliced) artifact. Returns a sentence for the
-    user; raises VaultError with one on failure."""
-    client = STATE.client()
+    user; raises VaultError with one on failure.
+
+    `client` is passed by the CLI, which is configured from flags that may
+    never have been saved; everything inside the slicer falls through to the
+    stored settings.
+    """
+    client = client or STATE.client()
     answer = client.push(
         model_id,
         entry["path"],
@@ -694,7 +699,7 @@ class PrintVaultSlicePush(orca.slicing.SlicingPipelineCapabilityBase if orca els
             # Straight from the slicer's working copy — no queue, no second
             # copy of a few hundred MB on disk.
             try:
-                message = push_entry({**entry, "path": ctx.gcode_path}, model_id)
+                message = push_entry({**entry, "path": ctx.gcode_path}, model_id, client=client)
                 log(message)
                 return orca.ExecutionResult.success(f"Print Vault: {message}")
             except VaultError as exc:
@@ -1246,7 +1251,9 @@ def main(argv: list[str]) -> int:
             model_id = candidates[0]["modelId"]
             log(f"matched {candidates[0]['modelTitle']}")
 
-        message = push_entry({"path": path, "filename": filename, "meta": None}, model_id)
+        message = push_entry(
+            {"path": path, "filename": filename, "meta": None}, model_id, client=client
+        )
         log(message)
         return 0
     except VaultError as exc:
