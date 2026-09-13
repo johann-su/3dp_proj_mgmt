@@ -135,11 +135,14 @@ Design around these; they are host-API facts, not gaps in our code, and each is
 an open ask in [OrcaSlicer discussion
 #14878](https://github.com/OrcaSlicer/OrcaSlicer/discussions/14878).
 
-1. **The hook hands over `.gcode`, not a project file.** `Step.psGCodePostProcess`
-   fires inside the G-code export path on a *temporary* working copy, **before**
-   it is written to the user's chosen path — so no final `.gcode` and no
-   Bambu-style `.gcode.3mf` bundle exists yet, and `ctx.print`/`ctx.object` are
-   None. Don't design around getting the project file from the hook; you can't.
+1. **The hook hands over `.gcode`, not a project file — and only on export.**
+   `Step.psGCodePostProcess` fires inside the G-code **export** path (or a
+   printer upload) on a *temporary* working copy, **before** it is written to
+   the user's chosen path — so no final `.gcode` and no Bambu-style
+   `.gcode.3mf` bundle exists yet, and `ctx.print`/`ctx.object` are None.
+   Slicing alone never reaches a plugin, which is the first thing to check when
+   a push "did nothing". Don't design around getting the project file from the
+   hook; you can't.
 2. **The hook may not show UI.** It runs on the slicing worker thread, which the
    UI thread can be blocked waiting on, so a marshaled UI call from there can
    deadlock the app. The "update the catalogue or keep it local?" question is

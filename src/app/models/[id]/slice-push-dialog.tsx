@@ -132,10 +132,13 @@ export function SlicePushDialog() {
               machine, not once per model.
             </p>
           </Step>
-          <Step n={3} title="Open a file from this model and slice it">
-            The plugin recognises the file and offers to push the result back.
-            Repeat pushes of the same plate become revisions of one file, and
-            every one of them stays in this model&rsquo;s history.
+          <Step n={3} title="Slice a file from this model, then export it">
+            OrcaSlicer only hands the result to a plugin on <em>export</em> —
+            use <em>Print plate&nbsp;▾ → Export plate sliced file</em>, or send
+            it to the printer. Then run <em>Plugins → Print Vault: review &amp;
+            push</em> to choose what happens. Repeat pushes of the same plate
+            become revisions of one file, and every one of them stays in this
+            model&rsquo;s history.
           </Step>
         </ol>
 

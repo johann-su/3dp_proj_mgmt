@@ -148,13 +148,20 @@ Once per machine, not once per model.
    token. OrcaSlicer will ask for permission the first time the plugin uses the
    network; that is its own audit prompt, and the answer is remembered.
 
-Now open a file from a model, slice as usual, and run **Plugins → Print Vault:
-review & push** (or add it to the Actions Speed Dial for one-click access). It
-shows what you just sliced and which model it belongs to; choose **Update
-catalogue** or **Keep local**.
+Now open a file from a model and slice it — then **export the sliced file**
+(*Print plate ▾ → Export plate sliced file*, or send it to the printer).
+Exporting is what hands the result to the plugin; slicing alone does not.
+
+Then run **Plugins → Print Vault: review & push** (or add it to the Actions
+Speed Dial for one-click access). It shows what you just sliced and which model
+it belongs to; choose **Update catalogue** or **Keep local**.
 
 ### Things to know
 
+- **It runs on export, not on slice.** OrcaSlicer only hands a plugin the
+  sliced file when you export it or send it to a printer, so a slice you never
+  export is never offered. The plugin's **Diagnostics** tab records every
+  export it saw.
 - **Nothing is pushed without you.** By default a slice is queued and waits for
   your answer. Tick *always* for a model, or switch the plugin to
   **automatic**, and future slices of that model upload silently — but only

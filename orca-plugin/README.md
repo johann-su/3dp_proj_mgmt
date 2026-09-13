@@ -21,22 +21,30 @@ entry. On anything older, use the [CLI fallback](#cli-fallback) below.
    config it shows you (it is the only time the token is displayed).
 2. OrcaSlicer → **Plugins** → *Install local plugin* → pick
    `orca_print_vault_plugin_any.py`.
-3. In the Plugins dialog, open **Print Vault → Config** and paste in the
-   instance URL and the token (or fill the form; both capabilities share one
-   configuration). You can also do this from the plugin's own window, which
-   verifies the connection before saving it.
+3. In the Plugins dialog, select **Push sliced file to Print Vault** and open
+   its **Config** tab, then fill in the instance URL and the token. Both
+   capabilities read that one configuration — the review capability's own
+   Config tab is empty on purpose. You can also set it from the plugin's own
+   window, which verifies the connection before saving it.
 4. OrcaSlicer will ask for permission the first time the plugin uses the
    network or writes to its own folder — that is the host's audit hook, and the
    answer is remembered per plugin.
 
 ## What happens after a slice
 
-The plugin hooks `Step.psGCodePostProcess`, works out which catalogue model the
-open project came from, and then — depending on **mode**:
+> **Slicing alone does not trigger it.** The only hook that gets sliced output
+> is `Step.psGCodePostProcess`, which fires when the sliced file is **exported**
+> (*Print plate ▾ → Export plate sliced file*, or File → Export → Export G-code)
+> or uploaded to a printer. Clicking *Slice plate* and stopping there never
+> reaches a plugin. The **Diagnostics** tab shows a `handling export of …` line
+> for every export the plugin sees.
+
+On export the plugin works out which catalogue model the open project came
+from, and then — depending on **mode**:
 
 | mode | behaviour |
 |---|---|
-| `ask` (default) | Queues the slice. You answer in **Plugins → Print Vault: review & push → Run** (or put it on the Actions Speed Dial, which is one click from the plate). |
+| `ask` (default) | Queues the slice. You answer in the plugin's own window: **Plugins → Print Vault: review & push → ▷ Run** (or put it on the Actions Speed Dial, which is one click from the plate). |
 | `auto` | Pushes immediately, but only when the model is an unambiguous exact-file match and you have ticked *always* for it. Otherwise it falls back to queueing. |
 | `off` | Captures nothing. |
 

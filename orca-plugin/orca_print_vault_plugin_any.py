@@ -35,8 +35,11 @@ candidates; only a single hash match is ever pushed to without asking.
 Where the artifact comes from, and what it is not
 -------------------------------------------------
 `Step.psGCodePostProcess` is the only seam that hands over sliced output. It
-fires from the G-code export path after the classic post-processing scripts,
-with `ctx.gcode_path` pointing at a *temporary working copy* — there is no
+fires from the G-code **export** path after the classic post-processing
+scripts — *not* from slicing. "Slice plate" alone never reaches a plugin; the
+step runs when the sliced file is exported ("Print plate -> Export plate sliced
+file", File -> Export -> Export G-code) or uploaded to a printer. `ctx.gcode_path`
+points at a *temporary working copy* — there is no
 project `.3mf` and no `.gcode.3mf` bundle at that moment, and `ctx.print` /
 `ctx.object` are None. So what gets pushed is G-code. The settings that
 produced it are read live from `orca.host.preset_bundle()` and sent alongside
@@ -665,6 +668,10 @@ class PrintVaultSlicePush(orca.slicing.SlicingPipelineCapabilityBase if orca els
 
         filename = push_filename(ctx.gcode_path, getattr(ctx, "output_name", ""))
         size = os.path.getsize(ctx.gcode_path)
+        # Logged unconditionally: when someone asks "why did nothing happen?",
+        # the answer is almost always that they sliced without exporting, and
+        # the absence of this line in Diagnostics is what proves it.
+        log(f"handling export of {filename} ({size // (1 << 20)} MB, host={getattr(ctx, 'host', '') or '?'})")
         now = time.time()
         if self._last and self._last[0] == filename and self._last[1] == size and now - self._last[2] < 60:
             return orca.ExecutionResult.success("Print Vault: already handled this export")
@@ -716,7 +723,8 @@ class PrintVaultSlicePush(orca.slicing.SlicingPipelineCapabilityBase if orca els
 
         title = candidates[0]["modelTitle"] if candidates else "an unmatched model"
         return orca.ExecutionResult.success(
-            f"Print Vault: queued {filename} for {title} — run the plugin to push it"
+            f"Print Vault: queued {filename} for {title} — "
+            'run "Print Vault: review & push" to send it'
         )
 
     def _prompt_later(self, entry: dict) -> None:
@@ -776,6 +784,15 @@ class PrintVaultReview(orca.script.ScriptPluginCapabilityBase if orca else objec
 
     def get_name(self):
         return "Print Vault: review & push"
+
+    def has_config_ui(self):
+        # Every capability gets a Config tab whether it wants one or not, and an
+        # empty "{}" JSON editor next to the capability that *does* hold the
+        # settings is an invitation to configure the wrong one.
+        return True
+
+    def get_config_ui(self):
+        return POINTER_HTML
 
     def execute(self):
         if self.win is not None and self.win.is_open():
@@ -1096,6 +1113,20 @@ orca.onMessage(msg => {
 
 orca.postMessage({ command:'state' });
 </script>"""
+)
+
+POINTER_HTML = (
+    """<style>"""
+    + BASE_CSS
+    + """</style>
+<h1>Nothing to configure here</h1>
+<p>Print Vault's settings — instance URL, push token, and what happens after
+each slice — live on the <strong>Push sliced file to Print Vault</strong>
+capability, listed above this one. Both capabilities read the same
+configuration.</p>
+<p class="muted">This window is opened with the &#9655; Run button next to this
+capability in the plugin list, or from the Actions Speed Dial. It shows the
+slices waiting for a decision.</p>"""
 )
 
 CONFIG_HTML = (
