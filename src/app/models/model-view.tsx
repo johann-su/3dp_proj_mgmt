@@ -294,9 +294,9 @@ export function ModelView({ data }: { data: ModelViewData }) {
                 <LikeButton modelId={modelId} initialLiked={liked ?? false} />
                 <ShareButton />
                 <ExportButton modelId={modelId} />
-                {/* Setting up the return leg of the slicer round-trip is open
-                    to any signed-in user, like editing (issue #122). */}
-                <SlicePushDialog modelId={modelId} />
+                {/* The return leg of the slicer round-trip is open to any
+                    signed-in user, like editing (issue #122). */}
+                <SlicePushDialog />
                 <Button asChild variant="outline" size="sm">
                   <Link href={`/models/${modelId}/edit`}>
                     <Pencil className="size-4" />

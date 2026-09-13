@@ -123,57 +123,72 @@ you; you just click the button.
 
 ## Push from slicer
 
-"Open in slicer" sends a file **out**. **Push from slicer** brings it back: a
-small script that OrcaSlicer runs after every slice uploads the result to the
-model it came from, as a new revision. Tune a profile, slice, print — and the
-catalogue has the improved file, instead of drifting out of date until someone
-remembers to re-upload it.
+"Open in slicer" sends a file **out**. **Push from slicer** brings it back: the
+Print Vault plugin for OrcaSlicer recognises the model you are slicing and
+uploads the result to it as a new revision. Tune a profile, slice, print — and
+the catalogue has the improved file, instead of drifting out of date until
+someone remembers to re-upload it.
 
-It uses your slicer's own **post-processing script** feature, so there is
-nothing to install and no modified slicer build: stock OrcaSlicer, Bambu Studio
-or PrusaSlicer will do.
+It uses OrcaSlicer's own plugin system, so there is no modified slicer build —
+but that system is new: you need **OrcaSlicer 2.5 (nightly) or newer**. On
+2.4.x, Bambu Studio or PrusaSlicer, the same file works as a post-processing
+script with less magic (see *Older slicers* below).
 
 ### Setting it up
 
-1. On the model page, choose **Push from slicer** and create a token, naming
-   the machine it is for ("Workshop laptop"). **Copy the command it shows you
-   right away** — the token is stored hashed and cannot be displayed again.
-2. Save `scripts/slice-push.py` from the Print Vault repository somewhere on
-   the machine running the slicer. It needs only Python 3 — no packages.
-3. In OrcaSlicer, open **Print Settings → Others → Post-processing Scripts**
-   and paste the command, correcting the path to where you saved the script:
+Once per machine, not once per model.
 
-   ```
-   python3 /path/to/slice-push.py --url "https://vault.example.com/api/models/<model-id>/slice-push" --token "pvpush_..." ;
-   ```
+1. Go to **Settings → Push from slicer** and create a token, naming the machine
+   it is for ("Workshop laptop"). **Copy the config it shows you right away** —
+   the token is stored hashed and cannot be displayed again.
+2. In OrcaSlicer, open **Plugins → Install local plugin** and choose
+   `orca_print_vault_plugin_any.py` from the `orca-plugin/` folder of the Print
+   Vault repository.
+3. Open **Plugins → Print Vault → Config** and paste in the instance URL and
+   token. OrcaSlicer will ask for permission the first time the plugin uses the
+   network; that is its own audit prompt, and the answer is remembered.
 
-   On Windows, keep the quotes and use the full path to `python.exe`.
-
-Slice as usual. The file appears on the model page as a new revision, with its
-print time and filament use already filled in, and the history entry reads
-**Pushed from slicer**.
+Now open a file from a model, slice as usual, and run **Plugins → Print Vault:
+review & push** (or add it to the Actions Speed Dial for one-click access). It
+shows what you just sliced and which model it belongs to; choose **Update
+catalogue** or **Keep local**.
 
 ### Things to know
 
-- **A push never breaks your slice.** If the server is unreachable, the token
-  was revoked, or anything else goes wrong, the script reports the problem and
-  exits cleanly — your slicing and printing carry on. Add `--strict` while
-  setting things up if you want failures to be loud.
+- **Nothing is pushed without you.** By default a slice is queued and waits for
+  your answer. Tick *always* for a model, or switch the plugin to
+  **automatic**, and future slices of that model upload silently — but only
+  when the match is an exact one.
+- **How it knows which model.** It hashes the file you opened and asks the
+  catalogue. Since the catalogue served those exact bytes, the match is
+  normally certain; a file you renamed or re-saved falls back to weaker matches
+  that it will ask you to confirm.
+- **A push never breaks your slice.** If the server is unreachable or the token
+  was revoked, the plugin reports it and gets out of the way — your slicing and
+  printing carry on.
 - **Re-slicing the same plate replaces that file**, rather than piling up near
   identical copies: same filename in, new revision of that file. The previous
   version stays in the model's [history](/features/versioning) and can be
   restored.
-- **What gets pushed is the G-code.** That is what the slicer's hook hands the
-  script — post-processing runs on the sliced G-code before the file is written
-  out, so a project `.3mf` isn't available at that moment. Its embedded print
-  time and filament weight are read straight out of it, and because they come
-  from your own slicer and your own printer profile, they are shown **without**
-  the `~` that marks a server-side estimate. You can also push a `.3mf` by hand
-  (including a Bambu-style `.gcode.3mf`) — those are read the usual way.
-- **Tokens are per model, and revocable.** A token can only add files to the
-  one model it was created for; it can't delete anything, read the rest of the
-  catalogue or touch another model. Revoke one from the model page or from
-  **Settings → Slicer push**, which lists every token you have issued and when
-  it was last used.
-- **The feature is off until you use it.** A model with no token has no push
-  endpoint to speak of, so nothing is exposed by default.
+- **What gets pushed is the G-code.** That is what the slicer hands a plugin at
+  that point — post-processing runs on the sliced G-code before the project
+  file is written, so a `.3mf` isn't available then. Its embedded print time
+  and filament weight are read straight out of it, and because they come from
+  your own slicer and your own printer profile, they are shown **without** the
+  `~` that marks a server-side estimate. The printer, plate and preset names
+  are sent along with it, so the file still shows what produced it. You can
+  also push a `.3mf` by hand (including a Bambu-style `.gcode.3mf`) — those are
+  read the usual way.
+- **Tokens are revocable, and push-only.** A token can add file revisions to
+  models — the same editing access you already have — but cannot delete
+  anything or sign you in. Revoke one from Settings → Push from slicer the
+  moment the machine holding it is out of your hands.
+
+### Older slicers
+
+On OrcaSlicer 2.4.x, Bambu Studio and PrusaSlicer there is no plugin system.
+The same file doubles as a post-processing script: store your connection once
+with `--url … --token … --save --check`, then add it under **Print Settings →
+Others → Post-processing Scripts**. It cannot ask you anything or see which
+project is open, so it matches the sliced file by name and pushes only when
+exactly one model matches. Full instructions are in `orca-plugin/README.md`.

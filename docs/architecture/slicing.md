@@ -111,20 +111,55 @@ print from, not by the machine's first.
 
 ## Slice-push: the return leg (issue #122)
 
-Deep links hand a file *out* to the slicer; slice-push brings it back.
-`POST /api/models/[id]/slice-push` accepts the file a slicer's
-**post-processing script** just produced and attaches it to the model as a new
-versioned revision, so a tuned print profile lands in the catalogue without a
-manual re-upload. It rides the slicer's own hook — no fork, no daemon, no
-polling of an undocumented cloud API (see the issue for why the Orca/Bambu
-cloud-backend routes were rejected).
+Deep links hand a file *out* to the slicer; slice-push brings it back. The
+**OrcaSlicer plugin** in [`orca-plugin/`](../../orca-plugin/README.md) works out
+which model the open project came from, asks whether to update it, and POSTs
+the just-sliced file to `/api/models/[id]/slice-push`, which attaches it as a
+new versioned revision. It rides the slicer's own extension point — no fork, no
+daemon, no polling of an undocumented cloud API (see the issue for why the
+Orca/Bambu cloud-backend routes were rejected).
 
-**The hook hands over `.gcode`, not a project file.** OrcaSlicer/PrusaSlicer
-run post-processing scripts inside `BackgroundSlicingProcess::finalize_gcode`,
-on a *temporary* G-code copy, **before** it is exported to the user's chosen
-path — so at hook time no final `.gcode` and no Bambu-style `.gcode.3mf` bundle
-exists yet. Don't design around getting the project file from the hook; you
-can't. The endpoint therefore accepts both:
+### Why a plugin and not a post-processing script
+
+This was first built as a post-processing script, and the mechanism was the
+problem — worth writing down, because the pull to "just ship a script" is
+strong. That field lives on the **process preset**, while the push target is a
+**model**: a per-model token meant editing (and dirtying) your print profile
+every time you sliced something else. The plugin inverts it — installed once,
+credential in its own config, target resolved at slice time — which is why the
+token is now per *user and machine* rather than per model.
+
+### The three things the slicer will not give you
+
+Design around these; they are host-API facts, not gaps in our code, and each is
+an open ask in [OrcaSlicer discussion
+#14878](https://github.com/OrcaSlicer/OrcaSlicer/discussions/14878).
+
+1. **The hook hands over `.gcode`, not a project file.** `Step.psGCodePostProcess`
+   fires inside the G-code export path on a *temporary* working copy, **before**
+   it is written to the user's chosen path — so no final `.gcode` and no
+   Bambu-style `.gcode.3mf` bundle exists yet, and `ctx.print`/`ctx.object` are
+   None. Don't design around getting the project file from the hook; you can't.
+2. **The hook may not show UI.** It runs on the slicing worker thread, which the
+   UI thread can be blocked waiting on, so a marshaled UI call from there can
+   deadlock the app. The "update the catalogue or keep it local?" question is
+   therefore asked from a **script capability** (a window the user opens), not
+   from the hook — the hook queues.
+3. **There is no structured slice result.** Print time and filament use still
+   come from parsing, which is why `src/lib/gcode-stats.ts` exists.
+
+### What the endpoints do
+
+`POST /api/slice-push/resolve` turns a file on the slicing machine into a model.
+The plugin sends SHA-256s of the files the project was loaded from, their names,
+and the 3MF's Bambu design id; the route matches them against
+`model_files.content_hash` (exact — the catalogue served those bytes), then
+filename, then `models.sourceUrl` for the design id, and returns them ranked
+(`rankPushCandidates`). **Only a lone hash match is ever pushed to unattended**
+(`isConfidentMatch`): a mistargeted revision is the one failure with no cheap
+undo. `GET /api/slice-push/ping` exists so setup fails at setup time.
+
+`POST /api/models/[id]/slice-push` takes the bytes. It accepts both:
 
 - **`.gcode`** — the hook's artifact. Its footer stats are scraped from a
   rolling tail window **as the bytes stream past to S3** (`TailBuffer` +
@@ -140,6 +175,14 @@ can't. The endpoint therefore accepts both:
   pipeline, which reads `slice_info`/`project_settings` as usual. No new
   parsing.
 
+The G-code footer says how long a print takes; it does not say which machine,
+plate or presets produced it. The plugin *can* read that live, so it sends a
+small JSON object in `X-Slice-Push-Meta` which `parsePushMeta` folds into the
+same `printerInfo` column the 3MF parser fills — including `presets`, the
+preset *names*, which nothing embedded in a file would have told us. It is
+client-supplied and parsed defensively: junk metadata must never cost us the
+bytes.
+
 `parseGcodeStats` is a deliberate **near-duplicate** of the one in
 `slicer/lib.mjs` rather than a shared module: that one runs in the slicer
 service container (a separate deployable, no build step) and only ever reads
@@ -147,18 +190,17 @@ G-code our own PrusaSlicer CLI produced, so it can assume PrusaSlicer's
 spelling. This one reads whatever a user's slicer wrote, so it also knows Bambu
 Studio's `key: value` forms. Adding a dialect belongs in *this* copy.
 
-Three things the route must keep doing:
+Three things the ingest route must keep doing:
 
-- **Authenticate by token, not session.** The script runs inside the slicer and
-  has no cookie — the same constraint that forces the token-in-path download
-  route. A **stored, revocable** token (`model_push_tokens`,
-  `src/lib/push-token.ts` for the pure crypto), not the HMAC in
+- **Authenticate by token, not session.** The slicer has no cookie — the same
+  constraint that forces the token-in-path download route. A **stored,
+  revocable** token (`push_tokens`, `src/lib/push-token.ts` for the pure
+  crypto, `src/lib/push-tokens.ts` for the lookup), not the HMAC in
   `file-token.ts`: that one is short-lived, download-scoped, and being a pure
   signature cannot be revoked without rotating the instance secret. Only the
-  SHA-256 of the secret is stored; the row is matched on **both** the hash and
-  the model id, so a valid token for model A cannot push to model B. This is
-  the only *write* surface in the app that takes something other than a
-  session — see [auth-and-access.md](./auth-and-access.md).
+  SHA-256 of the secret is stored. These are the only *write* surfaces in the
+  app that take something other than a session — see
+  [auth-and-access.md](./auth-and-access.md).
 - **Version like every other mutation.** One transaction,
   `ensureBaselineVersion` first and `recordVersion` last (reason
   `"slice-push"`), S3-deleting only the keys `recordVersion` returns. A repeat
@@ -175,7 +217,7 @@ Three things the route must keep doing:
   `imported`) — losing exactly what the feature exists to keep.
 
 `.gcode` is **not** in `MODEL_EXTENSIONS` on purpose: `PUSH_EXTENSIONS`
-(`src/lib/slice-push.ts`) widens what a *token holder* may attach to one model,
+(`src/lib/slice-push.ts`) widens what a *token holder* may attach to a model,
 not what the create/edit upload picker accepts. A pushed `.gcode` row survives
 later edits because `validateUploads` only runs on newly uploaded files, and it
 stays inert in the `.3mf`-gated UI (3D preview, slicer deep links). Its stored
@@ -183,10 +225,12 @@ content type falls through to `application/octet-stream`, which is what we
 want — never a `text/*` that a browser would render inline.
 
 The feature is **opt-in and off by default**: no token minted → no push surface
-exists. Tokens are minted from the model page ("Push from slicer") and revoked
-there or in Settings → Slicer push; the shipped hook script is
-`scripts/slice-push.py` (stdlib-only, and **always exits 0** so a push failure
-never breaks the user's slice).
+exists. Tokens are minted and revoked in Settings → Push from slicer; the model
+page's "Push from slicer" dialog only explains the setup, because there is
+nothing per-model to configure. The plugin file doubles as a stand-alone
+post-processing script for builds without a plugin system (2.4.x, Bambu Studio,
+PrusaSlicer), where it resolves by filename alone and **always exits 0** so a
+push failure never breaks the user's slice.
 
 ## "Open in slicer" deep links
 

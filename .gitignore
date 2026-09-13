@@ -42,3 +42,5 @@ yarn-error.log*
 next-env.d.ts
 
 testData/*
+# Python bytecode from the OrcaSlicer plugin
+__pycache__/

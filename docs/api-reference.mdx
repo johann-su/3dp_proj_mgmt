@@ -22,10 +22,10 @@ A few conventions hold across the whole surface:
   accepted by the file-serving routes (the image optimizer and slicer deep
   links) is minted by the app, not something a client requests. The
   **[slice-push token](/features/slicing#push-from-slicer)** is the one
-  credential you can hand to a program of your own: it is created per model
-  from the model page, sent as `Authorization: Bearer …`, and works on exactly
-  one endpoint (`POST /api/models/{id}/slice-push`) for exactly one model.
-  There is no general-purpose API key.
+  credential you can hand to a program of your own: it is created in Settings →
+  Push from slicer, sent as `Authorization: Bearer …`, and works on the three
+  slice-push endpoints below — resolving a file to a model, and attaching a
+  sliced file to one. There is no general-purpose API key.
 - **JSON in and out.** Request and response bodies are JSON unless noted (file
   uploads send raw bytes; downloads and the STL preview return binary; the BOM
   export returns CSV). Errors are `{ "error": "<message>" }` with a matching
@@ -334,18 +334,21 @@ and applies it, keeping the pre-sync state as a version.
 
 ### `POST /api/models/<id>/slice-push`
 
-Attaches a freshly sliced file to the model as a new revision — the endpoint a
-slicer's post-processing script calls. See
-[Push from slicer](/features/slicing#push-from-slicer) for the setup and
-`scripts/slice-push.py` for the shipped client.
+Attaches a freshly sliced file to the model as a new revision — the endpoint the
+[OrcaSlicer plugin](/features/slicing#push-from-slicer) calls after a slice.
 
-**The only endpoint that does not take a session cookie for a write.** It
-authenticates with a per-model push token (`Authorization: Bearer pvpush_…`)
-created from the model page and revocable there or in Settings → Slicer push.
-A token is bound to one model: presenting it for a different `<id>` is a `401`.
+**One of the few endpoints that does not take a session cookie for a write.** It
+authenticates with a push token (`Authorization: Bearer pvpush_…`) created in
+Settings → Push from slicer and revocable there. A token stands for a slicer
+install, not a model, so the caller is expected to have resolved the target with
+`/api/slice-push/resolve` first.
 
 - **Query params** — `filename` (required; must end in `.3mf` or `.gcode`).
   Directories are stripped and unsafe characters replaced.
+- **Headers** — `X-Slice-Push-Meta` (optional): a small JSON object describing
+  the machine and presets that produced the file (`model`, `nozzleDiameterMm`,
+  `bedType`, `filamentTypes`, `filamentColors`, `usesSupport`, `presets`).
+  Applied to `.gcode` pushes, where the file itself carries none of it.
 - **Body** — the raw file bytes, streamed. Capped at 256 MB.
 - A `.gcode` has its print time and filament weight read from the footer as it
   streams; a `.3mf` is queued for the normal estimate pipeline instead. A push
@@ -356,10 +359,34 @@ A token is bound to one model: presenting it for a different `<id>` is a `401`.
 |---|---|
 | `200` | `{ status: "replaced" \| "added", filename, printTimeSeconds, filamentGrams }` |
 | `400` | Missing/invalid `filename`, or an empty body |
-| `401` | Missing, malformed, revoked, or wrong-model token |
+| `401` | Missing, malformed or revoked token |
 | `404` | Model not found or trashed |
 | `413` | Larger than the 256 MB cap |
 | `502` | The upload to object storage failed |
+
+### `POST /api/slice-push/resolve`
+
+Answers "which model is this file on my disk?", so the plugin needs no
+per-model setup. Same push-token auth as above.
+
+- **Body** — `{ hashes?: string[], filenames?: string[], designId?: string }`.
+  `hashes` are lowercase hex SHA-256 of the files the slicer project was loaded
+  from; anything malformed is ignored rather than rejected. Up to 32 of each.
+- **Response** — `{ candidates: [{ modelId, modelTitle, fileId, filename, via,
+  url, pushUrl }] }`, best first. `via` is `"hash"` (the stored bytes match
+  exactly), `"filename"`, or `"source"` (the model was imported from the design
+  the 3MF names). Trashed models are never candidates.
+
+| Status | Body / meaning |
+|---|---|
+| `200` | `{ candidates: [...] }` — an empty array means no match |
+| `400` | Body was not JSON |
+| `401` | Missing, malformed or revoked token |
+
+### `GET /api/slice-push/ping`
+
+Verifies a URL and token pair at setup time. Returns
+`{ ok: true, origin, user }`, or `401`.
 
 ## Collections
 

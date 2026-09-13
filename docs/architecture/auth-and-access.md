@@ -103,17 +103,20 @@ module because `@/lib/auth` opens a DB pool at import time. Setting it without
 OIDC logs a warning at boot.
 
 **Two surfaces authenticate without a session cookie.** The first is
-`POST /api/models/[id]/slice-push` (issue #122), which takes a **per-model push
-token** so a slicer's post-processing script — running inside OrcaSlicer, with
-no login — can send a freshly sliced file back as a new revision. It is the
-only *write* surface that takes something other than a session: the token is
-stored hashed and revocable in `model_push_tokens`, scoped to one
-`(model, user)` pair, and grants edit-equivalent access to that one model —
-which is access its issuer already has, since editing is collaborative.
+slice-push (issue #122): `POST /api/slice-push/resolve`, `GET
+/api/slice-push/ping` and `POST /api/models/[id]/slice-push`, which take a
+**push token** so the OrcaSlicer plugin — running inside the slicer, with no
+login — can work out which model an open project belongs to and send a freshly
+sliced file back as a new revision. These are the only *write* surfaces that
+take something other than a session. The token is stored hashed and revocable
+in `push_tokens`, scoped to one `(user, machine)`, and grants
+**edit-equivalent access to the catalogue** — which is access its issuer
+already has, since editing is collaborative. That breadth is deliberate and was
+the point of the redesign: the target has to be chosen *inside* the slicer, so
+a per-model credential would mean re-pasting a command for every model.
 Destructive actions stay out of reach (there is no delete path behind the
-token), it is opt-in per model (no token minted → no push surface), and
-revocation is a row delete, in Settings → Slicer push or on the model page.
-See [slicing.md](./slicing.md).
+token), it is opt-in (no token minted → no push surface), and revocation is a
+row delete in Settings → Push from slicer. See [slicing.md](./slicing.md).
 
 The second is the MCP server
 (`/api/mcp`, issue #96) takes an OAuth bearer token instead, minted by

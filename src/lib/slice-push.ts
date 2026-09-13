@@ -65,3 +65,172 @@ export function findReplaceTarget<
       f.filename.toLowerCase() === target,
   );
 }
+
+// --- Resolving a file on the slicing machine back to a model ---
+//
+// The whole reason the plugin needs no per-model setup. OrcaSlicer tells a
+// plugin which files the open project was loaded from (`ModelObject.input_file`)
+// and the Bambu design id it carries (`Model.design_id`); the plugin hashes
+// those files and asks the instance which model they belong to. A file this
+// catalogue served is byte-identical to the stored object, so the SHA-256 in
+// `model_files.content_hash` (added for duplicate detection, issue #118, and
+// indexed) is an exact answer — the filename and design-id paths below only
+// exist for the cases where it isn't: a project re-saved in the slicer, or a
+// file that predates content hashing.
+
+// How a candidate was matched, best first. Ordering is the ranking.
+export const MATCH_CONFIDENCE = ["hash", "filename", "source"] as const;
+export type MatchConfidence = (typeof MATCH_CONFIDENCE)[number];
+
+export type PushCandidate = {
+  modelId: string;
+  modelTitle: string;
+  // The file the match landed on, when there is one — the plugin shows it so a
+  // multi-file model doesn't look like a guess. Null for a design-id match,
+  // which identifies the model but no particular file.
+  fileId: string | null;
+  filename: string | null;
+  via: MatchConfidence;
+};
+
+// Collapses the three lookups into one ranked list, best match first and one
+// entry per model: a model matched by both hash and filename is one candidate
+// with the stronger reason, not two. Ties keep input order, which is the
+// lookups' own ordering (most recently updated model first).
+export function rankPushCandidates(matches: PushCandidate[]): PushCandidate[] {
+  const best = new Map<string, PushCandidate>();
+  for (const match of matches) {
+    const existing = best.get(match.modelId);
+    if (
+      !existing ||
+      MATCH_CONFIDENCE.indexOf(match.via) < MATCH_CONFIDENCE.indexOf(existing.via)
+    ) {
+      best.set(match.modelId, match);
+    }
+  }
+  return [...best.values()].sort(
+    (a, b) =>
+      MATCH_CONFIDENCE.indexOf(a.via) - MATCH_CONFIDENCE.indexOf(b.via),
+  );
+}
+
+// Whether the plugin may push without asking which model it is. Only an
+// unambiguous hash match qualifies: pushing a revision to the wrong model is
+// the one failure mode with no cheap undo, and a filename match ("part.3mf")
+// is exactly the case where several models collide. Anything else goes to the
+// dialog, where a human picks.
+export function isConfidentMatch(candidates: PushCandidate[]): boolean {
+  return candidates.length === 1 && candidates[0].via === "hash";
+}
+
+// A lowercase hex SHA-256, the form model_files.content_hash is stored in.
+// Anything else is dropped before it reaches the query rather than rejected —
+// the plugin sends whatever it could hash, and one unreadable file shouldn't
+// fail the lookup for the rest.
+export function isContentHash(value: unknown): value is string {
+  return typeof value === "string" && /^[0-9a-f]{64}$/.test(value);
+}
+
+// --- Slice metadata the plugin sends alongside the bytes ---
+//
+// A G-code footer says how long the print takes; it does not reliably say
+// which printer, nozzle, plate or presets produced it. The plugin *can* read
+// all of that from the live slicer (`orca.host.preset_bundle()` and the
+// post-process step's config), so it sends a small JSON object in the
+// X-Slice-Push-Meta header and the route folds it into the same `printerInfo`
+// column the 3MF parser fills. That is why a pushed G-code shows the same
+// printer/filament chips as an uploaded project file.
+//
+// Everything here is client-supplied and therefore parsed defensively: unknown
+// keys are dropped, every field is optional, and a malformed header yields an
+// empty result rather than an error — the bytes are worth storing even when
+// the metadata is junk.
+
+import type { PrinterInfo } from "@/db/schema";
+
+// Header size limits are ~8KB; a printer name plus a handful of filament slots
+// is a few hundred bytes. Anything past this is not metadata.
+export const MAX_PUSH_META_BYTES = 4096;
+
+function str(value: unknown, max = 120): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const trimmed = value.trim().slice(0, max);
+  return trimmed.length > 0 ? trimmed : undefined;
+}
+
+function strList(value: unknown, max = 16): string[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  const list = value
+    .slice(0, max)
+    .map((item) => str(item))
+    .filter((item): item is string => item !== undefined);
+  return list.length > 0 ? list : undefined;
+}
+
+function num(value: unknown, min: number, max: number): number | undefined {
+  const parsed = typeof value === "number" ? value : Number(value);
+  return Number.isFinite(parsed) && parsed >= min && parsed <= max
+    ? parsed
+    : undefined;
+}
+
+function bool(value: unknown): boolean | undefined {
+  return typeof value === "boolean" ? value : undefined;
+}
+
+// Drops the keys whose value came out undefined, so a sparse push doesn't
+// write `{"model": null}` over a column the 3MF parser filled more completely.
+function compact(info: PrinterInfo): PrinterInfo | null {
+  const entries = Object.entries(info).filter(([, v]) => v !== undefined);
+  return entries.length > 0 ? (Object.fromEntries(entries) as PrinterInfo) : null;
+}
+
+export function parsePushMeta(header: string | null): PrinterInfo | null {
+  if (!header || header.length > MAX_PUSH_META_BYTES) return null;
+  let raw: Record<string, unknown>;
+  try {
+    const parsed: unknown = JSON.parse(header);
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return null;
+    raw = parsed as Record<string, unknown>;
+  } catch {
+    return null;
+  }
+
+  const presetsRaw =
+    raw.presets && typeof raw.presets === "object" && !Array.isArray(raw.presets)
+      ? (raw.presets as Record<string, unknown>)
+      : {};
+  const presets = compact({
+    printer: str(presetsRaw.printer),
+    process: str(presetsRaw.process),
+    filaments: strList(presetsRaw.filaments),
+  } as PrinterInfo);
+
+  // Colours are index-parallel to filamentTypes by contract, so a mismatched
+  // pair drops the colours rather than shifting them onto the wrong slot.
+  const filamentTypes = strList(raw.filamentTypes);
+  const filamentColorsRaw = strList(raw.filamentColors);
+  const filamentColors =
+    filamentColorsRaw && filamentTypes &&
+    filamentColorsRaw.length === filamentTypes.length
+      ? filamentColorsRaw.filter((c) => /^#[0-9a-fA-F]{6}$/.test(c))
+      : undefined;
+
+  const bedX = num((raw.bedSizeMm as Record<string, unknown>)?.x, 1, 10000);
+  const bedY = num((raw.bedSizeMm as Record<string, unknown>)?.y, 1, 10000);
+
+  return compact({
+    model: str(raw.model),
+    nozzleDiameterMm: num(raw.nozzleDiameterMm, 0.05, 5),
+    bedType: str(raw.bedType),
+    filamentTypes,
+    filamentColors:
+      filamentColors && filamentColors.length === filamentTypes?.length
+        ? filamentColors
+        : undefined,
+    requiresMultiNozzle: bool(raw.requiresMultiNozzle),
+    usesSupport: bool(raw.usesSupport),
+    bedSizeMm: bedX !== undefined && bedY !== undefined ? { x: bedX, y: bedY } : undefined,
+    presets: presets ?? undefined,
+  } as PrinterInfo);
+}

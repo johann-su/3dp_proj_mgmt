@@ -1,37 +1,37 @@
 import { redirect } from "next/navigation";
 import { getSession, signInRedirect } from "@/lib/auth";
-import { listUserPushTokens } from "@/lib/model-push-tokens";
+import { appUrl } from "@/lib/app-url";
+import { listPushTokens } from "@/lib/push-tokens";
+import { toPushTokenView } from "./token-view";
 import { SlicePushTokens } from "./slice-push-tokens";
 
 export const dynamic = "force-dynamic";
 
-// Every slice-push token the signed-in user has issued, across all models —
-// the place to cut one off when you no longer remember which model it belonged
-// to, or when the machine holding it is gone. Minting happens on the model
-// page (issue #122), since a token is meaningless without its model.
+// Set up the OrcaSlicer plugin that pushes a freshly sliced file back to its
+// model (issue #122), and revoke the tokens that let it. One token per slicer
+// install: the plugin works out *which* model a slice belongs to by itself, so
+// nothing here is per-model.
 export default async function SlicePushSettingsPage() {
   const session = await getSession();
   if (!session) redirect(await signInRedirect());
 
-  const tokens = await listUserPushTokens(session.user.id);
+  const tokens = await listPushTokens(session.user.id);
 
   return (
     <div className="max-w-2xl">
-      <h1 className="text-lg font-semibold mb-1">Slicer push tokens</h1>
+      <h1 className="text-lg font-semibold mb-1">Push from slicer</h1>
       <p className="text-sm text-muted-foreground mb-6">
-        A push token lets a post-processing script in OrcaSlicer, Bambu Studio
-        or PrusaSlicer send a freshly sliced file back to one model as a new
-        revision, without a login. Each token is scoped to a single model and
-        grants the same editing access you already have on it — revoke one here
-        the moment the machine holding it is out of your hands. Create tokens
-        from a model page, under <strong>Push from slicer</strong>.
+        The Print Vault plugin for OrcaSlicer sends a file you just sliced back
+        to the model it came from, as a new revision — so a tuned profile lands
+        in the catalogue instead of drifting out of date on your disk. It
+        recognises the model on its own, so you set this up once per machine,
+        not once per model. A token grants the same editing access you already
+        have, without a login: revoke one here the moment the machine holding it
+        is out of your hands.
       </p>
       <SlicePushTokens
-        tokens={tokens.map((token) => ({
-          ...token,
-          createdAt: token.createdAt.toISOString(),
-          lastUsedAt: token.lastUsedAt?.toISOString() ?? null,
-        }))}
+        tokens={tokens.map(toPushTokenView)}
+        origin={appUrl("/").toString().replace(/\/$/, "")}
       />
     </div>
   );

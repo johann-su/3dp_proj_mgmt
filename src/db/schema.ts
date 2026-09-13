@@ -266,6 +266,13 @@ export type PrinterInfo = {
   // PrusaSlicer `bed_shape`), falling back to a known-model lookup when the
   // config lacks a usable shape. { x: 256, y: 256 }
   bedSizeMm?: { x: number; y: number };
+  // The preset names that produced this file, as they are called in the
+  // slicer. Only ever set by a slice-push from the OrcaSlicer plugin (issue
+  // #122), which can read the live preset selection — nothing embedded in a
+  // .3mf gives us this, so a parsed file leaves it undefined. Names, not
+  // values: reproducing a print means loading these presets, and storing the
+  // presets themselves is issue #92.
+  presets?: { printer?: string; process?: string; filaments?: string[] };
 };
 
 export const modelFiles = pgTable("model_files", {
@@ -433,11 +440,11 @@ export const modelVersions = pgTable("model_versions", {
 
 // --- Slice-push tokens (issue #122) ---
 //
-// A per-model credential a slicer's post-processing hook presents to
-// POST /api/models/:id/slice-push, which attaches the just-sliced file as a
-// new revision. The slicer fetches without cookies (the same constraint that
-// forces the token-in-path download route), so this is the one *write* surface
-// that authenticates without a session.
+// The credential the OrcaSlicer plugin (orca-plugin/) presents to the slice-push
+// endpoints, which resolve a file on the slicing machine back to a model and
+// attach the just-sliced artifact as a new revision. The slicer has no session
+// cookie (the same constraint that forces the token-in-path download route), so
+// these are the only *write* surfaces that authenticate without a session.
 //
 // Deliberately a stored token rather than the HMAC in src/lib/file-token.ts:
 // that one is short-lived, download-scoped and — being pure signature — cannot
@@ -445,37 +452,36 @@ export const modelVersions = pgTable("model_versions", {
 // and lives as long as the user keeps it in their slicer config, so revocation
 // has to mean deleting a row.
 //
+// Scoped to a **user and a machine**, not to a model. The per-model tokens this
+// started as could not work: the target has to be chosen *inside* the slicer,
+// and a per-model credential means re-pasting a command every time you slice a
+// different model. The plugin instead resolves the model at slice time (by
+// model_files.content_hash of the file the user opened), so one token per
+// slicer install covers the whole catalogue. That is edit-equivalent access,
+// which matches the collaborative-editing rule — every signed-in user may
+// already edit every model — but it is still push-only (it can add a file
+// revision, never delete a model or read another user's data) and revocable on
+// its own.
+//
 // Only the SHA-256 of the secret is stored (like a password digest): a leaked
 // database gives no working tokens, and the plaintext is shown exactly once at
 // mint time. `prefix` is the secret's leading characters, kept in clear so the
 // settings list can tell two tokens apart without being able to reconstruct
-// either. Scoped to (model, user): the token grants edit-equivalent access to
-// one model, which matches the collaborative-editing rule, and dies with either
-// the model or the issuing account.
-export const modelPushTokens = pgTable(
-  "model_push_tokens",
-  {
-    id: uuid("id").primaryKey().defaultRandom(),
-    modelId: uuid("model_id")
-      .notNull()
-      .references(() => models.id, { onDelete: "cascade" }),
-    userId: text("user_id")
-      .notNull()
-      .references(() => user.id, { onDelete: "cascade" }),
-    tokenHash: text("token_hash").notNull().unique(),
-    prefix: text("prefix").notNull(),
-    // User-supplied note for which machine/slicer install holds this token.
-    label: text("label"),
-    // Null until the token is first used — the signal that tells someone
-    // whether a token in the list is actually wired up to a slicer.
-    lastUsedAt: timestamp("last_used_at"),
-    createdAt: timestamp("created_at").notNull().defaultNow(),
-  },
-  (t) => [
-    // The model page lists a model's tokens on every load.
-    index("model_push_tokens_model_idx").on(t.modelId),
-  ],
-);
+// either.
+export const pushTokens = pgTable("push_tokens", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  userId: text("user_id")
+    .notNull()
+    .references(() => user.id, { onDelete: "cascade" }),
+  tokenHash: text("token_hash").notNull().unique(),
+  prefix: text("prefix").notNull(),
+  // User-supplied note for which machine/slicer install holds this token.
+  label: text("label"),
+  // Null until the token is first used — the signal that tells someone whether
+  // a token in the list is actually wired up to a slicer.
+  lastUsedAt: timestamp("last_used_at"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
 
 // --- Duplicate detection (issue #118) ---
 //
@@ -660,7 +666,6 @@ export const modelsRelations = relations(models, ({ one, many }) => ({
   collectionModels: many(collectionModels),
   likes: many(modelLikes),
   versions: many(modelVersions),
-  pushTokens: many(modelPushTokens),
 }));
 
 export const modelLikesRelations = relations(modelLikes, ({ one }) => ({
@@ -668,12 +673,8 @@ export const modelLikesRelations = relations(modelLikes, ({ one }) => ({
   user: one(user, { fields: [modelLikes.userId], references: [user.id] }),
 }));
 
-export const modelPushTokensRelations = relations(modelPushTokens, ({ one }) => ({
-  model: one(models, {
-    fields: [modelPushTokens.modelId],
-    references: [models.id],
-  }),
-  user: one(user, { fields: [modelPushTokens.userId], references: [user.id] }),
+export const pushTokensRelations = relations(pushTokens, ({ one }) => ({
+  user: one(user, { fields: [pushTokens.userId], references: [user.id] }),
 }));
 
 export const modelVersionsRelations = relations(modelVersions, ({ one }) => ({

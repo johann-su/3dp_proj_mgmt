@@ -2,9 +2,23 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   findReplaceTarget,
+  isConfidentMatch,
+  isContentHash,
   normalizePushFilename,
+  parsePushMeta,
   pushArtifact,
+  rankPushCandidates,
+  type PushCandidate,
 } from "@/lib/slice-push";
+
+const candidate = (over: Partial<PushCandidate>): PushCandidate => ({
+  modelId: "m1",
+  modelTitle: "Bracket",
+  fileId: "f1",
+  filename: "Bracket.3mf",
+  via: "hash",
+  ...over,
+});
 
 test("routes each artifact to the parser that can read it", () => {
   // .gcode is what the post-processing hook actually hands over; the 3MF
@@ -61,4 +75,83 @@ test("a generated OpenSCAD variant is never overwritten by a push", () => {
     { id: "v", filename: "Part (n=4).3mf", kind: "model", generatedFromId: "src" },
   ];
   assert.equal(findReplaceTarget(files, "Part (n=4).3mf"), undefined);
+});
+
+test("one model matched twice keeps its strongest reason, not both rows", () => {
+  // A project opened from the catalogue matches by hash *and* by filename;
+  // showing it twice would read as two different models.
+  const ranked = rankPushCandidates([
+    candidate({ via: "filename" }),
+    candidate({ via: "hash" }),
+    candidate({ modelId: "m2", modelTitle: "Other", via: "filename" }),
+  ]);
+  assert.equal(ranked.length, 2);
+  assert.equal(ranked[0].modelId, "m1");
+  assert.equal(ranked[0].via, "hash");
+  // Best reason first, so the plugin can offer the top one as the default.
+  assert.equal(ranked[1].via, "filename");
+});
+
+test("only a single exact-file match is pushed to without asking", () => {
+  // Pushing a revision to the wrong model is the one mistake with no cheap
+  // undo, and "part.3mf" is exactly where several models collide.
+  assert.equal(isConfidentMatch([candidate({})]), true);
+  assert.equal(isConfidentMatch([candidate({ via: "filename" })]), false);
+  assert.equal(isConfidentMatch([candidate({ via: "source" })]), false);
+  assert.equal(
+    isConfidentMatch([candidate({}), candidate({ modelId: "m2" })]),
+    false,
+  );
+  assert.equal(isConfidentMatch([]), false);
+});
+
+test("only a lowercase hex sha-256 reaches the content-hash lookup", () => {
+  // The plugin sends whatever it could hash; anything else is dropped rather
+  // than rejected, so one unreadable file doesn't fail the whole lookup.
+  assert.equal(isContentHash("a".repeat(64)), true);
+  assert.equal(isContentHash("A".repeat(64)), false);
+  assert.equal(isContentHash("a".repeat(63)), false);
+  assert.equal(isContentHash(null), false);
+});
+
+test("slice metadata keeps only what it can vouch for", () => {
+  // Everything here is client-supplied, so unknown keys are dropped and a
+  // malformed header yields nothing rather than an error.
+  const info = parsePushMeta(
+    JSON.stringify({
+      model: "Bambu Lab P1S",
+      nozzleDiameterMm: 0.4,
+      filamentTypes: ["PLA", "PETG"],
+      filamentColors: ["#e02020", "#000000"],
+      usesSupport: true,
+      presets: { printer: "P1S 0.4", process: "0.20 Standard", filaments: ["Generic PLA"] },
+      somethingElse: "dropped",
+    }),
+  );
+  assert.equal(info?.model, "Bambu Lab P1S");
+  assert.equal(info?.nozzleDiameterMm, 0.4);
+  assert.deepEqual(info?.filamentColors, ["#e02020", "#000000"]);
+  assert.equal(info?.presets?.process, "0.20 Standard");
+  assert.equal("somethingElse" in (info ?? {}), false);
+});
+
+test("filament colours are dropped rather than shifted onto the wrong slot", () => {
+  // The two arrays are index-parallel by contract; a mismatched pair would
+  // paint slot 2's colour onto slot 1.
+  const info = parsePushMeta(
+    JSON.stringify({ filamentTypes: ["PLA", "PETG"], filamentColors: ["#e02020"] }),
+  );
+  assert.deepEqual(info?.filamentTypes, ["PLA", "PETG"]);
+  assert.equal(info?.filamentColors, undefined);
+});
+
+test("junk metadata never costs us the bytes", () => {
+  // The file is worth storing even when the header is nonsense.
+  assert.equal(parsePushMeta("not json"), null);
+  assert.equal(parsePushMeta("[1,2,3]"), null);
+  assert.equal(parsePushMeta(null), null);
+  assert.equal(parsePushMeta("{}"), null);
+  // Out-of-range numbers are dropped, not clamped: a 90 mm "nozzle" is a bug
+  // somewhere, and a wrong number is worse than a missing one.
+  assert.equal(parsePushMeta(JSON.stringify({ nozzleDiameterMm: 90 })), null);
 });

@@ -1,21 +1,23 @@
 // Slice-push ingest (issue #122): the return leg of the slicer round-trip.
-// A post-processing script in OrcaSlicer/Bambu Studio/PrusaSlicer POSTs the
-// file it just produced here, and it lands on the model as a new versioned
-// revision with its print estimates read back — no manual re-upload.
+// The OrcaSlicer plugin (orca-plugin/) POSTs the file it just sliced here, and
+// it lands on the model as a new versioned revision with its print estimates
+// read back — no manual re-upload.
 //
-// This is the one *write* surface that authenticates without a session
-// cookie: the script runs inside the slicer, which has no login. It carries a
-// per-model push token instead (src/lib/push-token.ts), which grants
-// edit-equivalent access to exactly one model — the same access any signed-in
-// user already has under the collaborative-editing rule, narrowed to one
-// record and revocable on its own. See docs/architecture/slicing.md.
+// This is a *write* surface that authenticates without a session cookie: the
+// slicer has no login. It carries a push token instead (src/lib/push-token.ts,
+// src/lib/push-tokens.ts), which stands for one slicer install and grants
+// edit-equivalent access — the same access any signed-in user already has
+// under the collaborative-editing rule, narrowed to "add a file revision" and
+// revocable on its own. The model id in the path is resolved by the plugin
+// through /api/slice-push/resolve before it gets here, so a mistargeted push
+// is a resolve bug, not a missing check. See docs/architecture/slicing.md.
 
 import { NextRequest, NextResponse } from "next/server";
 import { after } from "next/server";
 import { revalidatePath } from "next/cache";
-import { and, eq } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { db } from "@/db";
-import { modelFiles, modelPushTokens, models } from "@/db/schema";
+import { modelFiles, models } from "@/db/schema";
 import { contentTypeForFilename } from "@/lib/s3";
 import { stageStream } from "@/lib/storage";
 import {
@@ -23,10 +25,11 @@ import {
   ensureBaselineVersion,
   recordVersion,
 } from "@/lib/model-versions";
-import { hashPushToken, parsePushTokenHeader } from "@/lib/push-token";
+import { authenticatePush, stampPushTokenUse } from "@/lib/push-tokens";
 import {
   findReplaceTarget,
   normalizePushFilename,
+  parsePushMeta,
   pushArtifact,
 } from "@/lib/slice-push";
 import { GCODE_TAIL_BYTES, TailBuffer, parseGcodeStats } from "@/lib/gcode-stats";
@@ -78,20 +81,8 @@ export async function POST(
 ) {
   const { id } = await params;
 
-  const token = parsePushTokenHeader(req.headers.get("authorization"));
-  if (!token) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-
-  // A token is bound to one model, so the row must match both the secret and
-  // the model in the path — a valid token for model A cannot push to model B.
-  const pushToken = await db.query.modelPushTokens.findFirst({
-    where: and(
-      eq(modelPushTokens.tokenHash, hashPushToken(token)),
-      eq(modelPushTokens.modelId, id),
-    ),
-  });
-  if (!pushToken) {
+  const auth = await authenticatePush(req.headers.get("authorization"));
+  if (!auth) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
@@ -181,6 +172,12 @@ export async function POST(
           sliceError: null,
         };
 
+  // What the slicer knew and the G-code footer doesn't say: printer, nozzle,
+  // plate, filament slots, and the presets that produced the file. Only the
+  // plugin can supply this (a .3mf carries its own, read by the 3MF parser),
+  // so it is applied to the G-code path only and left null otherwise.
+  const meta = artifact === "gcode" ? parsePushMeta(req.headers.get("x-slice-push-meta")) : null;
+
   const replaced = findReplaceTarget(model.files, filename);
 
   const orphanedKeys = await db.transaction(async (tx) => {
@@ -201,7 +198,7 @@ export async function POST(
           // sync overwrite the tuned file with the upstream one — losing
           // exactly what this feature exists to keep.
           imported: false,
-          printerInfo: null,
+          printerInfo: meta,
           ...sliceFields,
         })
         .where(eq(modelFiles.id, replaced.id));
@@ -216,6 +213,7 @@ export async function POST(
         contentType: staged.contentType,
         contentHash: staged.contentHash,
         position,
+        printerInfo: meta,
         ...sliceFields,
       });
     }
@@ -228,7 +226,7 @@ export async function POST(
     // Last, inside the same transaction — the replaced file's old bytes stay
     // in S3 because the snapshot taken before this one still references them;
     // only keys no remaining snapshot or live row references come back here.
-    return recordVersion(tx, model.id, pushToken.userId, "slice-push");
+    return recordVersion(tx, model.id, auth.userId, "slice-push");
   });
 
   if (orphanedKeys.length > 0) {
@@ -242,15 +240,12 @@ export async function POST(
   }
 
   // Bookkeeping only, and deliberately non-fatal: the revision is already
-  // committed, so turning a failure here into a 5xx would make the script
+  // committed, so turning a failure here into a 5xx would make the plugin
   // retry a push that actually succeeded and record a second revision.
   try {
-    await db
-      .update(modelPushTokens)
-      .set({ lastUsedAt: new Date() })
-      .where(eq(modelPushTokens.id, pushToken.id));
+    await stampPushTokenUse(auth.tokenId);
   } catch (err) {
-    reportError(`slice-push could not stamp token ${pushToken.id}`, err);
+    reportError(`slice-push could not stamp token ${auth.tokenId}`, err);
   }
 
   logger.info(
