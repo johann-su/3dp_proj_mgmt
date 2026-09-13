@@ -71,10 +71,13 @@ from the hook. Hence three modes:
                  you have said "always" for that model; never asks
   off            capture nothing
 
-`prompt_after_slice` additionally tries to raise the question by itself from a
-short-lived thread once the pipeline has returned. That is the one piece of
-this that leans on undocumented behaviour — it is off by default and reported
-upstream in OrcaSlicer discussion #14878.
+`prompt_after_slice` additionally raises that window by itself once a slice
+lands, from a short-lived thread (the hook may not touch the UI). Refreshes are
+coalesced: slicing 18 plates fires the hook 18 times, and the first version of
+this raised a modal dialog on each — eighteen stacked dialogs, each asking about
+one plate. One window that grows a list is the same information without the
+pile. That thread is the one piece of this that leans on undocumented timing;
+it is off by default and reported upstream in OrcaSlicer discussion #14878.
 
 Running it outside OrcaSlicer
 -----------------------------
@@ -117,8 +120,10 @@ DEFAULTS = {
     "token": "",
     # "ask" | "auto" | "off" — see the module docstring.
     "mode": "ask",
-    # Experimental: raise the review window by itself after a slice. Off by
-    # default; the pipeline hook may not legally touch the UI.
+    # Bring the review window up by itself after a slice, instead of waiting
+    # for the user to run the review capability. Off by default: the pipeline
+    # hook may not legally touch the UI, so this is done from a separate
+    # thread, which is the one piece of this that leans on undocumented timing.
     "prompt_after_slice": False,
     # Never copy a working G-code larger than this into the queue. A deferred
     # push has to keep its own copy (the slicer deletes the temp file), and a
@@ -289,6 +294,8 @@ class VaultClient:
         meta: dict | None,
         on_progress=None,
         replaces: str | None = None,
+        batch: str | None = None,
+        batch_final: bool = False,
     ) -> dict:
         """Uploads the artifact as a new revision of `model_id`. Streams from
         disk — a sliced G-code is routinely hundreds of MB and must never be
@@ -301,6 +308,12 @@ class VaultClient:
         params = {"filename": filename}
         if replaces:
             params["replaces"] = replaces
+        # One "Slice all" is one push per plate; `batch` tells the server to
+        # record a single version for the lot instead of one per plate.
+        if batch:
+            params["batch"] = batch
+            if batch_final:
+                params["batchFinal"] = "1"
         query = urllib.parse.urlencode(params)
         headers = {
             "Content-Type": "application/octet-stream",
@@ -334,7 +347,12 @@ class State:
         # stored config; the window borrows it so there is a single source of
         # truth even though every capability has its own config slot.
         self.config_owner = None
+        # The review capability instance, so the hook can raise its window
+        # without owning any UI itself.
+        self.reviewer = None
         self._storage: str | None = None
+        self._notify_thread: threading.Thread | None = None
+        self._notify_at = 0.0
 
     # --- storage ---
 
@@ -398,6 +416,44 @@ class State:
                     json.dump(merged, handle, indent=2)
             except OSError as exc:
                 log(f"could not write settings.json: {exc}")
+
+    def notify_queued(self) -> None:
+        """Bring the review window up (or refresh it) after a slice.
+
+        Coalesced on purpose. Slicing 18 plates fires the hook 18 times, and
+        the first version of this raised a modal each time — eighteen stacked
+        dialogs over the plater, each demanding an answer about one plate. One
+        window that grows a list is the same information without the pile.
+
+        Runs on its own thread because the hook may not touch the UI (the
+        slicing worker can be the thread the UI is waiting on), and the delay
+        also lets several plates land in one refresh.
+        """
+        with self.lock:
+            self._notify_at = time.time() + 1.5
+            if self._notify_thread is not None and self._notify_thread.is_alive():
+                return  # a pass is already scheduled; it will pick this up
+
+            def run():
+                while True:
+                    with self.lock:
+                        wait = self._notify_at - time.time()
+                    if wait <= 0:
+                        break
+                    time.sleep(min(wait, 1.0))
+                reviewer = self.reviewer
+                if reviewer is None:
+                    log("review capability is not enabled; slices are queued only")
+                    return
+                try:
+                    reviewer.show()
+                except Exception as exc:  # noqa: BLE001
+                    log(f"could not open the review window: {exc}")
+
+            self._notify_thread = threading.Thread(
+                target=run, name="print-vault-notify", daemon=True
+            )
+            self._notify_thread.start()
 
     def client(self) -> VaultClient:
         settings = self.settings()
@@ -787,6 +843,8 @@ def push_entry(entry: dict, model_id: str, on_progress=None, client: VaultClient
         entry.get("meta"),
         on_progress=on_progress,
         replaces=entry.get("replaces"),
+        batch=entry.get("batch"),
+        batch_final=bool(entry.get("batchFinal")),
     )
     verb = "Replaced" if answer.get("status") == "replaced" else "Added"
     entry = {**entry, "filename": answer.get("filename") or entry["filename"]}
@@ -1008,53 +1066,13 @@ class PrintVaultSlicePush(orca.slicing.SlicingPipelineCapabilityBase if orca els
             return orca.ExecutionResult.success("Print Vault: nothing queued")
 
         if settings.get("prompt_after_slice"):
-            self._prompt_later(queued)
+            STATE.notify_queued()
 
         title = candidates[0]["modelTitle"] if candidates else "an unmatched model"
         return orca.ExecutionResult.success(
             f"Print Vault: queued {filename} for {title} — "
             'run "Print Vault: review & push" to send it'
         )
-
-    def _prompt_later(self, entry: dict) -> None:
-        """Experimental: ask the question from a thread once the pipeline has
-        returned.
-
-        The hook itself must not touch the UI, and there is no "slicing
-        finished" event to hang this on — so this waits out the export and then
-        raises a native message box. It leans on undocumented timing and is off
-        by default; see OrcaSlicer discussion #14878, where the missing event is
-        the first thing asked for.
-        """
-
-        def run():
-            time.sleep(3.0)
-            try:
-                candidates = entry.get("candidates", [])
-                if not candidates:
-                    return
-                target = candidates[0]
-                clicked = orca.host.ui.message(
-                    f"{entry['filename']} was sliced.\n\n"
-                    f"Update \"{target['modelTitle']}\" in Print Vault with it?",
-                    title="Print Vault",
-                    buttons="yes_no",
-                    icon="question",
-                )
-                if clicked != "yes":
-                    STATE.queue_remove(entry["id"])
-                    return
-                message = push_entry(
-                    {**entry, "replaces": target.get("fileId")}, target["modelId"]
-                )
-                remember_target(entry.get("identity", {}), target)
-                STATE.queue_remove(entry["id"])
-                orca.host.ui.message(message, title="Print Vault", icon="info")
-            except Exception as exc:  # noqa: BLE001
-                log(f"deferred prompt failed: {exc}")
-
-        threading.Thread(target=run, name="print-vault-prompt", daemon=True).start()
-
 
 # --- Capability 2: the review window ---------------------------------------
 
@@ -1091,9 +1109,28 @@ class PrintVaultReview(orca.script.ScriptPluginCapabilityBase if orca else objec
     def get_config_ui(self):
         return POINTER_HTML
 
+    def on_load(self):
+        STATE.reviewer = self
+
+    def on_unload(self):
+        if STATE.reviewer is self:
+            STATE.reviewer = None
+
     def execute(self):
+        self.show()
+        return orca.ExecutionResult.success()
+
+    def show(self) -> None:
+        """Open the window, or refresh it if it is already up.
+
+        Called both by the Run action and — after a slice — by the hook, which
+        may not touch the UI itself. Refreshing rather than reopening is the
+        whole point: a "Slice all" adds plates to the list you are already
+        looking at instead of stacking a dialog per plate.
+        """
         if self.win is not None and self.win.is_open():
-            self.win.close()
+            self._send_state()
+            return
         self.win = orca.host.ui.create_window(
             REVIEW_HTML,
             title="Print Vault",
@@ -1102,7 +1139,6 @@ class PrintVaultReview(orca.script.ScriptPluginCapabilityBase if orca else objec
             on_message=self.on_message,
             on_close=self._forget,
         )
-        return orca.ExecutionResult.success()
 
     def _forget(self):
         self.win = None
@@ -1134,8 +1170,8 @@ class PrintVaultReview(orca.script.ScriptPluginCapabilityBase if orca else objec
                     msg.get("modelId", ""),
                     bool(msg.get("always")),
                 )
-            elif command == "rescan":
-                self._run(self._rescan, msg.get("id", ""))
+            elif command == "pushall":
+                self._run(self._push_all, msg.get("modelId", ""), bool(msg.get("always")))
             elif command == "project":
                 self._run(self._resolve_project)
             elif command == "search":
@@ -1305,28 +1341,68 @@ class PrintVaultReview(orca.script.ScriptPluginCapabilityBase if orca else objec
         self._post({"command": "result", "ok": True, "message": message})
         self._send_state()
 
-    def _rescan(self, entry_id: str) -> None:
-        """Re-run resolution for a queued slice — the answer changes once the
-        model exists, or once its file has been uploaded."""
-        entry = STATE.queue_get(entry_id)
-        if not entry:
+    def _push_all(self, model_id: str, always: bool) -> None:
+        """Push every queued slice that resolves to one model, as one batch.
+
+        The reason this exists: a multi-plate "Slice all" queues one file per
+        plate, and answering eighteen times is not an interface. The batch id
+        also makes the server record *one* version for the lot rather than one
+        per plate, which would otherwise evict the model's real history.
+        """
+        entries = [
+            entry
+            for entry in STATE.queue_list()
+            if any(c.get("modelId") == model_id for c in entry.get("candidates", []))
+        ]
+        if not entries:
+            self._post({"command": "result", "ok": False, "message": "Nothing queued for that model"})
             return
-        identity = entry.get("identity", {})
-        try:
-            candidates = STATE.client().resolve(
-                identity.get("hashes", []),
-                identity.get("filenames", []),
-                identity.get("designId"),
-            )
-        except VaultError as exc:
-            self._post({"command": "result", "ok": False, "message": str(exc)})
-            return
-        entry["candidates"] = candidates
-        try:
-            with open(os.path.join(STATE.queue_dir(), f"{entry_id}.json"), "w", encoding="utf-8") as handle:
-                json.dump(entry, handle, indent=2)
-        except OSError:
-            pass
+
+        batch = uuid.uuid4().hex
+        done = 0
+        for index, entry in enumerate(entries):
+            last = index == len(entries) - 1
+            try:
+                push_entry(
+                    {
+                        **entry,
+                        "replaces": file_id_for(entry.get("candidates", []), model_id),
+                        "batch": batch,
+                        # The final push is what records the version, so it has
+                        # to be the last one actually sent — not the last one
+                        # planned. Any failure before it leaves the batch
+                        # unversioned rather than half-versioned.
+                        "batchFinal": last,
+                    },
+                    model_id,
+                    on_progress=lambda fraction, eid=entry["id"]: self._post(
+                        {"command": "progress", "id": eid, "fraction": fraction}
+                    ),
+                )
+            except VaultError as exc:
+                self._post({"command": "result", "ok": False, "message": f"{entry['filename']}: {exc}"})
+                self._send_state()
+                return
+            STATE.queue_remove(entry["id"])
+            done += 1
+            self._send_state()
+
+        chosen = next(
+            (c for c in entries[0].get("candidates", []) if c.get("modelId") == model_id),
+            {"modelId": model_id, "modelTitle": "this model"},
+        )
+        remember_target(entries[0].get("identity", {}), chosen)
+        if always:
+            remembered = dict(STATE.settings().get("always", {}))
+            remembered[model_id] = True
+            STATE.save_settings({"always": remembered})
+        self._post(
+            {
+                "command": "result",
+                "ok": True,
+                "message": f"Pushed {done} file(s) to {chosen.get('modelTitle', 'the model')}",
+            }
+        )
         self._send_state()
 
     def _push(self, entry_id: str, model_id: str, always: bool) -> None:
@@ -1431,7 +1507,7 @@ REVIEW_HTML = (
     </select>
   </label>
   <label class="row"><input type="checkbox" id="prompt" style="width:auto">
-    <span style="margin:0">Pop the question right after slicing (experimental)</span></label>
+    <span style="margin:0">Open this window automatically after slicing (experimental)</span></label>
   <button class="secondary" id="save-settings">Save</button>
 </div>
 <script>
@@ -1473,40 +1549,73 @@ function renderPending() {
   if (!S.pending.length) {
     el.innerHTML = '<p class="muted">Nothing queued. A slice reaches this list only once ' +
       '<strong>Push sliced file to Print Vault</strong> is selected under Print Settings \u2192 Others \u2192 ' +
-      'Slicing Pipeline Plugin (Advanced mode) for the profile you slice with, and only when you ' +
-      '<em>export</em> the sliced file. Until then, use the list below.</p>';
+      'Slicing Pipeline Plugin (Advanced mode) for the profile you slice with. Until then, use the list below.</p>';
     return;
   }
-  el.innerHTML = S.pending.map(p => {
-    const options = p.candidates.map(c =>
-      '<option value="' + esc(c.modelId) + '">' + esc(c.modelTitle) + ' — ' + via(c.via) + '</option>').join('');
-    const picker = p.candidates.length
-      ? '<label><span>Model</span><select data-pick="' + esc(p.id) + '" class="grow">' + options + '</select></label>'
-      : '<p class="muted">No matching model. Upload this file to a model first, then rescan.</p>';
-    const printer = p.meta && p.meta.model ? ' · ' + esc(p.meta.model) : '';
-    return '<div class="card" data-entry="' + esc(p.id) + '">' +
-      '<h2>' + esc(p.filename) + '</h2>' +
-      '<p class="muted">' + p.sizeMb + ' MB' + printer + '</p>' + picker +
+
+  // Grouped by target model, because one "Slice all" queues one file per plate
+  // and eighteen separate cards asking the same question is the thing this
+  // replaced.
+  const groups = new Map();
+  for (const p of S.pending) {
+    const key = p.candidates.length ? p.candidates[0].modelId : '';
+    if (!groups.has(key)) groups.set(key, { candidates: p.candidates, items: [] });
+    groups.get(key).items.push(p);
+  }
+
+  el.innerHTML = [...groups.entries()].map(([key, g]) => {
+    const title = g.candidates.length ? esc(g.candidates[0].modelTitle) : 'No matching model';
+    const total = g.items.reduce((sum, p) => sum + p.sizeMb, 0).toFixed(1);
+    const picker = g.candidates.length
+      ? modelPicker(g.candidates, 'g-' + key)
+      : '<p class="muted">Nothing identifies these files. Search for a model by name below, ' +
+        'then push them from there.</p>';
+    const rows = g.items.map(p =>
+      '<li class="row" style="justify-content:space-between;border-top:1px solid var(--border);padding:6px 0">' +
+      '<span class="grow"><span class="mono">' + esc(p.filename) + '</span> ' +
+      '<span class="muted">' + p.sizeMb + ' MB</span></span>' +
+      '<span class="row">' +
+      '<button class="secondary" data-push="' + esc(p.id) + '" data-group="' + esc(key) + '"' +
+        (g.candidates.length ? '' : ' disabled') + '>Push</button>' +
+      '<button class="secondary" data-discard="' + esc(p.id) + '">Discard</button>' +
+      '</span><div class="bar" style="flex-basis:100%"><i data-bar="' + esc(p.id) + '"></i></div></li>').join('');
+    return '<div class="card">' +
+      '<h2>' + g.items.length + ' sliced file' + (g.items.length === 1 ? '' : 's') + ' \u2192 ' + title + '</h2>' +
+      '<p class="muted">' + total + ' MB waiting for a decision.</p>' + picker +
       '<div class="row">' +
-        '<button data-push="' + esc(p.id) + '"' + (p.candidates.length ? '' : ' disabled') + '>Update catalogue</button>' +
-        '<button class="secondary" data-discard="' + esc(p.id) + '">Keep local</button>' +
-        '<button class="secondary" data-rescan="' + esc(p.id) + '">Rescan</button>' +
-        '<label class="row" style="margin:0"><input type="checkbox" data-always="' + esc(p.id) + '" style="width:auto">' +
+        '<button data-pushall="' + esc(key) + '"' + (g.candidates.length ? '' : ' disabled') + '>' +
+          'Update catalogue with all ' + g.items.length + '</button>' +
+        '<button class="secondary" data-discardall="' + esc(key) + '">Keep all local</button>' +
+        '<label class="row" style="margin:0"><input type="checkbox" data-always="' + esc(key) + '" style="width:auto">' +
         '<span style="margin:0" class="muted">always, without asking</span></label>' +
-      '</div><div class="bar"><i data-bar="' + esc(p.id) + '"></i></div></div>';
+      '</div>' +
+      '<ul style="list-style:none;padding:0;margin:8px 0 0">' + rows + '</ul></div>';
   }).join('');
 
-  el.querySelectorAll('[data-push]').forEach(b => b.onclick = () => {
-    const id = b.dataset.push;
-    const pick = el.querySelector('[data-pick="' + id + '"]');
+  const picked = key => {
+    const sel = el.querySelector('[data-pick="g-' + key + '"]');
+    return sel ? sel.value : '';
+  };
+  const always = key => {
+    const box = el.querySelector('[data-always="' + key + '"]');
+    return !!(box && box.checked);
+  };
+  el.querySelectorAll('[data-pushall]').forEach(b => b.onclick = () => {
     b.disabled = true;
-    orca.postMessage({ command:'push', id, modelId: pick ? pick.value : '',
-                       always: el.querySelector('[data-always="' + id + '"]').checked });
+    orca.postMessage({ command:'pushall', modelId: picked(b.dataset.pushall), always: always(b.dataset.pushall) });
+  });
+  el.querySelectorAll('[data-push]').forEach(b => b.onclick = () => {
+    b.disabled = true;
+    orca.postMessage({ command:'push', id: b.dataset.push, modelId: picked(b.dataset.group),
+                       always: always(b.dataset.group) });
   });
   el.querySelectorAll('[data-discard]').forEach(b => b.onclick = () =>
     orca.postMessage({ command:'discard', id: b.dataset.discard }));
-  el.querySelectorAll('[data-rescan]').forEach(b => b.onclick = () =>
-    orca.postMessage({ command:'rescan', id: b.dataset.rescan }));
+  el.querySelectorAll('[data-discardall]').forEach(b => b.onclick = () => {
+    const key = b.dataset.discardall;
+    const group = [...groups.entries()].find(([k]) => k === key);
+    if (group) group[1].items.forEach(p => orca.postMessage({ command:'discard', id: p.id }));
+  });
 }
 
 function modelPicker(list, key) {
@@ -1622,7 +1731,7 @@ CONFIG_HTML = (
   </select>
 </label>
 <label class="row"><input type="checkbox" id="prompt" style="width:auto">
-  <span style="margin:0">Pop the question right after slicing (experimental)</span></label>
+  <span style="margin:0">Open this window automatically after slicing (experimental)</span></label>
 <label><span>Never queue a file larger than (MB)</span><input id="max" type="number" min="16" step="16"></label>
 <button id="save">Save</button>
 <p class="muted" id="status"></p>

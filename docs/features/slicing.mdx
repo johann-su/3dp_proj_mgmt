@@ -177,8 +177,10 @@ fallback when a slice did not show up on its own.
   there, that is why. Pushing from the *Exported files* list always works
   regardless.
 - **Multi-plate projects.** OrcaSlicer hands a plugin one plate at a time, so
-  an automatic push lands next to your model's file as
-  `<name>_plate_2.gcode` rather than updating it. To keep the model's own file
+  slicing all plates queues one file per plate. The plugin's window groups them
+  under the model they belong to, so you answer once and they upload together
+  as a single new version — not one revision per plate. Each still lands next
+  to your model's file as `<name>_plate_2.gcode` rather than updating it. To keep the model's own file
   current, use **Export all plates sliced file** and push that `.3mf` from the
   *Exported files* list: it replaces the file it came from, keeps its name, and
   the catalogue reads every plate's print time and filament out of it.

@@ -203,7 +203,13 @@ all three exist because the first live test resolved *nothing*:
   project→model mapping (plugin-side, keyed on content hash or stripped name)
   means a project only has to be identified once, however badly it resolves.
 
-`POST /api/models/[id]/slice-push` takes the bytes. It accepts both:
+`POST /api/models/[id]/slice-push` takes the bytes. A multi-plate slice arrives
+as one push per plate, so it also takes `batch=<id>` (with `batchFinal=1` on the
+last): every push in a batch still runs `ensureBaselineVersion`, but only the
+final one calls `recordVersion`, and its snapshot contains the whole batch.
+Without that, one "Slice all" on an 18-plate project would write 18 version
+rows and evict the model's real history through the 30-version cap. It accepts
+both artifacts:
 
 - **`.gcode`** — the hook's artifact. Its footer stats are scraped from a
   rolling tail window **as the bytes stream past to S3** (`TailBuffer` +

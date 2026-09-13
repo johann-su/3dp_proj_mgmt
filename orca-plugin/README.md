@@ -64,7 +64,7 @@ from, and then — depending on **mode**:
 
 | mode | behaviour |
 |---|---|
-| `ask` (default) | Queues the slice. You answer in the plugin's own window: **Plugins → Print Vault: review & push → ▷ Run** (or put it on the Actions Speed Dial, which is one click from the plate). |
+| `ask` (default) | Queues the slice. You answer in the plugin's own window: **Plugins → Print Vault: review & push → ▷ Run** (or put it on the Actions Speed Dial, which is one click from the plate). The window groups everything queued by target model, so *Slice all* on an 18-plate project is one card with one **Update catalogue with all 18** button — not eighteen questions. |
 | `auto` | Pushes immediately, but only when the model is an unambiguous exact-file match and you have ticked *always* for it. Otherwise it falls back to queueing. |
 | `off` | Captures nothing. |
 
@@ -74,8 +74,9 @@ your export folders (`~/Downloads` and `~/Desktop` by default, or set
 process preset involved. This is the path to use when you do not want a
 per-profile setting, and the one that works when you forgot to add it.
 
-`prompt_after_slice` additionally tries to raise the question by itself right
-after a slice. It is **off by default and experimental** — see *Known limits*.
+`prompt_after_slice` additionally raises that window by itself when a slice
+lands, refreshing it in place as further plates arrive rather than opening
+anything new. It is **off by default and experimental** — see *Known limits*.
 
 ### How it knows which model
 
@@ -125,6 +126,10 @@ substance of what we asked for in [OrcaSlicer discussion
   temp path as the artifact (`.<pid>.<counter>.gcode`, and the counter is a
   global allocation counter, not the plate index), so the plugin derives the
   name from the catalogue file the project came from instead.
+
+Pushing a group sends it as one **batch**: the server records a single version
+for the lot instead of one per plate, which would otherwise evict a model's real
+history in a single *Slice all* (versions are capped per model).
 
 ## Multi-plate projects
 

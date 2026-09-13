@@ -109,6 +109,19 @@ export async function POST(
     return NextResponse.json({ error: "Empty request body" }, { status: 400 });
   }
 
+  // A multi-plate slice arrives as one push per plate, and a version row each
+  // would burn through the 30-version cap in a single "Slice all" — evicting
+  // real history to record eighteen steps of one action. A batch is therefore
+  // versioned once: every push still runs ensureBaselineVersion (it is a no-op
+  // after the first), but only the one flagged `batchFinal` records the
+  // version, whose snapshot then contains every file the batch added. An
+  // abandoned batch leaves files no snapshot mentions, which is the same
+  // position as any push that failed midway — the pre-batch state is still
+  // recorded and revertable.
+  const inBatch = req.nextUrl.searchParams.get("batch") !== null;
+  const batchFinal = req.nextUrl.searchParams.get("batchFinal") !== null;
+  const shouldRecordVersion = !inBatch || batchFinal;
+
   const declared = Number(req.headers.get("content-length"));
   if (Number.isFinite(declared) && declared > MAX_PUSH_BYTES) {
     return NextResponse.json({ error: "File too large" }, { status: 413 });
@@ -237,7 +250,9 @@ export async function POST(
     // Last, inside the same transaction — the replaced file's old bytes stay
     // in S3 because the snapshot taken before this one still references them;
     // only keys no remaining snapshot or live row references come back here.
-    return recordVersion(tx, model.id, auth.userId, "slice-push");
+    return shouldRecordVersion
+      ? recordVersion(tx, model.id, auth.userId, "slice-push")
+      : [];
   });
 
   if (orphanedKeys.length > 0) {
@@ -266,6 +281,8 @@ export async function POST(
       artifact,
       bytes: staged.size,
       replaced: !!replaced,
+      batched: inBatch,
+      versioned: shouldRecordVersion,
     },
     "slice-push accepted",
   );
