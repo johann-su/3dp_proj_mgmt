@@ -144,9 +144,16 @@ Once per machine, not once per model.
 2. In OrcaSlicer, open **Plugins → Install local plugin** and choose
    `orca_print_vault_plugin_any.py` from the `orca-plugin/` folder of the Print
    Vault repository.
-3. Open **Plugins → Print Vault → Config** and paste in the instance URL and
-   token. OrcaSlicer will ask for permission the first time the plugin uses the
-   network; that is its own audit prompt, and the answer is remembered.
+3. Open **Plugins → Push sliced file to Print Vault → Config** and paste in the
+   instance URL and token. OrcaSlicer will ask for permission the first time the
+   plugin uses the network; that is its own audit prompt, and the answer is
+   remembered.
+4. If you want pushes to happen automatically after a slice, switch to
+   **Advanced** mode and select **Push sliced file to Print Vault** under
+   **Print Settings → Others → Slicing Pipeline Plugin**, then save the profile.
+   OrcaSlicer only runs a slicing plugin for profiles that name it, and it is
+   per profile. You can skip this and push exported files by hand instead — see
+   below.
 
 Now open a file from a model and slice it — then **export the sliced file**
 (*Print plate ▾ → Export plate sliced file*, or send it to the printer).
@@ -156,12 +163,19 @@ Then run **Plugins → Print Vault: review & push** (or add it to the Actions
 Speed Dial for one-click access). It shows what you just sliced and which model
 it belongs to; choose **Update catalogue** or **Keep local**.
 
+The same window has an **Exported files** list: it finds sliced files in your
+export folders, matches them against whatever is open on the plate, and pushes
+the one you pick. That path needs no profile setting at all, so it is also the
+fallback when a slice did not show up on its own.
+
 ### Things to know
 
-- **It runs on export, not on slice.** OrcaSlicer only hands a plugin the
-  sliced file when you export it or send it to a printer, so a slice you never
-  export is never offered. The plugin's **Diagnostics** tab records every
-  export it saw.
+- **It runs on export, not on slice, and only for profiles that enable it.**
+  OrcaSlicer hands a plugin the sliced file only when you export it or send it
+  to a printer, and only when the print profile lists the plugin (step 4
+  above). The plugin's **Diagnostics** tab records every export it saw — if
+  nothing is there, one of those two is missing. Pushing from the *Exported
+  files* list always works regardless.
 - **Nothing is pushed without you.** By default a slice is queued and waits for
   your answer. Tick *always* for a model, or switch the plugin to
   **automatic**, and future slices of that model upload silently — but only

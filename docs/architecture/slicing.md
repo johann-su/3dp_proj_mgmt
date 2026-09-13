@@ -135,14 +135,25 @@ Design around these; they are host-API facts, not gaps in our code, and each is
 an open ask in [OrcaSlicer discussion
 #14878](https://github.com/OrcaSlicer/OrcaSlicer/discussions/14878).
 
+0. **The hook only runs for process presets that opt in.** `PluginHooks.cpp`
+   and `PostProcessor.cpp` both dispatch off the print config's
+   `slicing_pipeline_plugin` option — a `plugin_picker` under Print Settings →
+   Others (Advanced mode) — and return immediately when it is empty. Enabling
+   the plugin in the Plugins dialog does *not* enable the hook. So a per-preset
+   step survives the redesign; what does not survive is a per-*model* one, which
+   is the part that made the script version unusable. The plugin's own window
+   therefore also offers a path that scans the user's export folders and pushes
+   a file with no preset involvement at all — the only route that works before
+   anyone has touched Print Settings.
 1. **The hook hands over `.gcode`, not a project file — and only on export.**
    `Step.psGCodePostProcess` fires inside the G-code **export** path (or a
    printer upload) on a *temporary* working copy, **before** it is written to
    the user's chosen path — so no final `.gcode` and no Bambu-style
    `.gcode.3mf` bundle exists yet, and `ctx.print`/`ctx.object` are None.
-   Slicing alone never reaches a plugin, which is the first thing to check when
-   a push "did nothing". Don't design around getting the project file from the
-   hook; you can't.
+   Slicing alone never reaches a plugin — with (0), the two reasons a push
+   "did nothing". Don't design around getting the project file from the hook;
+   you can't. A Bambu-style export hands over plain G-code and then packages
+   the `.gcode.3mf` itself, so what arrives can be either.
 2. **The hook may not show UI.** It runs on the slicing worker thread, which the
    UI thread can be blocked waiting on, so a marshaled UI call from there can
    deadlock the app. The "update the catalogue or keep it local?" question is

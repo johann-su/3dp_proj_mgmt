@@ -117,7 +117,18 @@ DEFAULTS = {
     "max_queue_mb": 1024,
     # Models the user has said "always push this one" for: {model_id: True}.
     "always": {},
+    # Folders scanned for already-exported sliced files, so the review window
+    # can push one without the slicing hook having run at all. Empty means the
+    # defaults below.
+    "export_dirs": [],
 }
+
+
+def default_export_dirs() -> list[str]:
+    """Where OrcaSlicer's "Export plate sliced file" lands by default. Only
+    ever read, never written."""
+    home = os.path.expanduser("~")
+    return [os.path.join(home, "Downloads"), os.path.join(home, "Desktop")]
 
 # Slice artifacts the ingest endpoint accepts.
 ALLOWED_SUFFIXES = (".gcode", ".3mf")
@@ -514,31 +525,31 @@ def _as_list(value: str | None) -> list[str]:
     return [p for p in parts if p]
 
 
-def collect_meta(ctx) -> dict:
-    """The context the G-code footer does not carry: machine, nozzle, plate,
-    filament slots and the presets that produced the file. Sent in a header and
-    folded into the model file's printer info server-side."""
+def _meta_from(get) -> dict:
+    """Shared by both metadata paths: `get(key) -> str | None`. The slicing hook
+    reads the config off its context; the review window reads it off the live
+    preset bundle, since there is no context there."""
     meta: dict = {}
 
-    model = _cfg(ctx, "printer_model")
+    model = get("printer_model")
     if model:
         meta["model"] = model
-    bed = _cfg(ctx, "curr_bed_type")
+    bed = get("curr_bed_type")
     if bed:
         meta["bedType"] = bed
-    nozzles = _as_list(_cfg(ctx, "nozzle_diameter"))
+    nozzles = _as_list(get("nozzle_diameter"))
     if nozzles:
         try:
             meta["nozzleDiameterMm"] = float(nozzles[0])
         except ValueError:
             pass
-    filaments = _as_list(_cfg(ctx, "filament_type"))
+    filaments = _as_list(get("filament_type"))
     if filaments:
         meta["filamentTypes"] = filaments
-        colours = _as_list(_cfg(ctx, "filament_colour"))
+        colours = _as_list(get("filament_colour"))
         if len(colours) == len(filaments):
             meta["filamentColors"] = colours
-    support = _cfg(ctx, "enable_support") or _cfg(ctx, "support_material")
+    support = get("enable_support") or get("support_material")
     if support is not None:
         meta["usesSupport"] = support.lower() in ("1", "true", "yes")
 
@@ -556,6 +567,70 @@ def collect_meta(ctx) -> dict:
     except Exception:
         pass
     return meta
+
+
+def collect_meta(ctx) -> dict:
+    """The context the G-code footer does not carry: machine, nozzle, plate,
+    filament slots and the presets that produced the file. Sent in a header and
+    folded into the model file's printer info server-side."""
+    return _meta_from(lambda key: _cfg(ctx, key))
+
+
+def collect_meta_host() -> dict:
+    """Same, read off the live preset bundle — what the review window has when
+    it pushes a file the hook never saw."""
+    try:
+        bundle = orca.host.preset_bundle()  # type: ignore[name-defined]
+    except Exception:
+        return {}
+
+    def get(key: str) -> str | None:
+        try:
+            value = bundle.full_config_value(key)
+        except Exception:
+            return None
+        return None if value is None else str(value)
+
+    return _meta_from(get)
+
+
+def recent_exports(dirs: list[str], limit: int = 12, max_age_hours: int = 72) -> list[dict]:
+    """Sliced files sitting in the user's export folders, newest first.
+
+    The escape hatch from OrcaSlicer's one real constraint here: a
+    slicing-pipeline capability only runs when the *process preset* lists it
+    (`slicing_pipeline_plugin`), so a preset that has never been wired up
+    produces nothing to review. Scanning where exports land needs no preset at
+    all — the file is already on disk, and it is the same artifact the hook
+    would have handed over.
+    """
+    cutoff = time.time() - max_age_hours * 3600
+    found: list[dict] = []
+    for directory in dirs or default_export_dirs():
+        try:
+            names = os.listdir(directory)
+        except OSError:
+            continue
+        for name in names:
+            if not name.lower().endswith(ALLOWED_SUFFIXES):
+                continue
+            path = os.path.join(directory, name)
+            try:
+                stat = os.stat(path)
+            except OSError:
+                continue
+            if not os.path.isfile(path) or stat.st_mtime < cutoff:
+                continue
+            found.append(
+                {
+                    "path": path,
+                    "filename": name,
+                    "sizeMb": round(stat.st_size / (1 << 20), 1),
+                    "mtime": stat.st_mtime,
+                }
+            )
+    found.sort(key=lambda item: item["mtime"], reverse=True)
+    return found[:limit]
 
 
 def push_entry(entry: dict, model_id: str, on_progress=None, client: VaultClient | None = None) -> str:
@@ -781,6 +856,10 @@ class PrintVaultReview(orca.script.ScriptPluginCapabilityBase if orca else objec
     def __init__(self):
         super().__init__()
         self.win = None
+        # Candidates for whatever project is open right now, resolved once per
+        # window rather than per listed file: every export in the list came
+        # from the same plate.
+        self._project_candidates: list[dict] = []
 
     def get_name(self):
         return "Print Vault: review & push"
@@ -839,6 +918,15 @@ class PrintVaultReview(orca.script.ScriptPluginCapabilityBase if orca else objec
                 )
             elif command == "rescan":
                 self._run(self._rescan, msg.get("id", ""))
+            elif command == "project":
+                self._run(self._resolve_project)
+            elif command == "pushfile":
+                self._run(
+                    self._push_file,
+                    msg.get("path", ""),
+                    msg.get("modelId", ""),
+                    bool(msg.get("always")),
+                )
         except Exception as exc:  # noqa: BLE001
             self._post({"command": "result", "ok": False, "message": str(exc)})
 
@@ -865,6 +953,11 @@ class PrintVaultReview(orca.script.ScriptPluginCapabilityBase if orca else objec
                     "mode": settings.get("mode", "ask"),
                     "promptAfterSlice": bool(settings.get("prompt_after_slice")),
                     "always": settings.get("always", {}),
+                    # Files already on disk that the hook never saw — the path
+                    # that works without the process preset listing us.
+                    "exports": recent_exports(settings.get("export_dirs", [])),
+                    "exportDirs": settings.get("export_dirs") or default_export_dirs(),
+                    "projectCandidates": self._project_candidates,
                     "pending": [
                         {
                             "id": entry.get("id"),
@@ -892,6 +985,69 @@ class PrintVaultReview(orca.script.ScriptPluginCapabilityBase if orca else objec
         STATE.save_settings({"url": client.url, "token": client.token})
         who = answer.get("user") or "this instance"
         self._post({"command": "result", "ok": True, "message": f"Connected as {who}"})
+        self._send_state()
+
+    def _resolve_project(self) -> None:
+        """Which model is open on the plate right now — the answer the exports
+        list needs, and the one the hook would have worked out itself."""
+        identity = collect_identity()
+        try:
+            self._project_candidates = STATE.client().resolve(
+                identity["hashes"], identity["filenames"], identity["designId"]
+            )
+        except VaultError as exc:
+            self._post({"command": "result", "ok": False, "message": str(exc)})
+            return
+        if not self._project_candidates:
+            self._post(
+                {
+                    "command": "result",
+                    "ok": False,
+                    "message": "Nothing on the plate matches a model in Print Vault.",
+                }
+            )
+        self._send_state()
+
+    def _push_file(self, path: str, model_id: str, always: bool) -> None:
+        """Push a file the user picked out of an export folder."""
+        settings = STATE.settings()
+        allowed = settings.get("export_dirs") or default_export_dirs()
+        real = os.path.realpath(path)
+        # The page can only offer paths we listed, but it is a web page: check
+        # again that this is a real file inside a folder we scan.
+        inside = any(
+            os.path.commonpath([real, os.path.realpath(d)]) == os.path.realpath(d)
+            for d in allowed
+            if os.path.isdir(d)
+        )
+        if not (inside and os.path.isfile(real) and real.lower().endswith(ALLOWED_SUFFIXES)):
+            self._post({"command": "result", "ok": False, "message": "That file is not in a watched export folder"})
+            return
+        if not model_id:
+            self._post({"command": "result", "ok": False, "message": "Pick a model first"})
+            return
+
+        entry = {
+            "path": real,
+            "filename": os.path.basename(real),
+            "meta": collect_meta_host(),
+        }
+        try:
+            message = push_entry(
+                entry,
+                model_id,
+                on_progress=lambda fraction: self._post(
+                    {"command": "progress", "id": real, "fraction": fraction}
+                ),
+            )
+        except VaultError as exc:
+            self._post({"command": "result", "ok": False, "message": str(exc)})
+            return
+        if always:
+            remembered = dict(STATE.settings().get("always", {}))
+            remembered[model_id] = True
+            STATE.save_settings({"always": remembered})
+        self._post({"command": "result", "ok": True, "message": message})
         self._send_state()
 
     def _rescan(self, entry_id: str) -> None:
@@ -1004,6 +1160,7 @@ REVIEW_HTML = (
 <div id="note"></div>
 <div id="setup"></div>
 <div id="pending"></div>
+<div id="exports"></div>
 <div class="card">
   <h2>After every slice</h2>
   <label><span>What should happen</span>
@@ -1052,7 +1209,10 @@ function renderSetup() {
 function renderPending() {
   const el = document.getElementById('pending');
   if (!S.pending.length) {
-    el.innerHTML = '<p class="muted">Nothing queued. Slice a model you opened from Print Vault and it shows up here.</p>';
+    el.innerHTML = '<p class="muted">Nothing queued. A slice reaches this list only once ' +
+      '<strong>Push sliced file to Print Vault</strong> is selected under Print Settings \u2192 Others \u2192 ' +
+      'Slicing Pipeline Plugin (Advanced mode) for the profile you slice with, and only when you ' +
+      '<em>export</em> the sliced file. Until then, use the list below.</p>';
     return;
   }
   el.innerHTML = S.pending.map(p => {
@@ -1087,6 +1247,46 @@ function renderPending() {
     orca.postMessage({ command:'rescan', id: b.dataset.rescan }));
 }
 
+function modelPicker(list, key) {
+  return '<label><span>Model</span><select data-pick="' + esc(key) + '" class="grow">' +
+    list.map(c => '<option value="' + esc(c.modelId) + '">' + esc(c.modelTitle) + ' \u2014 ' + via(c.via) + '</option>').join('') +
+    '</select></label>';
+}
+
+function renderExports() {
+  const el = document.getElementById('exports');
+  if (!S.configured) { el.innerHTML = ''; return; }
+  const list = S.exports || [];
+  const cands = S.projectCandidates || [];
+  const head =
+    '<div class="card"><h2>Exported files on this machine</h2>' +
+    '<p class="muted">Push a file you already exported, without wiring the plugin into a print profile. ' +
+    'Files are matched to whatever is open on the plate right now.</p>' +
+    '<div class="row" style="margin-bottom:8px">' +
+      '<button class="secondary" id="match">Match the open plate</button>' +
+      (cands.length ? '<span class="muted">' + esc(cands[0].modelTitle) + ' \u2014 ' + via(cands[0].via) + '</span>' : '') +
+    '</div>';
+  const body = !list.length
+    ? '<p class="muted">Nothing recent in ' + esc((S.exportDirs || ['Downloads, Desktop']).join(', ')) + '.</p>'
+    : (cands.length ? modelPicker(cands, 'exports') : '<p class="muted">Match the open plate first to choose a model.</p>') +
+      '<ul style="list-style:none;padding:0;margin:0">' + list.map(f =>
+        '<li class="row" style="justify-content:space-between;border-top:1px solid var(--border);padding:6px 0">' +
+        '<span class="grow"><span class="mono">' + esc(f.filename) + '</span><br><span class="muted">' + f.sizeMb + ' MB</span></span>' +
+        '<span class="row">' +
+        '<button data-file="' + esc(f.path) + '"' + (cands.length ? '' : ' disabled') + '>Push</button>' +
+        '</span><div class="bar" style="flex-basis:100%"><i data-bar="' + esc(f.path) + '"></i></div></li>').join('') +
+      '</ul>';
+  el.innerHTML = head + body + '</div>';
+
+  document.getElementById('match').onclick = () => orca.postMessage({ command:'project' });
+  el.querySelectorAll('[data-file]').forEach(b => b.onclick = () => {
+    const pick = el.querySelector('[data-pick="exports"]');
+    b.disabled = true;
+    orca.postMessage({ command:'pushfile', path: b.dataset.file,
+                       modelId: pick ? pick.value : '', always: false });
+  });
+}
+
 function note(ok, message) {
   document.getElementById('note').innerHTML =
     '<div class="note ' + (ok ? 'ok' : 'err') + '">' + esc(message) + '</div>';
@@ -1103,6 +1303,7 @@ orca.onMessage(msg => {
     document.getElementById('prompt').checked = !!S.promptAfterSlice;
     renderSetup();
     renderPending();
+    renderExports();
   } else if (msg.command === 'result') {
     note(msg.ok, msg.message);
   } else if (msg.command === 'progress') {
