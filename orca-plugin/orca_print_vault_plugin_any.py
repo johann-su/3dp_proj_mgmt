@@ -90,6 +90,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import re
 import shutil
 import sys
 import threading
@@ -123,8 +124,14 @@ DEFAULTS = {
     # push has to keep its own copy (the slicer deletes the temp file), and a
     # runaway plate should not fill the user's disk.
     "max_queue_mb": 1024,
+    # ...and never let the queue as a whole exceed this. One slice of an
+    # 18-plate project is eighteen firings, each with its own copy.
+    "max_queue_total_mb": 2048,
     # Models the user has said "always push this one" for: {model_id: True}.
     "always": {},
+    # Where a project was pushed last time, keyed by content hash or name, so a
+    # re-saved or renamed project still knows where it belongs.
+    "remembered": {},
     # Folders scanned for already-exported sliced files, so the review window
     # can push one without the slicing hook having run at all. Empty means the
     # defaults below.
@@ -251,9 +258,20 @@ class VaultClient:
     def ping(self) -> dict:
         return self._request("GET", "/api/slice-push/ping")
 
-    def resolve(self, hashes: list[str], filenames: list[str], design_id: str | None) -> list[dict]:
+    def resolve(
+        self,
+        hashes: list[str],
+        filenames: list[str],
+        design_id: str | None,
+        query: str | None = None,
+    ) -> list[dict]:
         payload = json.dumps(
-            {"hashes": hashes, "filenames": filenames, "designId": design_id}
+            {
+                "hashes": hashes,
+                "filenames": filenames,
+                "designId": design_id,
+                "query": query,
+            }
         ).encode("utf-8")
         answer = self._request(
             "POST",
@@ -413,6 +431,9 @@ class State:
         except OSError as exc:
             log(f"could not write queue entry: {exc}")
             return None
+        # Enforced on every add, not only at load: an 18-plate project fires
+        # the hook eighteen times, and each firing copies a G-code aside.
+        self.queue_trim()
         return entry
 
     def queue_list(self) -> list[dict]:
@@ -456,10 +477,18 @@ class State:
                 pass
 
     def queue_trim(self, keep: int = 10) -> None:
-        """Bounded on purpose: the queue holds copies of very large files, and
-        a slice nobody answered for a week is not worth the disk."""
-        for entry in self.queue_list()[keep:]:
-            self.queue_remove(entry.get("id", ""))
+        """Bounded twice over: by count, and by total bytes.
+
+        The queue holds copies of very large files — a multi-plate project
+        fires the hook once per plate — and a slice nobody answered for a week
+        is not worth the disk. Newest entries win; the oldest are dropped.
+        """
+        budget = int(self.settings().get("max_queue_total_mb", 2048)) * (1 << 20)
+        used = 0
+        for index, entry in enumerate(self.queue_list()):
+            used += entry.get("size", 0)
+            if index >= keep or used > budget:
+                self.queue_remove(entry.get("id", ""))
 
 
 STATE = State()
@@ -494,6 +523,60 @@ def _cached_hash(path: str) -> str | None:
     return _HASH_CACHE[key]
 
 
+def strip_copy_suffix(name: str) -> str:
+    """"fuselage(7).3mf" -> "fuselage.3mf".
+
+    Everything that hands a file around adds one of these: browsers append
+    " (1)", OrcaSlicer appends "(7)" when you save a project again. The file
+    is still the same design, so the name it *would* have had is worth
+    offering as a weaker match."""
+    stem, ext = os.path.splitext(os.path.basename(name))
+    cleaned = re.sub(r"[\s_-]*\(\d+\)\s*$", "", stem).strip()
+    return f"{cleaned}{ext}" if cleaned else os.path.basename(name)
+
+
+def remember_key(identity: dict) -> str | None:
+    """How a project is recognised again next time. The content hash when we
+    have one; otherwise the name — a project that gets re-saved changes its
+    hash, and that is exactly the case this exists for."""
+    if identity.get("hashes"):
+        return f"h:{identity['hashes'][0]}"
+    if identity.get("filenames"):
+        return f"n:{strip_copy_suffix(identity['filenames'][0]).lower()}"
+    return None
+
+
+def remembered_target(identity: dict) -> dict | None:
+    """The model this project was pushed to last time.
+
+    The catalogue cannot recognise a project the user re-saved (new bytes, new
+    name), so once they have told us where it goes, that answer is kept. It is
+    treated as a confident match: it is a human decision about this exact
+    file, which is stronger evidence than any heuristic here.
+    """
+    key = remember_key(identity)
+    if not key:
+        return None
+    target = STATE.settings().get("remembered", {}).get(key)
+    return {**target, "via": "remembered"} if isinstance(target, dict) else None
+
+
+def remember_target(identity: dict, candidate: dict) -> None:
+    key = remember_key(identity)
+    if not key or not candidate.get("modelId"):
+        return
+    remembered = dict(STATE.settings().get("remembered", {}))
+    remembered[key] = {
+        "modelId": candidate["modelId"],
+        "modelTitle": candidate.get("modelTitle", "this model"),
+        "fileId": candidate.get("fileId"),
+    }
+    # Bounded: one entry per project someone has ever pushed from.
+    if len(remembered) > 200:
+        remembered.pop(next(iter(remembered)))
+    STATE.save_settings({"remembered": remembered})
+
+
 def collect_identity() -> dict:
     """What the open project can tell us about where it came from: the files it
     was loaded from (hashed), their names, and the Bambu design id."""
@@ -523,7 +606,13 @@ def collect_identity() -> dict:
         if not path or path in seen:
             continue
         seen.add(path)
-        identity["filenames"].append(os.path.basename(path))
+        name = os.path.basename(path)
+        identity["filenames"].append(name)
+        # "fuselage(7).3mf" is still the file the catalogue calls
+        # "fuselage.3mf"; offer both so a re-saved project still matches.
+        stripped = strip_copy_suffix(name)
+        if stripped != name:
+            identity["filenames"].append(stripped)
         digest = _cached_hash(path)
         if digest:
             identity["hashes"].append(digest)
@@ -852,6 +941,16 @@ class PrintVaultSlicePush(orca.slicing.SlicingPipelineCapabilityBase if orca els
             log(str(exc))
             candidates = []
 
+        if not candidates:
+            # Nothing about the file identifies it — re-saved project, a "(7)"
+            # the slicer appended, a model that was never downloaded from here.
+            # Where the user sent this project last time is a better answer
+            # than giving up.
+            fallback = remembered_target(identity)
+            if fallback:
+                candidates = [fallback]
+                log(f"no match; using the remembered target {fallback.get('modelTitle')}")
+
         # Name it after the catalogue file this project came from, not after the
         # slicer's scratch file. One export is one plate, so the plate number
         # goes in the name — without it, slicing plate 2 would land on plate 1's
@@ -875,9 +974,10 @@ class PrintVaultSlicePush(orca.slicing.SlicingPipelineCapabilityBase if orca els
             "plate": plate,
         }
 
-        # Only a single hash match is ever pushed to unattended: pushing a
-        # revision to the wrong model is the one mistake with no cheap undo.
-        confident = len(candidates) == 1 and candidates[0].get("via") == "hash"
+        # Only an exact file match — or the user's own earlier decision about
+        # this very project — is ever pushed to unattended: a revision on the
+        # wrong model is the one mistake with no cheap undo.
+        confident = len(candidates) == 1 and candidates[0].get("via") in ("hash", "remembered")
         model_id = candidates[0]["modelId"] if candidates else None
         always = bool(settings.get("always", {}).get(model_id)) if model_id else False
         mode = settings.get("mode", "ask")
@@ -895,6 +995,7 @@ class PrintVaultSlicePush(orca.slicing.SlicingPipelineCapabilityBase if orca els
                     model_id,
                     client=client,
                 )
+                remember_target(identity, candidates[0])
                 log(message)
                 return orca.ExecutionResult.success(f"Print Vault: {message}")
             except VaultError as exc:
@@ -946,6 +1047,7 @@ class PrintVaultSlicePush(orca.slicing.SlicingPipelineCapabilityBase if orca els
                 message = push_entry(
                     {**entry, "replaces": target.get("fileId")}, target["modelId"]
                 )
+                remember_target(entry.get("identity", {}), target)
                 STATE.queue_remove(entry["id"])
                 orca.host.ui.message(message, title="Print Vault", icon="info")
             except Exception as exc:  # noqa: BLE001
@@ -975,6 +1077,7 @@ class PrintVaultReview(orca.script.ScriptPluginCapabilityBase if orca else objec
         # window rather than per listed file: every export in the list came
         # from the same plate.
         self._project_candidates: list[dict] = []
+        self._project_identity: dict = {}
 
     def get_name(self):
         return "Print Vault: review & push"
@@ -1035,6 +1138,8 @@ class PrintVaultReview(orca.script.ScriptPluginCapabilityBase if orca else objec
                 self._run(self._rescan, msg.get("id", ""))
             elif command == "project":
                 self._run(self._resolve_project)
+            elif command == "search":
+                self._run(self._search, msg.get("query", ""))
             elif command == "pushfile":
                 self._run(
                     self._push_file,
@@ -1106,6 +1211,7 @@ class PrintVaultReview(orca.script.ScriptPluginCapabilityBase if orca else objec
         """Which model is open on the plate right now — the answer the exports
         list needs, and the one the hook would have worked out itself."""
         identity = collect_identity()
+        self._project_identity = identity
         try:
             self._project_candidates = STATE.client().resolve(
                 identity["hashes"], identity["filenames"], identity["designId"]
@@ -1113,14 +1219,42 @@ class PrintVaultReview(orca.script.ScriptPluginCapabilityBase if orca else objec
         except VaultError as exc:
             self._post({"command": "result", "ok": False, "message": str(exc)})
             return
+        remembered = remembered_target(identity)
+        if not self._project_candidates and remembered:
+            self._project_candidates = [remembered]
         if not self._project_candidates:
             self._post(
                 {
                     "command": "result",
                     "ok": False,
-                    "message": "Nothing on the plate matches a model in Print Vault.",
+                    "message": "Nothing on the plate matches a model — search for one by name.",
                 }
             )
+        self._send_state()
+
+    def _search(self, query: str) -> None:
+        """Find a model by title.
+
+        The last resort, and the one that makes the feature usable on a
+        catalogue that predates content hashing: a file the instance has no
+        hash for, opened under a name macOS made unique ("fuselage(7).3mf"),
+        matches nothing at all. Whatever the user picks here is remembered
+        against this project, so it is asked once.
+        """
+        if len(query.strip()) < 2:
+            return
+        try:
+            found = STATE.client().resolve([], [], None, query=query.strip())
+        except VaultError as exc:
+            self._post({"command": "result", "ok": False, "message": str(exc)})
+            return
+        if not self._project_identity:
+            self._project_identity = collect_identity()
+        # Keep any real matches ahead of what the user typed.
+        existing = {c["modelId"] for c in self._project_candidates}
+        self._project_candidates += [c for c in found if c["modelId"] not in existing]
+        if not found:
+            self._post({"command": "result", "ok": False, "message": f"No model matches “{query}”"})
         self._send_state()
 
     def _push_file(self, path: str, model_id: str, always: bool) -> None:
@@ -1159,6 +1293,11 @@ class PrintVaultReview(orca.script.ScriptPluginCapabilityBase if orca else objec
         except VaultError as exc:
             self._post({"command": "result", "ok": False, "message": str(exc)})
             return
+        chosen = next(
+            (c for c in self._project_candidates if c.get("modelId") == model_id),
+            {"modelId": model_id, "modelTitle": "this model"},
+        )
+        remember_target(self._project_identity, chosen)
         if always:
             remembered = dict(STATE.settings().get("always", {}))
             remembered[model_id] = True
@@ -1206,6 +1345,11 @@ class PrintVaultReview(orca.script.ScriptPluginCapabilityBase if orca else objec
         except VaultError as exc:
             self._post({"command": "result", "ok": False, "message": str(exc)})
             return
+        chosen = next(
+            (c for c in entry.get("candidates", []) if c.get("modelId") == model_id),
+            {"modelId": model_id, "modelTitle": "this model"},
+        )
+        remember_target(entry.get("identity", {}), chosen)
         if always:
             settings = STATE.settings()
             remembered = dict(settings.get("always", {}))
@@ -1300,7 +1444,9 @@ function esc(s) {
 
 function via(v) {
   return v === 'hash' ? 'exact file match'
-       : v === 'filename' ? 'same filename' : 'same source design';
+       : v === 'filename' ? 'same filename'
+       : v === 'remembered' ? 'where you sent this project last time'
+       : v === 'search' ? 'found by name' : 'same source design';
 }
 
 function renderSetup() {
@@ -1374,6 +1520,11 @@ function renderExports() {
   if (!S.configured) { el.innerHTML = ''; return; }
   const list = S.exports || [];
   const cands = S.projectCandidates || [];
+  const searchRow =
+    '<div class="row" style="margin-bottom:8px">' +
+      '<input id="q" class="grow" placeholder="Find a model by name\u2026" value="">' +
+      '<button class="secondary" id="find">Search</button>' +
+    '</div>';
   const head =
     '<div class="card"><h2>Exported files on this machine</h2>' +
     '<p class="muted">Push a file you already exported, without wiring the plugin into a print profile. ' +
@@ -1383,10 +1534,13 @@ function renderExports() {
     '<div class="row" style="margin-bottom:8px">' +
       '<button class="secondary" id="match">Match the open plate</button>' +
       (cands.length ? '<span class="muted">' + esc(cands[0].modelTitle) + ' \u2014 ' + via(cands[0].via) + '</span>' : '') +
-    '</div>';
+    '</div>' + searchRow;
   const body = !list.length
     ? '<p class="muted">Nothing recent in ' + esc((S.exportDirs || ['Downloads, Desktop']).join(', ')) + '.</p>'
-    : (cands.length ? modelPicker(cands, 'exports') : '<p class="muted">Match the open plate first to choose a model.</p>') +
+    : (cands.length ? modelPicker(cands, 'exports')
+                    : '<p class="muted">Match the open plate, or search by name, to choose a model. ' +
+                      'A file the catalogue has no hash for (anything uploaded before hashing was added) ' +
+                      'will not match on its own.</p>') +
       '<ul style="list-style:none;padding:0;margin:0">' + list.map(f =>
         '<li class="row" style="justify-content:space-between;border-top:1px solid var(--border);padding:6px 0">' +
         '<span class="grow"><span class="mono">' + esc(f.filename) + '</span><br><span class="muted">' + f.sizeMb + ' MB \u00b7 ' +
@@ -1398,6 +1552,9 @@ function renderExports() {
   el.innerHTML = head + body + '</div>';
 
   document.getElementById('match').onclick = () => orca.postMessage({ command:'project' });
+  const runSearch = () => orca.postMessage({ command:'search', query: document.getElementById('q').value });
+  document.getElementById('find').onclick = runSearch;
+  document.getElementById('q').onkeydown = e => { if (e.key === 'Enter') runSearch(); };
   el.querySelectorAll('[data-file]').forEach(b => b.onclick = () => {
     const pick = el.querySelector('[data-pick="exports"]');
     b.disabled = true;

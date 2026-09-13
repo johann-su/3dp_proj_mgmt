@@ -142,6 +142,14 @@ The schema is Drizzle ORM in `src/db/schema.ts`, migrated with SQL files in
 - **`npm run db:push`** syncs the schema to the database directly *without* a
   migration file. Handy for fast iteration during development; don't rely on it
   for anything that needs to reproduce on another machine.
+- **`npm run db:backfill-hashes`** fills in `model_files.content_hash` for files
+  uploaded before that column existed (pass `--dry-run` first to see what it
+  would touch). The hash is written automatically on upload; older rows have
+  none, and a null hash simply never matches — which silently costs you
+  duplicate detection and, more visibly, makes
+  [push from slicer](/features/slicing#push-from-slicer) unable to recognise
+  those files. Streams each object from S3, writes only that one column, and is
+  safe to re-run.
 
 ## Testing
 

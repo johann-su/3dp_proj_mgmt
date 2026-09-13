@@ -13,7 +13,7 @@
 // models — see docs/architecture/auth-and-access.md.
 
 import { NextRequest, NextResponse } from "next/server";
-import { and, desc, eq, inArray, isNull, sql } from "drizzle-orm";
+import { and, desc, eq, ilike, inArray, isNull, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { modelFiles, models } from "@/db/schema";
 import { appUrl } from "@/lib/app-url";
@@ -35,6 +35,11 @@ type ResolveBody = {
   hashes?: unknown;
   filenames?: unknown;
   designId?: unknown;
+  // A title the user typed, for when nothing identifies the file: they
+  // re-saved the project, the slicer appended "(7)", or the model was never
+  // downloaded from here in the first place. Without this the plugin has
+  // nothing to offer and a slice quietly goes nowhere.
+  query?: unknown;
 };
 
 function stringList(value: unknown): string[] {
@@ -73,6 +78,10 @@ export async function POST(req: NextRequest) {
   const designId =
     typeof body.designId === "string" && /^[A-Za-z0-9_-]{1,64}$/.test(body.designId)
       ? body.designId
+      : null;
+  const query =
+    typeof body.query === "string" && body.query.trim().length >= 2
+      ? body.query.trim().slice(0, 80)
       : null;
 
   const matches: PushCandidate[] = [];
@@ -141,6 +150,27 @@ export async function POST(req: NextRequest) {
         fileId: null,
         filename: null,
         via: "source" as const,
+      })),
+    );
+  }
+
+  // Title search, last and weakest: it is what the user typed, not something
+  // the file says about itself, so it can never drive an unattended push.
+  // Matched with ILIKE rather than the catalogue's full-text search — the
+  // input is a filename stem ("fuselage"), not a phrase.
+  if (query) {
+    const rows = await db
+      .select({ modelId: models.id, modelTitle: models.title })
+      .from(models)
+      .where(and(live, ilike(models.title, `%${query.replace(/[%_]/g, "\\$&")}%`)))
+      .orderBy(desc(models.updatedAt))
+      .limit(MAX_LOOKUPS);
+    matches.push(
+      ...rows.map((row) => ({
+        ...row,
+        fileId: null,
+        filename: null,
+        via: "search" as const,
       })),
     );
   }

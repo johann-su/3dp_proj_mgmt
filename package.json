@@ -11,6 +11,7 @@
     "db:push": "drizzle-kit push",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "node --env-file=.env scripts/migrate.mjs",
+    "db:backfill-hashes": "node --env-file=.env --import tsx scripts/backfill-content-hashes.ts",
     "db:seed": "tsx --env-file=.env src/db/seed.ts"
   },
   "dependencies": {

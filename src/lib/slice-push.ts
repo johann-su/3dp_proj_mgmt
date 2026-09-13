@@ -105,7 +105,9 @@ export function findReplaceById<
 // file that predates content hashing.
 
 // How a candidate was matched, best first. Ordering is the ranking.
-export const MATCH_CONFIDENCE = ["hash", "filename", "source"] as const;
+// "search" is the manual escape hatch — a title the user typed — and is last
+// precisely because it is not evidence of anything.
+export const MATCH_CONFIDENCE = ["hash", "filename", "source", "search"] as const;
 export type MatchConfidence = (typeof MATCH_CONFIDENCE)[number];
 
 export type PushCandidate = {

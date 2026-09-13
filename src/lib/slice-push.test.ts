@@ -184,3 +184,15 @@ test("percent signs survive normalization", () => {
     "Bambu%20Print%20Orientations(1).3mf",
   );
 });
+
+test("a model the user searched for ranks below anything the file itself said", () => {
+  // Search is what someone typed, not evidence about the file — it exists so a
+  // project the catalogue cannot recognise can still be pushed, and it must
+  // never outrank (or stand in for) a real match.
+  const ranked = rankPushCandidates([
+    candidate({ modelId: "m2", via: "search" }),
+    candidate({ modelId: "m1", via: "filename" }),
+  ]);
+  assert.deepEqual(ranked.map((c) => c.via), ["filename", "search"]);
+  assert.equal(isConfidentMatch([candidate({ via: "search" })]), false);
+});

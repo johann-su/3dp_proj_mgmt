@@ -182,10 +182,26 @@ an open ask in [OrcaSlicer discussion
 The plugin sends SHA-256s of the files the project was loaded from, their names,
 and the 3MF's Bambu design id; the route matches them against
 `model_files.content_hash` (exact — the catalogue served those bytes), then
-filename, then `models.sourceUrl` for the design id, and returns them ranked
+filename, then `models.sourceUrl` for the design id, then — only when the caller
+asks — a title `query` the user typed. Results come back ranked
 (`rankPushCandidates`). **Only a lone hash match is ever pushed to unattended**
 (`isConfidentMatch`): a mistargeted revision is the one failure with no cheap
 undo. `GET /api/slice-push/ping` exists so setup fails at setup time.
+
+Three things make this work on a real catalogue rather than a fresh one, and
+all three exist because the first live test resolved *nothing*:
+
+- **`content_hash` is null on anything uploaded before issue #118**, and a null
+  hash never matches — so on an existing instance the exact path is dead until
+  `scripts/backfill-content-hashes.ts` (`npm run db:backfill-hashes`) has run
+  once. Say so before blaming the matching.
+- **The name on disk is not the name in the catalogue.** "Open in slicer"
+  downloads to `~/Downloads`, where the OS makes the name unique:
+  `fuselage.3mf` arrives as `fuselage(7).3mf` with *identical bytes*. The
+  plugin therefore sends both the raw name and a `(n)`-stripped variant.
+- **The user can always just pick.** Title search plus a remembered
+  project→model mapping (plugin-side, keyed on content hash or stripped name)
+  means a project only has to be identified once, however badly it resolves.
 
 `POST /api/models/[id]/slice-push` takes the bytes. It accepts both:
 

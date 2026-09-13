@@ -188,8 +188,16 @@ fallback when a slice did not show up on its own.
   when the match is an exact one.
 - **How it knows which model.** It hashes the file you opened and asks the
   catalogue. Since the catalogue served those exact bytes, the match is
-  normally certain; a file you renamed or re-saved falls back to weaker matches
-  that it will ask you to confirm.
+  normally certain — including when your browser saved it as
+  `fuselage(7).3mf`, which changes the name but not the contents. Failing
+  that it tries the name (with any `(7)` stripped) and the design it was
+  imported from, and you can always **search for a model by name** in the
+  plugin's window. Whatever you pick is remembered for that project, so it
+  asks once.
+- **Files uploaded before content hashing existed have no hash**, and a null
+  hash never matches — so an older catalogue resolves by name or search until
+  you run `npm run db:backfill-hashes` once (see
+  [Development](/development#database)).
 - **A push never breaks your slice.** If the server is unreachable or the token
   was revoked, the plugin reports it and gets out of the way — your slicing and
   printing carry on.
