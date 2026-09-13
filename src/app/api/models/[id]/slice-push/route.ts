@@ -27,6 +27,7 @@ import {
 } from "@/lib/model-versions";
 import { authenticatePush, stampPushTokenUse } from "@/lib/push-tokens";
 import {
+  findReplaceById,
   findReplaceTarget,
   normalizePushFilename,
   parsePushMeta,
@@ -113,18 +114,30 @@ export async function POST(
     return NextResponse.json({ error: "File too large" }, { status: 413 });
   }
 
+  // Which existing file this revises, resolved before anything is stored so
+  // the object is written under the name the row will actually carry.
+  // `replaces` (the file the pusher resolved this model from) wins over a
+  // filename match, and keeps that file's name: a sliced revision of
+  // "Bracket.3mf" is still "Bracket.3mf", not a row named after a slicer temp
+  // file. See findReplaceById.
+  const replaced =
+    findReplaceById(model.files, req.nextUrl.searchParams.get("replaces"), artifact) ??
+    findReplaceTarget(model.files, filename);
+  const storedName = replaced ? replaced.filename : filename;
+
   const tail = artifact === "gcode" ? new TailBuffer(GCODE_TAIL_BYTES) : null;
   const uploadState = { tooLarge: false };
   let staged;
   try {
     staged = await stageStream(
-      filename,
+      storedName,
       tapBody(req.body, tail, uploadState),
       // Derived from the validated extension, never the request header —
       // /api/files serves stored types back, so a client-chosen text/html
       // would be stored XSS. G-code has no safe registered type and falls
-      // through to application/octet-stream, which is what we want.
-      contentTypeForFilename(filename),
+      // through to application/octet-stream, which is what we want. Derived
+      // from the *stored* name, which is the one the file is served under.
+      contentTypeForFilename(storedName),
     );
   } catch (err) {
     if (uploadState.tooLarge) {
@@ -178,8 +191,6 @@ export async function POST(
   // so it is applied to the G-code path only and left null otherwise.
   const meta = artifact === "gcode" ? parsePushMeta(req.headers.get("x-slice-push-meta")) : null;
 
-  const replaced = findReplaceTarget(model.files, filename);
-
   const orphanedKeys = await db.transaction(async (tx) => {
     // Models predating versioning get their pre-push state recorded first, so
     // this revision stays revertable (issue #55).
@@ -207,7 +218,7 @@ export async function POST(
       await tx.insert(modelFiles).values({
         modelId: model.id,
         kind: "model" as const,
-        filename,
+        filename: storedName,
         s3Key: staged.key,
         size: staged.size,
         contentType: staged.contentType,
@@ -251,7 +262,7 @@ export async function POST(
   logger.info(
     {
       modelId: model.id,
-      filename,
+      filename: storedName,
       artifact,
       bytes: staged.size,
       replaced: !!replaced,
@@ -264,7 +275,7 @@ export async function POST(
 
   return NextResponse.json({
     status: replaced ? "replaced" : "added",
-    filename,
+    filename: storedName,
     printTimeSeconds: sliceFields.printTimeSeconds ?? null,
     filamentGrams: sliceFields.filamentGrams ?? null,
   });

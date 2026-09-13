@@ -150,10 +150,24 @@ an open ask in [OrcaSlicer discussion
    printer upload) on a *temporary* working copy, **before** it is written to
    the user's chosen path — so no final `.gcode` and no Bambu-style
    `.gcode.3mf` bundle exists yet, and `ctx.print`/`ctx.object` are None.
-   Slicing alone never reaches a plugin — with (0), the two reasons a push
-   "did nothing". Don't design around getting the project file from the hook;
-   you can't. A Bambu-style export hands over plain G-code and then packages
-   the `.gcode.3mf` itself, so what arrives can be either.
+   **When** it fires depends on the printer
+   (`BackgroundSlicingProcess.cpp`): on a **BBL printer** it runs right after
+   each plate is sliced (`if (m_fff_print->is_BBL_printer())
+   run_post_process_scripts(...)`), once per plate; everywhere else it runs from
+   `finalize_gcode()`, i.e. on export or upload. Don't design around getting the
+   project file from the hook; you can't.
+
+   Two consequences worth holding on to. **The "output name" is not a name**: on
+   a BBL printer the plate's temp path is passed as both the artifact and
+   `output_name` (`.<pid>.<counter>.gcode`, where the counter is a global
+   allocation counter and *not* the plate index), so a naive implementation
+   stores `.74890.3.gcode`. And **one firing is one plate** — no seam hands over
+   a multi-plate project, so the plugin names per-plate pushes
+   `<file>_plate_<n>.gcode` and steers the "keep the model's file current" case
+   to an all-plates `.gcode.3mf` export pushed from its own window. The
+   `replaces=<fileId>` param exists for that: the pusher names the file it is
+   revising (which it knows from `/resolve`), the row keeps its **filename**,
+   and the family check stops a `.gcode` from taking over a `.3mf` row.
 2. **The hook may not show UI.** It runs on the slicing worker thread, which the
    UI thread can be blocked waiting on, so a marshaled UI call from there can
    deadlock the app. The "update the catalogue or keep it local?" question is

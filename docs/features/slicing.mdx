@@ -155,9 +155,10 @@ Once per machine, not once per model.
    per profile. You can skip this and push exported files by hand instead — see
    below.
 
-Now open a file from a model and slice it — then **export the sliced file**
-(*Print plate ▾ → Export plate sliced file*, or send it to the printer).
-Exporting is what hands the result to the plugin; slicing alone does not.
+Now open a file from a model and slice it. On a Bambu printer the plugin sees
+each plate as it finishes slicing; on other printers it sees the result when you
+**export** it (*Print plate ▾ → Export plate sliced file*) or send it to the
+printer.
 
 Then run **Plugins → Print Vault: review & push** (or add it to the Actions
 Speed Dial for one-click access). It shows what you just sliced and which model
@@ -170,12 +171,17 @@ fallback when a slice did not show up on its own.
 
 ### Things to know
 
-- **It runs on export, not on slice, and only for profiles that enable it.**
-  OrcaSlicer hands a plugin the sliced file only when you export it or send it
-  to a printer, and only when the print profile lists the plugin (step 4
-  above). The plugin's **Diagnostics** tab records every export it saw — if
-  nothing is there, one of those two is missing. Pushing from the *Exported
-  files* list always works regardless.
+- **It only runs for profiles that enable it.** Whichever printer you use, the
+  plugin is handed nothing until the print profile lists it (step 4 above). The
+  plugin's **Diagnostics** tab records every artifact it saw — if nothing is
+  there, that is why. Pushing from the *Exported files* list always works
+  regardless.
+- **Multi-plate projects.** OrcaSlicer hands a plugin one plate at a time, so
+  an automatic push lands next to your model's file as
+  `<name>_plate_2.gcode` rather than updating it. To keep the model's own file
+  current, use **Export all plates sliced file** and push that `.3mf` from the
+  *Exported files* list: it replaces the file it came from, keeps its name, and
+  the catalogue reads every plate's print time and filament out of it.
 - **Nothing is pushed without you.** By default a slice is queued and waits for
   your answer. Tick *always* for a model, or switch the plugin to
   **automatic**, and future slices of that model upload silently — but only
@@ -187,8 +193,10 @@ fallback when a slice did not show up on its own.
 - **A push never breaks your slice.** If the server is unreachable or the token
   was revoked, the plugin reports it and gets out of the way — your slicing and
   printing carry on.
-- **Re-slicing the same plate replaces that file**, rather than piling up near
-  identical copies: same filename in, new revision of that file. The previous
+- **Names are kept.** A push says which file it is a new revision of, so the
+  model keeps `Bracket.3mf` rather than gaining a row named after a slicer
+  temp file. Re-slicing the same plate revises that file rather than piling up
+  near-identical copies. The previous
   version stays in the model's [history](/features/versioning) and can be
   restored.
 - **What gets pushed is the G-code.** That is what the slicer hands a plugin at

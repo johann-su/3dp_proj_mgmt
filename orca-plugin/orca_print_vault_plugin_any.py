@@ -34,12 +34,20 @@ candidates; only a single hash match is ever pushed to without asking.
 
 Where the artifact comes from, and what it is not
 -------------------------------------------------
-`Step.psGCodePostProcess` is the only seam that hands over sliced output. It
-fires from the G-code **export** path after the classic post-processing
-scripts — *not* from slicing. "Slice plate" alone never reaches a plugin; the
-step runs when the sliced file is exported ("Print plate -> Export plate sliced
-file", File -> Export -> Export G-code) or uploaded to a printer. `ctx.gcode_path`
-points at a *temporary working copy* — there is no
+`Step.psGCodePostProcess` is the only seam that hands over sliced output, and
+*when* it fires depends on the printer (BackgroundSlicingProcess.cpp):
+
+  Bambu printers   right after each plate is sliced, inside the slicing step
+                   (`if (m_fff_print->is_BBL_printer()) run_post_process_scripts(...)`),
+                   once per plate, with the plate's temp path passed as BOTH
+                   the artifact and the "output name" — which is why
+                   `push_filename()` refuses to trust `ctx.output_name`
+  everything else  from `finalize_gcode()`, i.e. on export or printer upload
+
+Either way it needs the *process preset* to list this capability under Print
+Settings -> Others -> Slicing Pipeline Plugin; `PluginHooks.cpp` and
+`PostProcessor.cpp` both return immediately when `slicing_pipeline_plugin` is
+empty. `ctx.gcode_path` points at a *temporary working copy* — there is no
 project `.3mf` and no `.gcode.3mf` bundle at that moment, and `ctx.print` /
 `ctx.object` are None. So what gets pushed is G-code. The settings that
 produced it are read live from `orca.host.preset_bundle()` and sent alongside
@@ -255,12 +263,27 @@ class VaultClient:
         )
         return answer.get("candidates", [])
 
-    def push(self, model_id: str, path: str, filename: str, meta: dict | None, on_progress=None) -> dict:
+    def push(
+        self,
+        model_id: str,
+        path: str,
+        filename: str,
+        meta: dict | None,
+        on_progress=None,
+        replaces: str | None = None,
+    ) -> dict:
         """Uploads the artifact as a new revision of `model_id`. Streams from
         disk — a sliced G-code is routinely hundreds of MB and must never be
         read into memory."""
         size = os.path.getsize(path)
-        query = urllib.parse.urlencode({"filename": filename})
+        # `replaces` names the file this is a new revision *of*, so the server
+        # keeps that file's name instead of adding a row named after a slicer
+        # temp file. It is a hint: a mismatched artifact falls back to a
+        # filename match server-side.
+        params = {"filename": filename}
+        if replaces:
+            params["replaces"] = replaces
+        query = urllib.parse.urlencode(params)
         headers = {
             "Content-Type": "application/octet-stream",
             "Content-Length": str(size),
@@ -627,10 +650,36 @@ def recent_exports(dirs: list[str], limit: int = 12, max_age_hours: int = 72) ->
                     "filename": name,
                     "sizeMb": round(stat.st_size / (1 << 20), 1),
                     "mtime": stat.st_mtime,
+                    # A .3mf export carries every plate it was told to (and the
+                    # per-plate predictions the catalogue reads); a .gcode is
+                    # one plate with no project structure. Which one you push
+                    # is the difference between revising the model's own file
+                    # and adding a sidecar next to it.
+                    "kind": "project" if name.lower().endswith(".3mf") else "gcode",
                 }
             )
     found.sort(key=lambda item: item["mtime"], reverse=True)
     return found[:limit]
+
+
+def file_id_for(candidates: list[dict], model_id: str) -> str | None:
+    """The catalogue file the chosen model was matched through, if any — what
+    the push replaces so the revision keeps that file's name."""
+    for candidate in candidates or []:
+        if candidate.get("modelId") == model_id and candidate.get("fileId"):
+            return candidate["fileId"]
+    return None
+
+
+def current_plate() -> int | None:
+    """1-based index of the plate on the plater, for naming a per-plate export.
+    Best effort: under "Slice all" the plater's idea of the current plate may
+    lag the plate being sliced, which is one more reason the review window
+    shows the name before anything is pushed."""
+    try:
+        return int(orca.host.model().current_plate_index()) + 1  # type: ignore[name-defined]
+    except Exception:
+        return None
 
 
 def push_entry(entry: dict, model_id: str, on_progress=None, client: VaultClient | None = None) -> str:
@@ -648,21 +697,57 @@ def push_entry(entry: dict, model_id: str, on_progress=None, client: VaultClient
         entry["filename"],
         entry.get("meta"),
         on_progress=on_progress,
+        replaces=entry.get("replaces"),
     )
     verb = "Replaced" if answer.get("status") == "replaced" else "Added"
+    entry = {**entry, "filename": answer.get("filename") or entry["filename"]}
     minutes = answer.get("printTimeSeconds")
     detail = f" ({int(minutes) // 60} min)" if isinstance(minutes, (int, float)) else ""
     return f"{verb} {entry['filename']}{detail}"
 
 
-def push_filename(gcode_path: str, output_name: str | None) -> str:
-    """What the revision is stored as. The slicer's chosen output name is the
-    readable one ("Benchy_plate_1.gcode"); the temp file it hands over is
-    named for nothing. The extension follows the *bytes*, not the name, because
-    a Bambu-style setup calls its export .gcode.3mf while what we hold here is
-    plain G-code."""
-    name = os.path.basename((output_name or "").strip()) or os.path.basename(gcode_path)
+def is_temp_name(name: str) -> bool:
+    """Whether a name is a slicer scratch file rather than something a person
+    chose. On a Bambu printer the hook is handed
+    `<backup>/Metadata/.<pid>.<counter>.gcode` as *both* the artifact and the
+    "output name" (BackgroundSlicingProcess.cpp passes m_temp_output_path
+    twice), so ".74890.3.gcode" is what an unguarded implementation stores.
+    Note the counter is a global allocation counter, not the plate index —
+    it cannot be used to number plates."""
+    base = os.path.basename(name or "")
+    return not base or base.startswith(".")
+
+
+def push_filename(
+    gcode_path: str,
+    output_name: str | None,
+    base_name: str | None = None,
+    plate: int | None = None,
+) -> str:
+    """What the revision is stored as.
+
+    Preference order: the name the user chose in the export dialog, then the
+    name of the catalogue file this project came from (plus a plate number,
+    since one export is one plate), and only then whatever the temp file is
+    called. The extension follows the *bytes*, not the name, because a
+    Bambu-style setup calls its export .gcode.3mf while what we hold here is
+    plain G-code.
+    """
     suffix = os.path.splitext(gcode_path)[1].lower()
+    chosen = os.path.basename((output_name or "").strip())
+    if is_temp_name(chosen) and base_name:
+        stem = os.path.splitext(os.path.basename(base_name))[0]
+        # Strip an artifact suffix the stem may still carry ("Part.gcode.3mf").
+        while True:
+            head, ext = os.path.splitext(stem)
+            if ext.lower() in ALLOWED_SUFFIXES and head:
+                stem = head
+            else:
+                break
+        plate_part = f"_plate_{plate}" if plate else ""
+        return f"{stem}{plate_part}{suffix}"
+
+    name = chosen or os.path.basename(gcode_path)
     if not suffix or name.lower().endswith(suffix):
         return name
     # "Benchy.gcode.3mf" is a *double* artifact suffix, so one splitext leaves
@@ -741,16 +826,22 @@ class PrintVaultSlicePush(orca.slicing.SlicingPipelineCapabilityBase if orca els
                 "Print Vault: not set up — add the instance URL and a push token in the plugin's Config tab"
             )
 
-        filename = push_filename(ctx.gcode_path, getattr(ctx, "output_name", ""))
         size = os.path.getsize(ctx.gcode_path)
         # Logged unconditionally: when someone asks "why did nothing happen?",
-        # the answer is almost always that they sliced without exporting, and
-        # the absence of this line in Diagnostics is what proves it.
-        log(f"handling export of {filename} ({size // (1 << 20)} MB, host={getattr(ctx, 'host', '') or '?'})")
+        # the answer is one of "the profile does not list this plugin" or "you
+        # sliced without exporting", and the absence of this line proves which.
+        log(
+            f"handling {os.path.basename(ctx.gcode_path)} "
+            f"({size // (1 << 20)} MB, host={getattr(ctx, 'host', '') or '?'})"
+        )
         now = time.time()
-        if self._last and self._last[0] == filename and self._last[1] == size and now - self._last[2] < 60:
+        # Keyed on the artifact itself, not on the name derived below: the same
+        # export can reach us twice (a file export and an upload each get their
+        # own working copy) and each firing would otherwise become a revision.
+        signature = os.path.basename(ctx.gcode_path)
+        if self._last and self._last[0] == signature and self._last[1] == size and now - self._last[2] < 60:
             return orca.ExecutionResult.success("Print Vault: already handled this export")
-        self._last = (filename, size, now)
+        self._last = (signature, size, now)
 
         identity = collect_identity()
         try:
@@ -761,6 +852,19 @@ class PrintVaultSlicePush(orca.slicing.SlicingPipelineCapabilityBase if orca els
             log(str(exc))
             candidates = []
 
+        # Name it after the catalogue file this project came from, not after the
+        # slicer's scratch file. One export is one plate, so the plate number
+        # goes in the name — without it, slicing plate 2 would land on plate 1's
+        # revision.
+        plate = current_plate()
+        base_name = (candidates[0].get("filename") if candidates else None) or (
+            identity["filenames"][0] if identity["filenames"] else None
+        )
+        filename = push_filename(
+            ctx.gcode_path, getattr(ctx, "output_name", ""), base_name, plate
+        )
+        log(f"storing as {filename}")
+
         entry = {
             "filename": filename,
             "outputName": getattr(ctx, "output_name", "") or filename,
@@ -768,6 +872,7 @@ class PrintVaultSlicePush(orca.slicing.SlicingPipelineCapabilityBase if orca els
             "meta": collect_meta(ctx),
             "candidates": candidates,
             "identity": identity,
+            "plate": plate,
         }
 
         # Only a single hash match is ever pushed to unattended: pushing a
@@ -781,7 +886,15 @@ class PrintVaultSlicePush(orca.slicing.SlicingPipelineCapabilityBase if orca els
             # Straight from the slicer's working copy — no queue, no second
             # copy of a few hundred MB on disk.
             try:
-                message = push_entry({**entry, "path": ctx.gcode_path}, model_id, client=client)
+                message = push_entry(
+                    {
+                        **entry,
+                        "path": ctx.gcode_path,
+                        "replaces": file_id_for(candidates, model_id),
+                    },
+                    model_id,
+                    client=client,
+                )
                 log(message)
                 return orca.ExecutionResult.success(f"Print Vault: {message}")
             except VaultError as exc:
@@ -830,7 +943,9 @@ class PrintVaultSlicePush(orca.slicing.SlicingPipelineCapabilityBase if orca els
                 if clicked != "yes":
                     STATE.queue_remove(entry["id"])
                     return
-                message = push_entry(entry, target["modelId"])
+                message = push_entry(
+                    {**entry, "replaces": target.get("fileId")}, target["modelId"]
+                )
                 STATE.queue_remove(entry["id"])
                 orca.host.ui.message(message, title="Print Vault", icon="info")
             except Exception as exc:  # noqa: BLE001
@@ -1031,6 +1146,7 @@ class PrintVaultReview(orca.script.ScriptPluginCapabilityBase if orca else objec
             "path": real,
             "filename": os.path.basename(real),
             "meta": collect_meta_host(),
+            "replaces": file_id_for(self._project_candidates, model_id),
         }
         try:
             message = push_entry(
@@ -1081,7 +1197,7 @@ class PrintVaultReview(orca.script.ScriptPluginCapabilityBase if orca else objec
             return
         try:
             message = push_entry(
-                entry,
+                {**entry, "replaces": file_id_for(entry.get("candidates", []), model_id)},
                 model_id,
                 on_progress=lambda fraction: self._post(
                     {"command": "progress", "id": entry_id, "fraction": fraction}
@@ -1261,7 +1377,9 @@ function renderExports() {
   const head =
     '<div class="card"><h2>Exported files on this machine</h2>' +
     '<p class="muted">Push a file you already exported, without wiring the plugin into a print profile. ' +
-    'Files are matched to whatever is open on the plate right now.</p>' +
+    'Files are matched to whatever is open on the plate right now. For a multi-plate project, ' +
+    '<strong>Export all plates sliced file</strong> gives one .3mf covering every plate, which revises ' +
+    'the model\u2019s own file and keeps its name \u2014 a .gcode is a single plate and is added alongside it.</p>' +
     '<div class="row" style="margin-bottom:8px">' +
       '<button class="secondary" id="match">Match the open plate</button>' +
       (cands.length ? '<span class="muted">' + esc(cands[0].modelTitle) + ' \u2014 ' + via(cands[0].via) + '</span>' : '') +
@@ -1271,7 +1389,8 @@ function renderExports() {
     : (cands.length ? modelPicker(cands, 'exports') : '<p class="muted">Match the open plate first to choose a model.</p>') +
       '<ul style="list-style:none;padding:0;margin:0">' + list.map(f =>
         '<li class="row" style="justify-content:space-between;border-top:1px solid var(--border);padding:6px 0">' +
-        '<span class="grow"><span class="mono">' + esc(f.filename) + '</span><br><span class="muted">' + f.sizeMb + ' MB</span></span>' +
+        '<span class="grow"><span class="mono">' + esc(f.filename) + '</span><br><span class="muted">' + f.sizeMb + ' MB \u00b7 ' +
+        (f.kind === 'project' ? 'project, all sliced plates' : 'single plate G-code') + '</span></span>' +
         '<span class="row">' +
         '<button data-file="' + esc(f.path) + '"' + (cands.length ? '' : ' disabled') + '>Push</button>' +
         '</span><div class="bar" style="flex-basis:100%"><i data-bar="' + esc(f.path) + '"></i></div></li>').join('') +

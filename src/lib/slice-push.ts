@@ -37,9 +37,12 @@ export function pushArtifact(filename: string): PushArtifact | null {
 export function normalizePushFilename(raw: string | null): string | null {
   if (!raw) return null;
   // Last segment of either separator, then drop anything that isn't a plain
-  // filename character (control chars and quotes included).
+  // filename character (control chars and quotes included). `%` is allowed:
+  // platform imports routinely produce names like
+  // "Bambu%20Print%20Orientations(1).3mf", and replacing it would mean a
+  // pushed revision no longer matches the file it is a revision of.
   const base = raw.split(/[/\\]/).pop() ?? "";
-  const cleaned = base.replace(/[^a-zA-Z0-9._ ()+-]/g, "_").trim();
+  const cleaned = base.replace(/[^a-zA-Z0-9._ %()+-]/g, "_").trim();
   if (!cleaned || cleaned === "." || cleaned === "..") return null;
   const capped = cleaned.slice(0, 200);
   return pushArtifact(capped) ? capped : null;
@@ -64,6 +67,29 @@ export function findReplaceTarget<
       f.generatedFromId === null &&
       f.filename.toLowerCase() === target,
   );
+}
+
+// The caller naming the file it is replacing, rather than relying on the names
+// matching. The plugin knows which file it resolved the model from, and the
+// slicer's own output name is no help: on a Bambu printer the hook is handed a
+// temp path (".<pid>.<n>.gcode") as *both* the artifact and the "output name",
+// so a filename match can never happen. Replacing by id keeps the existing
+// file's **name** — a sliced revision of `Bracket.3mf` is still `Bracket.3mf`,
+// not a second row named after a slicer temp file.
+//
+// Restricted to the same artifact family: a `.gcode.3mf` bundle may replace a
+// `.3mf` project (still a project file, now carrying slice data), but a raw
+// `.gcode` may not — the model page's previews and slicer deep links are
+// `.3mf`-gated, so that would quietly empty them. A mismatch falls back to the
+// filename path rather than failing: the bytes are worth keeping either way.
+export function findReplaceById<
+  T extends { id: string; filename: string; kind: string; generatedFromId: string | null },
+>(files: T[], fileId: string | null, artifact: PushArtifact): T | undefined {
+  if (!fileId) return undefined;
+  const target = files.find(
+    (f) => f.id === fileId && f.kind === "model" && f.generatedFromId === null,
+  );
+  return target && pushArtifact(target.filename) === artifact ? target : undefined;
 }
 
 // --- Resolving a file on the slicing machine back to a model ---

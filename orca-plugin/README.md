@@ -47,9 +47,10 @@ entry. On anything older, use the [CLI fallback](#cli-fallback) below.
 >    Settings → Others → *Slicing Pipeline Plugin* (Advanced mode). The hook is
 >    dispatched from the preset's `slicing_pipeline_plugin` option; with an
 >    empty option the plugin is simply never called.
-> 2. You must **export** the sliced file (*Print plate ▾ → Export plate sliced
->    file*, File → Export → Export G-code, or an upload to a printer). Slicing
->    alone never reaches a plugin.
+> 2. The slice has to reach the seam. **On a Bambu printer that happens as each
+>    plate finishes slicing** — one firing per plate. On every other printer it
+>    happens on **export** (*Print plate ▾ → Export plate sliced file*, File →
+>    Export → Export G-code) or on a printer upload.
 >
 > The **Diagnostics** tab shows a `handling export of …` line for every export
 > the plugin sees — its absence tells you which of the two is missing.
@@ -111,9 +112,35 @@ substance of what we asked for in [OrcaSlicer discussion
   G-code footer server-side. An API for the numbers OrcaSlicer already computed
   would remove that parsing entirely.
 - The step can fire more than once per slice (file export and upload each get
-  their own working copy). The plugin de-duplicates on name and size, and
-  repeat pushes of the same plate replace that file server-side rather than
-  piling up revisions.
+  their own working copy). The plugin de-duplicates on the artifact path and
+  size, and repeat pushes of the same plate replace that file server-side
+  rather than piling up revisions.
+- **The hook sees one plate, never the project.** For Bambu printers it is
+  handed each plate's G-code as that plate finishes; there is no seam that
+  hands over the multi-plate project. So a per-plate push is stored *alongside*
+  the model's file as `<name>_plate_<n>.gcode`, and updating the model's own
+  file means exporting **all plates** as one `.3mf` and pushing that from the
+  *Exported files* list — see below.
+- **The output name is a lie on Bambu printers.** `ctx.output_name` is the same
+  temp path as the artifact (`.<pid>.<counter>.gcode`, and the counter is a
+  global allocation counter, not the plate index), so the plugin derives the
+  name from the catalogue file the project came from instead.
+
+## Multi-plate projects
+
+A catalogue model is usually one `.3mf` holding several plates; the hook only
+ever sees one plate's G-code. The two outcomes:
+
+| What you push | What happens |
+|---|---|
+| A single plate's G-code (what the hook captures) | Added next to the model's file as `<name>_plate_<n>.gcode`. Useful when you want the exact G-code you printed; it does not update the project. |
+| **Export all plates sliced file** → one `.gcode.3mf` | Pushed from the *Exported files* list, it **replaces the model's own file and keeps its name**, and the per-plate predictions inside it are read for every plate. This is the one that keeps the catalogue's copy current. |
+
+The plugin tells the server which file a push revises (`replaces=<fileId>`, the
+file the model was resolved from), which is what makes the second row keep the
+original name — the slicer's own name for the artifact is a temp path. The
+server only honours it within the same artifact family, so a `.gcode` can never
+take over a `.3mf` row.
 
 ## CLI fallback
 

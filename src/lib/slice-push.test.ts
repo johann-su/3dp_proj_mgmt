@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
+  findReplaceById,
   findReplaceTarget,
   isConfidentMatch,
   isContentHash,
@@ -154,4 +155,32 @@ test("junk metadata never costs us the bytes", () => {
   // Out-of-range numbers are dropped, not clamped: a 90 mm "nozzle" is a bug
   // somewhere, and a wrong number is worse than a missing one.
   assert.equal(parsePushMeta(JSON.stringify({ nozzleDiameterMm: 90 })), null);
+});
+
+test("a push names the file it revises, so the revision keeps that name", () => {
+  // The slicer is no help here: on a Bambu printer the hook is handed a temp
+  // path (".<pid>.<n>.gcode") as both the artifact and the output name, so a
+  // filename match can never happen — the pusher has to say which file it is
+  // revising.
+  const files = [
+    { id: "f1", filename: "Bracket.3mf", kind: "model", generatedFromId: null },
+    { id: "f2", filename: "notes.pdf", kind: "pdf", generatedFromId: null },
+  ];
+  assert.equal(findReplaceById(files, "f1", "3mf")?.filename, "Bracket.3mf");
+  // A .gcode may not take over a .3mf row: the 3D preview and slicer deep
+  // links are .3mf-gated and would quietly go empty.
+  assert.equal(findReplaceById(files, "f1", "gcode"), undefined);
+  // Not a model file, unknown id, or no hint at all.
+  assert.equal(findReplaceById(files, "f2", "3mf"), undefined);
+  assert.equal(findReplaceById(files, "nope", "3mf"), undefined);
+  assert.equal(findReplaceById(files, null, "3mf"), undefined);
+});
+
+test("percent signs survive normalization", () => {
+  // Platform imports routinely produce these names; mangling them would mean a
+  // pushed revision no longer matches the file it revises.
+  assert.equal(
+    normalizePushFilename("Bambu%20Print%20Orientations(1).3mf"),
+    "Bambu%20Print%20Orientations(1).3mf",
+  );
 });
