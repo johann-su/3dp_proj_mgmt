@@ -265,6 +265,7 @@ export default async function ModelPage({
             null,
           approx,
           plateCount: info?.plateCount ?? null,
+          slicedPlateCount: info?.slicedPlateCount ?? null,
           printer: file.printerInfo ?? null,
           sliceStatus: file.sliceStatus ?? null,
           sliceError: file.sliceError ?? null,

@@ -26,6 +26,11 @@ jobs:
       # Unit tests: src/**/*.test.ts + slicer/*.test.mjs (no DB/network needed).
       - run: npm test
 
+      # The OrcaSlicer plugin's project merge (orca-plugin/) is pure logic over
+      # 3MF archives, and Python, so it has no runner in `npm test`. Stdlib
+      # only — no slicer and no instance involved.
+      - run: python3 orca-plugin/assemble.test.py
+
       - run: npx tsc --noEmit
 
   docs:

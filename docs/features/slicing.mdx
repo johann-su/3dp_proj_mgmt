@@ -124,10 +124,11 @@ you; you just click the button.
 ## Push from slicer
 
 "Open in slicer" sends a file **out**. **Push from slicer** brings it back: the
-Print Vault plugin for OrcaSlicer recognises the model you are slicing and
-uploads the result to it as a new revision. Tune a profile, slice, print — and
-the catalogue has the improved file, instead of drifting out of date until
-someone remembers to re-upload it.
+Print Vault plugin for OrcaSlicer recognises the model you have open and sends
+the **project** back to it as a new revision — the process settings, the
+filaments and their colours, where the objects sit on which plate. The manual
+version of this is download, change, save, edit the model, re-upload; the
+plugin is one button instead.
 
 It uses OrcaSlicer's own plugin system, so there is no modified slicer build —
 but that system is new: you need **OrcaSlicer 2.5 (nightly) or newer**. On
@@ -144,46 +145,64 @@ Once per machine, not once per model.
 2. In OrcaSlicer, open **Plugins → Install local plugin** and choose
    `orca_print_vault_plugin_any.py` from the `orca-plugin/` folder of the Print
    Vault repository.
-3. Open **Plugins → Push sliced file to Print Vault → Config** and paste in the
-   instance URL and token. OrcaSlicer will ask for permission the first time the
-   plugin uses the network; that is its own audit prompt, and the answer is
-   remembered.
-4. If you want pushes to happen automatically after a slice, switch to
-   **Advanced** mode and select **Push sliced file to Print Vault** under
-   **Print Settings → Others → Slicing Pipeline Plugin**, then save the profile.
-   OrcaSlicer only runs a slicing plugin for profiles that name it, and it is
-   per profile. You can skip this and push exported files by hand instead — see
-   below.
+3. Run **Plugins → Sync with Print Vault → ▷ Run** and paste the instance URL
+   and token into **Connect**, which checks them before saving. OrcaSlicer asks
+   for permission the first time the plugin uses the network or reads a file;
+   that is its own audit prompt, and the answer is remembered. (The
+   capability's **Config** tab takes the same values, but OrcaSlicer saves a
+   plugin's config with your *print profile* — so a token entered there is
+   moved into the plugin's own folder the first time it runs.)
+4. Optional: to have every slice queue a sync for you, switch to **Advanced**
+   mode, select **Push sliced file to Print Vault** under **Print Settings →
+   Others → Slicing Pipeline Plugin**, and save the profile. OrcaSlicer only
+   runs a slicing plugin for profiles that name it, and it is per profile.
+   Skipping this changes nothing except that you open the window yourself.
 
-Now open a file from a model and slice it. On a Bambu printer the plugin sees
-each plate as it finishes slicing; on other printers it sees the result when you
-**export** it (*Print plate ▾ → Export plate sliced file*) or send it to the
-printer.
+Now open a file from a model, change whatever you came to change, and run
+**Plugins → Sync with Print Vault** (pin it to the Actions Speed Dial and it is
+one click from the plate). The window names the project on the plate, the model
+it belongs to, and how recently OrcaSlicer checkpointed it; **Update the
+model's file** sends it.
 
-Then run **Plugins → Print Vault: review & push** (or add it to the Actions
-Speed Dial for one-click access). It shows what you just sliced and which model
-it belongs to; choose **Update catalogue** or **Keep local**.
+Nothing has to be exported, and the project does not have to be sliced: what
+the plugin reads is the crash-recovery checkpoint OrcaSlicer keeps of the open
+project (**Preferences → Auto backup**, on by default, rewritten every few
+seconds), merged with the file you opened — so the `.3mf` in the catalogue ends
+up as a complete project written by OrcaSlicer itself, under its own name.
 
-The same window has an **Exported files** list: it finds sliced files in your
-export folders, matches them against whatever is open on the plate, and pushes
-the one you pick. That path needs no profile setting at all, so it is also the
-fallback when a slice did not show up on its own.
+The same window also has an **Exported files** list, which pushes a sliced file
+straight out of your export folders. That is the fallback for a project with no
+checkpoint to read.
 
 ### Things to know
 
-- **It only runs for profiles that enable it.** Whichever printer you use, the
-  plugin is handed nothing until the print profile lists it (step 4 above). The
-  plugin's **Diagnostics** tab records every artifact it saw — if nothing is
-  there, that is why. Pushing from the *Exported files* list always works
-  regardless.
-- **Multi-plate projects.** OrcaSlicer hands a plugin one plate at a time, so
-  slicing all plates queues one file per plate. The plugin's window groups them
-  under the model they belong to, so you answer once and they upload together
-  as a single new version — not one revision per plate. Each still lands next
-  to your model's file as `<name>_plate_2.gcode` rather than updating it. To keep the model's own file
-  current, use **Export all plates sliced file** and push that `.3mf` from the
-  *Exported files* list: it replaces the file it came from, keeps its name, and
-  the catalogue reads every plate's print time and filament out of it.
+- **A sync is as current as the last checkpoint.** OrcaSlicer rewrites its
+  project checkpoint a few seconds after you change something, so the window
+  shows its age ("8 s ago") and, when there are changes newer than it, waits
+  for the next one before pushing. If you would rather not rely on that, save
+  the project (⌘S / Ctrl+S) first — that writes the same state to the file the
+  sync is built on.
+- **Automatic syncs need a profile setting.** A slice only queues a sync once
+  the print profile lists the plugin (step 4 above). The plugin's
+  **Diagnostics** tab records every export it saw — if nothing is there, that
+  is why. Syncing from the window never depends on it.
+- **Multi-plate projects are one sync.** Slicing 18 plates fires the plugin 18
+  times, and all of them describe the same project: you get one card with one
+  button, and one new version of one file — not eighteen revisions. Every
+  plate's print time and filament weight is read out of the pushed project.
+- **A just-opened project has nothing to sync yet.** OrcaSlicer writes its
+  first snapshot a few seconds after you change something, so the window says
+  so rather than pretending the setting is off. Change anything on the plate
+  and it appears.
+- **Where a project has no checkpoint at all** — auto backup switched off, or
+  the file you opened has since been moved or deleted — nothing is pushed, and
+  the plugin says which of the two it is. A plate of raw G-code on its own is
+  not something the catalogue can use, so it is never uploaded; use *Exported
+  files* to push an exported project instead.
+- **A partly sliced project keeps both numbers.** Slice one plate of an
+  18-plate project and the file still reads "18 plates", with its estimate
+  marked "for 1 of 18 plates" — the prediction is real, it just does not cover
+  the rest.
 - **Nothing is pushed without you.** By default a slice is queued and waits for
   your answer. Tick *always* for a model, or switch the plugin to
   **automatic**, and future slices of that model upload silently — but only
@@ -209,15 +228,21 @@ fallback when a slice did not show up on its own.
   near-identical copies. The previous
   version stays in the model's [history](/features/versioning) and can be
   restored.
-- **What gets pushed is the G-code.** That is what the slicer hands a plugin at
-  that point — post-processing runs on the sliced G-code before the project
-  file is written, so a `.3mf` isn't available then. Its embedded print time
-  and filament weight are read straight out of it, and because they come from
-  your own slicer and your own printer profile, they are shown **without** the
-  `~` that marks a server-side estimate. The printer, plate and preset names
-  are sent along with it, so the file still shows what produced it. You can
-  also push a `.3mf` by hand (including a Bambu-style `.gcode.3mf`) — those are
-  read the usual way.
+- **Estimates come from your slicer, not ours.** A synced project carries the
+  per-plate print time and filament weight OrcaSlicer predicted, so they are
+  shown **without** the `~` that marks a server-side estimate, and the printer,
+  plate and preset names ride along with it.
+- **The G-code is not uploaded**, because the project is enough to re-slice
+  from and a sliced plate runs to hundreds of MB. If you do want the stored
+  file to be printable as it stands, tick *Put the sliced G-code inside the
+  .3mf* in the plugin — it is then embedded in the project the way
+  OrcaSlicer's own **Export all plates sliced file** writes it, rather than
+  becoming a separate file on the model. You can still push a `.3mf` (including
+  a `.gcode.3mf`) by hand from the *Exported files* list.
+- **Your push token never travels in a project file.** OrcaSlicer keeps plugin
+  settings in the print config, which is saved with your profile and written
+  into every project you export — so the plugin keeps the token in its own
+  folder, and strips that section out of every file it pushes.
 - **Tokens are revocable, and push-only.** A token can add file revisions to
   models — the same editing access you already have — but cannot delete
   anything or sign you in. Revoke one from Settings → Push from slicer the
@@ -230,4 +255,6 @@ The same file doubles as a post-processing script: store your connection once
 with `--url … --token … --save --check`, then add it under **Print Settings →
 Others → Post-processing Scripts**. It cannot ask you anything or see which
 project is open, so it matches the sliced file by name and pushes only when
-exactly one model matches. Full instructions are in `orca-plugin/README.md`.
+exactly one model matches. Those slicers still keep a project checkpoint, so
+`--sync` pushes the project from the command line instead of a G-code file.
+Full instructions are in `orca-plugin/README.md`.

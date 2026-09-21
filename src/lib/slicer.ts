@@ -14,7 +14,7 @@
 // unset, so nothing is permanently marked failed because of an outage.
 
 import { GetObjectCommand } from "@aws-sdk/client-s3";
-import { and, eq } from "drizzle-orm";
+import { and, eq, isNull, or } from "drizzle-orm";
 import { db } from "@/db";
 import { modelFiles } from "@/db/schema";
 import { s3, S3_BUCKET, fileExtension } from "@/lib/s3";
@@ -70,9 +70,14 @@ async function estimateFile(file: FileRow, slicerUrl: string | undefined) {
   // slicer service is down.
   const printerInfo = await get3mfPrinterInfo(file.s3Key, file.size);
   if (printerInfo) {
+    // `presets` is the one field no file carries — the preset *names* only
+    // exist in the live slicer, so they arrive with a slice-push and nowhere
+    // else. A parse that cannot produce them must not erase them, or a synced
+    // project (and any later re-slice of one) would silently lose them.
+    const presets = printerInfo.presets ?? file.printerInfo?.presets;
     await db
       .update(modelFiles)
-      .set({ printerInfo })
+      .set({ printerInfo: presets ? { ...printerInfo, presets } : printerInfo })
       .where(eq(modelFiles.id, file.id));
   }
 
@@ -137,6 +142,50 @@ async function estimateFile(file: FileRow, slicerUrl: string | undefined) {
 // page re-triggers processing (so files stuck pending from an outage heal
 // themselves), and this keeps concurrent views from queueing the same work.
 const inFlight = new Set<string>();
+
+// The estimate a slice-push sent alongside a pushed project
+// (src/lib/slice-push.ts: PushStats).
+//
+// A project synced out of OrcaSlicer's checkpoint carries whatever
+// `slice_info.config` held when that checkpoint was last written — which
+// happens on *model* changes, not when a slice finishes, so it can be the
+// previous slice's predictions or nothing at all. The plugin reads the G-code
+// it was handed and sends the numbers; this is where they land.
+//
+// Applied when the file carried no predictions of its own, and *also* over an
+// estimate the slicer service produced: that one is our generic 0.4/PLA
+// profile, while these came from the user's own slicer for their own printer,
+// which is the same standing as a prediction read out of the file (and is why
+// the UI shows it without the "~"). Never over the file's own numbers, which
+// describe the file, and never over "failed" — a file the slicer service
+// could not load is worth flagging rather than papering over.
+export async function applyPushedEstimate(
+  fileId: string,
+  stats: { printTimeSeconds: number | null; filamentGrams: number | null },
+) {
+  if (stats.printTimeSeconds == null) return;
+  await db
+    .update(modelFiles)
+    .set({
+      sliceStatus: "ok",
+      // The user's own slicer, for their own hardware — the same standing as a
+      // prediction read out of the file, so the UI shows it without the "~".
+      sliceSource: "embedded",
+      printTimeSeconds: stats.printTimeSeconds,
+      filamentGrams: stats.filamentGrams,
+      sliceError: null,
+    })
+    .where(
+      and(
+        eq(modelFiles.id, fileId),
+        or(
+          isNull(modelFiles.sliceStatus),
+          eq(modelFiles.sliceStatus, "pending"),
+          eq(modelFiles.sliceSource, "slicer"),
+        ),
+      ),
+    );
+}
 
 // Processes every pending model file of a model, sequentially — the service
 // slices one file at a time anyway.

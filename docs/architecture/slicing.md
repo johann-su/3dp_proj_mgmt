@@ -22,6 +22,15 @@ Only whitelisted keys are copied (a crafted archive can't smuggle in
 Bambu projects (whose world coordinates extend far past the physical bed) still
 slice; estimates are totals across all plates.
 
+`sliceInfo.plateCount` is **how many plates the project holds**, read from
+`model_settings.config` (or the plate thumbnails) — *not* from
+`slice_info.config`, which gets one `<plate>` per plate the slicer has
+predictions for. Slicing plate 1 of an 18-plate project writes exactly one, so
+reading the count from there made a synced file report "1 plate" while holding
+all eighteen. When the predictions cover fewer plates than the project has,
+`slicedPlateCount` says how many and the file card reads "5 h … for 1 of 18
+plates": the estimate is real, it just is not the whole project's.
+
 Slicing runs in the background after upload (`after()` in the model actions,
 `src/lib/slicer.ts`); results land on `model_files` (`slice_status`,
 `print_time_seconds`, `filament_grams`, …) together with the hardware the
@@ -113,11 +122,19 @@ print from, not by the machine's first.
 
 Deep links hand a file *out* to the slicer; slice-push brings it back. The
 **OrcaSlicer plugin** in [`orca-plugin/`](../../orca-plugin/README.md) works out
-which model the open project came from, asks whether to update it, and POSTs
-the just-sliced file to `/api/models/[id]/slice-push`, which attaches it as a
-new versioned revision. It rides the slicer's own extension point — no fork, no
-daemon, no polling of an undocumented cloud API (see the issue for why the
-Orca/Bambu cloud-backend routes were rejected).
+which model the open project came from, asks whether to update it, and POSTs a
+complete project `.3mf` — the settings, filaments, colours and plate layout as
+they now stand — to `/api/models/[id]/slice-push`, which attaches it as a new
+versioned revision *of the model's own file*. It rides the slicer's own
+extension point — no fork, no daemon, no polling of an undocumented cloud API
+(see the issue for why the Orca/Bambu cloud-backend routes were rejected).
+
+What it replaces is a manual round trip: download the `.3mf`, change it, save
+it, edit the model, re-upload. So the artifact matters. Pushing G-code (which
+is all the slicing hook is given, and all the first two versions of this sent)
+closes none of that loop, which is why the current design assembles the project
+off disk instead — see
+[Project sync](#project-sync-what-actually-keeps-the-3mf-current).
 
 ### Why a plugin and not a post-processing script
 
@@ -155,31 +172,172 @@ an open ask in [OrcaSlicer discussion
    each plate is sliced (`if (m_fff_print->is_BBL_printer())
    run_post_process_scripts(...)`), once per plate; everywhere else it runs from
    `finalize_gcode()`, i.e. on export or upload. Don't design around getting the
-   project file from the hook; you can't.
+   project file *from the hook*; you can't — get it off disk instead
+   ([Project sync](#project-sync-what-actually-keeps-the-3mf-current) below).
 
    Two consequences worth holding on to. **The "output name" is not a name**: on
    a BBL printer the plate's temp path is passed as both the artifact and
    `output_name` (`.<pid>.<counter>.gcode`, where the counter is a global
    allocation counter and *not* the plate index), so a naive implementation
-   stores `.74890.3.gcode`. And **one firing is one plate** — no seam hands over
-   a multi-plate project, so the plugin names per-plate pushes
-   `<file>_plate_<n>.gcode` and steers the "keep the model's file current" case
-   to an all-plates `.gcode.3mf` export pushed from its own window. The
-   `replaces=<fileId>` param exists for that: the pusher names the file it is
-   revising (which it knows from `/resolve`), the row keeps its **filename**,
-   and the family check stops a `.gcode` from taking over a `.3mf` row.
+   stores `.74890.3.gcode`. And **one firing is one plate** — no seam hands
+   over a multi-plate project, so per-plate G-code (the fallback path) is named
+   `<file>_plate_<n>.gcode`, while a sync collapses every firing of one slice
+   into a single push. The `replaces=<fileId>` param is what keeps a revision's
+   name: the pusher names the file it is revising (which it knows from
+   `/resolve`), the row keeps its **filename**, and the family check stops a
+   `.gcode` from taking over a `.3mf` row.
 2. **The hook may not show UI.** It runs on the slicing worker thread, which the
    UI thread can be blocked waiting on, so a marshaled UI call from there can
    deadlock the app. The "update the catalogue or keep it local?" question is
    therefore asked from a **script capability** (a window the user opens), not
    from the hook — the hook queues.
 3. **There is no structured slice result.** Print time and filament use still
-   come from parsing, which is why `src/lib/gcode-stats.ts` exists.
+   come from parsing, which is why `src/lib/gcode-stats.ts` exists — and the
+   numbers are not where you would look for them. **OrcaSlicer on a Bambu
+   printer writes the print time in the G-code *header*** (line 3, as
+   `; model printing time: 4h 53m 23s; total estimated time: 5h 0m 4s` — both
+   times on one line) and only the filament totals at the end, while
+   PrusaSlicer writes everything in the footer. So `GcodeStatsWindow` keeps the
+   first 64 KB *and* the last 128 KB of the stream, and every capture stops at
+   a `;` — a greedy one hands the duration parser both of Bambu's times and
+   reports a 5 h print as 9 h 53. `total estimated time` is preferred because
+   it is what the slicer's own UI shows and what `slice_info.config` stores as
+   `prediction`.
+
+### Project sync: what actually keeps the `.3mf` current
+
+The point of the whole feature, and the thing the first two versions did not
+do. A pushed plate of `.gcode` leaves the catalogue's project file stale: it is
+inert in every `.3mf`-gated surface (3D preview, deep links), it is hundreds of
+MB, and none of the **settings** the user just worked out come back with it.
+What comes back instead is the project itself, assembled on the slicer's own
+machine out of two things already on disk.
+
+**OrcaSlicer's project checkpoint.** Auto backup (Preferences → *Auto backup*,
+on by default, `backup_interval` 10 s) keeps a crash-recovery copy of the open
+project in
+`<temp>/orcaslicer_<uid>/orcaslicer_model/<Day_Mon_D>/<HH_MM_SS>#<pid>#<n>/`:
+
+```
+.3mf         Orca's own 3MF writer: 3D/3dmodel.model (+ _rels, i.e. the plate
+             layout) and every Metadata/*.config — process settings, filament
+             and colour assignment, per-object overrides, live slice_info.
+             Everything except the meshes.
+origin.txt   the path the project was loaded from
+lock.txt     the pid that owns it
+3D/Objects/  mesh parts, written only for objects edited or added here
+Auxiliaries/ the project's own files (manuals, pictures), loose
+Metadata/.<pid>.<n>.gcode   the sliced plates — what the hook is handed
+```
+
+The hook's artifact lives *inside* that directory, so `project_checkpoint()`
+walks up from `ctx.gcode_path`. The window has no context and matches
+`lock.txt` against `os.getpid()` instead — a second OrcaSlicer window keeps its
+own checkpoint, and syncing one project onto another project's model is the
+failure with no cheap undo.
+
+**The merge** (`assemble_project`, part by part through `zipfile`). The rule
+that makes it work took two broken attempts to find, so it is worth stating
+plainly: **the checkpoint decides everything except geometry, and is copied
+verbatim.** Its `3D/3dmodel.model` and `Metadata/*.config` go in untouched; the
+origin supplies the meshes, rewritten into the parts and under the object ids
+the checkpoint's model asks for.
+
+Why it cannot be done the other way round — mapping the checkpoint's references
+onto the origin's numbering — is four facts that only collide in the merged
+file:
+
+1. a checkpoint numbers objects in its own live sequence (`65536 + n`), while
+   the file the project was saved to carries the numbering from that save:
+   `…/HATCH FRONT 1.STL_6.model objectid="65542"` sits next to a part that
+   defines `<object id="40">`. The part *names* match, which is why this looks
+   fine until something tries to open the file;
+2. a save **dedups identical meshes** — two copies of one object share a part,
+   and the duplicate's part is named but written *empty* — so matching parts by
+   name is not enough either;
+3. **three.js keys objects by id in one namespace for the whole archive** and
+   ignores `p:path` (`buildObjects` in `3MFLoader.js`), while a save allocates
+   the model's wrapper objects and the parts' mesh objects from one sequence so
+   they never collide. Carry the origin's ids over and 13 of them collide with
+   the checkpoint's wrappers: the file opens in OrcaSlicer, slices in
+   PrusaSlicer (which resolves by path), and renders an **empty scene** in the
+   browser;
+4. `Metadata/model_settings.config` keys per-object settings on the model's
+   object ids **and per-part settings on the component ids** (`<part
+   id="65549">`), so renumbering either without rewriting that file silently
+   drops extruder assignments, painted supports and part transforms — the very
+   settings a sync exists to carry.
+
+Both of those shipped to a real catalogue (an unloadable file, then an empty
+preview) before the direction was inverted. What makes the transplant possible
+is the production extension's `p:UUID` on each component: byte-identical in the
+checkpoint and in the saved file, so `component_map()` turns the origin's model
+into `p:UUID → (part, object id)` and each needed object is lifted out of that
+part (`object_elements`, `objects_part`) and written under the id the
+checkpoint wants. Nothing is returned until `unresolved_references()` and
+`duplicate_object_ids()` both come back empty —
+`orca-plugin/assemble.test.py` reproduces all four facts in fixtures and fails
+if either guard is removed. Run it after touching the merge.
+
+Four more things the merge has to keep doing:
+
+- **Strip the plugin's own config out of `project_settings.config`**
+  (`strip_plugin_settings`). OrcaSlicer keeps a capability's configuration in
+  the **print config** (`print_plugin_config_overrides`), so the push token — a
+  long-lived, edit-equivalent credential — sits in the checkpoint's settings in
+  plaintext and would land in the catalogue, downloadable by anyone who can see
+  the model. Same reason `State.save_settings` writes the token only to the
+  plugin's own folder, and why `migrate_token_out_of_config` rewrites the
+  capability config without it on load: a token left there is written into
+  every project the user saves or exports.
+- **Drop mesh parts the new `3dmodel.model.rels` no longer references**, or the
+  file grows by every object anyone ever deleted.
+- **Keep `Auxiliaries/`.** That is where a project's manual and pictures live,
+  and the importer reads them (`src/lib/threemf.ts`).
+- **Embed G-code only when asked.** `include_gcode` (default off) writes
+  `Metadata/plate_<n>.gcode` plus an uppercase, unterminated `.gcode.md5` — the
+  layout of Bambu's own "export all plates sliced file" bundle, which needs
+  `[Content_Types].xml` to declare the `gcode` extension. Default off because
+  the project already carries the slicer's predictions, while six plates add
+  ~60 MB to every revision against a 30-version cap.
+
+**Freshness is the one soft spot.** The checkpoint is rewritten when the
+*model* changes, not when a slice finishes, so its `slice_info` can lag by a
+whole slice. Two mitigations, both deliberate. The window shows the
+checkpoint's age, and when the project is dirty *and* the checkpoint is already
+older than one interval it waits up to 14 s for the mtime to advance
+(`_await_checkpoint`) — there is no host call that forces a checkpoint, so
+don't go looking for one. And the plugin parses the G-code the hook handed
+it and sends `printTimeSeconds`/`filamentGrams` in `X-Slice-Push-Meta` —
+totalled across the plates it saw, and held *per plate* on the way there
+(`sum_plate_stats`) because the hook fires more than once for the same plate
+and adding those would report a project as taking twice as long as it does; `applyPushedEstimate` (`src/lib/slicer.ts`) applies those
+when the file carried no predictions of its own — and also *over* an estimate
+the slicer service produced, since ours is a generic profile and theirs is
+their own slicer on their own printer. Never over the file's own numbers (those
+describe the file) and never over `failed`, which is worth flagging.
+
+**One sync is one version.** Every firing of a single "Slice all" merges into
+one queued entry, keyed on the origin path (`queue_upsert_sync`), so a sync
+needs none of the `batch` machinery below.
+
+**With no checkpoint, nothing is pushed.** The hook reports why and stops — it
+does *not* fall back to the plate's G-code, which was the old behaviour and put
+rows in the catalogue that nothing could use. Three states, and they get
+different messages because they need different answers: a checkpoint directory
+with **no snapshot yet** (`ready: false` — opening a project creates the folder,
+`origin.txt` and `lock.txt`, and the `.3mf` lands a few seconds after the first
+change, so "turn on Auto backup" would be wrong advice); **no directory at
+all** (Auto backup really is off); and a snapshot whose **origin file is gone**
+(nothing to take meshes from). The window says the same three things, and its
+*Exported files* list — projects only — is the way round all of them.
 
 ### What the endpoints do
 
 `POST /api/slice-push/resolve` turns a file on the slicing machine into a model.
-The plugin sends SHA-256s of the files the project was loaded from, their names,
+The plugin sends SHA-256s of the files the project was loaded from (the
+checkpoint's `origin.txt` first — per-object `input_file` paths can be the STLs
+a project was assembled out of, which the catalogue never served), their names,
 and the 3MF's Bambu design id; the route matches them against
 `model_files.content_hash` (exact — the catalogue served those bytes), then
 filename, then `models.sourceUrl` for the design id, then — only when the caller
@@ -203,16 +361,25 @@ all three exist because the first live test resolved *nothing*:
   project→model mapping (plugin-side, keyed on content hash or stripped name)
   means a project only has to be identified once, however badly it resolves.
 
-`POST /api/models/[id]/slice-push` takes the bytes. A multi-plate slice arrives
-as one push per plate, so it also takes `batch=<id>` (with `batchFinal=1` on the
-last): every push in a batch still runs `ensureBaselineVersion`, but only the
-final one calls `recordVersion`, and its snapshot contains the whole batch.
-Without that, one "Slice all" on an 18-plate project would write 18 version
-rows and evict the model's real history through the 30-version cap. It accepts
-both artifacts:
+`POST /api/models/[id]/slice-push` takes the bytes. A per-plate G-code slice
+can arrive as one push per plate, so it also takes `batch=<id>` (with
+`batchFinal=1` on the last): every push in a batch still runs
+`ensureBaselineVersion`, but only the final one calls `recordVersion`, and its
+snapshot contains the whole batch. Without that, one "Slice all" on an 18-plate
+project would write 18 version rows and evict the model's real history through
+the 30-version cap. (A *sync* needs none of this — it is one push for the whole
+project.) It accepts both artifacts:
 
-- **`.gcode`** — the hook's artifact. Its footer stats are scraped from a
-  rolling tail window **as the bytes stream past to S3** (`TailBuffer` +
+- **`.3mf`** — the normal case: a synced project (or a hand-pushed project /
+  `.gcode.3mf` bundle). Marked `pending` and left to the existing pipeline,
+  which reads `slice_info`/`project_settings` as usual. No new parsing.
+- **`.gcode`** — the hook's own artifact. **The plugin never pushes one**
+  (`PUSH_SUFFIXES`): a raw plate of G-code is a row no preview, deep link or
+  estimate can use, it is superseded by the next sync, and the sliced G-code
+  belongs *inside* the project (`include_gcode`). The route still accepts it
+  for the stand-alone CLI's explicit `--push-gcode`, on a machine with no
+  checkpoint to read. Its stats are scraped from the head and tail
+  windows **as the bytes stream past to S3** (`GcodeStatsWindow` +
   `parseGcodeStats`, `src/lib/gcode-stats.ts`): a pushed G-code is routinely
   hundreds of MB, so it is never buffered whole or read back out of S3.
   Resolved inline to `sliceStatus: "ok"` / `sliceSource: "embedded"` — real
@@ -220,25 +387,34 @@ both artifacts:
   shows them **without** the `~` it puts on our generic-profile estimates.
   This path must keep working with no `SLICER_URL` at all, which is why the
   parser lives in the app and not behind the slicer service.
-- **`.3mf`** — a project file or a `.gcode.3mf` bundle, pushed by hand or by a
-  slicer configured to export one. Marked `pending` and left to the existing
-  pipeline, which reads `slice_info`/`project_settings` as usual. No new
-  parsing.
 
-The G-code footer says how long a print takes; it does not say which machine,
-plate or presets produced it. The plugin *can* read that live, so it sends a
-small JSON object in `X-Slice-Push-Meta` which `parsePushMeta` folds into the
-same `printerInfo` column the 3MF parser fills — including `presets`, the
-preset *names*, which nothing embedded in a file would have told us. It is
-client-supplied and parsed defensively: junk metadata must never cost us the
-bytes.
+A file does not say which machine, plate or presets produced it — a `.gcode`
+says none of it, and a `.3mf` says everything except the preset *names*. The
+plugin can read all of it live, so it sends a small JSON object in
+`X-Slice-Push-Meta` which `parsePushMeta` folds into the same `printerInfo`
+column the 3MF parser fills. It is written for **both** artifacts and is the
+seed the 3MF parse overwrites moments later, so a project whose config cannot
+be parsed still shows what produced it. `parsePushStats` reads the two estimate
+fields out of the same header (see *Project sync* for when they are used). All
+of it is client-supplied and parsed defensively: junk metadata must never cost
+us the bytes.
+
+`presets` is the one field a 3MF parse must never overwrite with nothing, which
+is why `estimateFile` carries the existing value forward when it cannot produce
+one: the preset *names* exist only in the live slicer, so erasing them on the
+re-parse that follows every sync (or on any later re-slice) would lose them for
+good.
 
 `parseGcodeStats` is a deliberate **near-duplicate** of the one in
 `slicer/lib.mjs` rather than a shared module: that one runs in the slicer
 service container (a separate deployable, no build step) and only ever reads
 G-code our own PrusaSlicer CLI produced, so it can assume PrusaSlicer's
 spelling. This one reads whatever a user's slicer wrote, so it also knows Bambu
-Studio's `key: value` forms. Adding a dialect belongs in *this* copy.
+Studio's `key: value` forms, its both-times-on-one-line header, and the
+head-as-well-as-tail window that needs. Adding a dialect belongs in *this*
+copy. There is a *third*, smaller copy in the plugin (`parse_gcode_stats`),
+which exists because a synced project ships no G-code for the server to read —
+this file's list stays canonical.
 
 Three things the ingest route must keep doing:
 
@@ -277,10 +453,12 @@ want — never a `text/*` that a browser would render inline.
 The feature is **opt-in and off by default**: no token minted → no push surface
 exists. Tokens are minted and revoked in Settings → Push from slicer; the model
 page's "Push from slicer" dialog only explains the setup, because there is
-nothing per-model to configure. The plugin file doubles as a stand-alone
-post-processing script for builds without a plugin system (2.4.x, Bambu Studio,
-PrusaSlicer), where it resolves by filename alone and **always exits 0** so a
-push failure never breaks the user's slice.
+nothing per-model to configure. The plugin file doubles as a stand-alone CLI for
+builds without a plugin system (2.4.x, Bambu Studio, PrusaSlicer): as a
+post-processing script it resolves by filename alone and **always exits 0** so a
+push failure never breaks the user's slice, and `--sync` drives the project
+merge from outside the slicer — with `--out`, assembling the file and pushing
+nothing, which is how the merge is exercised without a slicer or an instance.
 
 ## "Open in slicer" deep links
 

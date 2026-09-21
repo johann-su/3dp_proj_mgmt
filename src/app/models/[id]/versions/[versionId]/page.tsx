@@ -150,6 +150,7 @@ export default async function ModelVersionPreviewPage({
           info?.filamentGrams ?? (persisted ? file.filamentGrams : null) ?? null,
         approx: persisted && file.sliceSource === "slicer",
         plateCount: info?.plateCount ?? null,
+        slicedPlateCount: info?.slicedPlateCount ?? null,
         printer: file.printerInfo ?? null,
         // Historic rows may say "pending" forever — never show the
         // "estimating…" pulse in a preview.

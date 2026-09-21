@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { TailBuffer, parseGcodeStats } from "@/lib/gcode-stats";
+import { GcodeStatsWindow, parseGcodeStats } from "@/lib/gcode-stats";
 
 const encoder = new TextEncoder();
 
@@ -57,25 +57,41 @@ test("a footer with no stats yields nulls, never zeroes", () => {
   assert.equal(stats.filamentGrams, null);
 });
 
-test("TailBuffer keeps the end of a stream, not the start", () => {
-  // The stats sit after the last extrusion move, so a pushed 200 MB G-code is
-  // scraped from a small trailing window as the bytes stream past to S3.
-  const tail = new TailBuffer(64);
-  const moves = "G1 X10 Y10 E1\n".repeat(500);
-  tail.push(encoder.encode(moves));
-  tail.push(encoder.encode("; total filament used [g] = 7.5\n"));
-  const text = tail.text();
-  // Only the trailing window is retained, never the whole 7 KB of moves.
-  assert.ok(text.length < moves.length);
-  assert.equal(parseGcodeStats(text).filamentGrams, 7.5);
+test("Bambu/Orca put both times on one line; the total is taken, not the sum", () => {
+  // Verified against OrcaSlicer 2.5 output for a P1S, where line 3 reads
+  // exactly this. A capture that ran to end-of-line would hand the duration
+  // parser both values and report 9h 53m for a 5h print — and "total
+  // estimated" is the number the slicer's own UI and slice_info.config's
+  // `prediction` field agree on.
+  const { printTimeSeconds } = parseGcodeStats(
+    "; model printing time: 4h 53m 23s; total estimated time: 5h 0m 4s\n",
+  );
+  assert.equal(printTimeSeconds, 18004);
 });
 
-test("TailBuffer spans a stat line split across chunk boundaries", () => {
+test("a stats window keeps both ends of the stream", () => {
+  // Which end carries the numbers depends on the slicer: PrusaSlicer writes
+  // them in the footer, Bambu/Orca write the print time in the header (line 3
+  // of an 8 MB file) and the filament totals at the end. A tail-only scan
+  // silently loses the print time of every Bambu-printer push.
+  const scan = new GcodeStatsWindow(64, 64);
+  scan.push(encoder.encode("; total estimated time: 1h 0m 0s\n"));
+  scan.push(encoder.encode("G1 X10 Y10 E1\n".repeat(500)));
+  scan.push(encoder.encode("; total filament used [g] = 7.5\n"));
+  const text = scan.text();
+  // The 7 KB of moves in between is never held.
+  assert.ok(text.length < 200);
+  const stats = parseGcodeStats(text);
+  assert.equal(stats.printTimeSeconds, 3600);
+  assert.equal(stats.filamentGrams, 7.5);
+});
+
+test("a stats window spans a stat line split across chunk boundaries", () => {
   // Chunk boundaries fall wherever the network put them — a value cut in half
   // by one must still parse once the window is joined back up.
-  const tail = new TailBuffer(1024);
+  const scan = new GcodeStatsWindow(0, 1024);
   for (const chunk of ["; estimated prin", "ting time = 45m", " 30s\n"]) {
-    tail.push(encoder.encode(chunk));
+    scan.push(encoder.encode(chunk));
   }
-  assert.equal(parseGcodeStats(tail.text()).printTimeSeconds, 2730);
+  assert.equal(parseGcodeStats(scan.text()).printTimeSeconds, 2730);
 });

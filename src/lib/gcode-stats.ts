@@ -10,12 +10,23 @@
 // Bambu Studio's — and it must keep working on instances with no SLICER_URL
 // at all ("optional services degrade to off").
 //
-// Pure: callers hand it the decoded tail of the file. Everything a slicer
-// writes here lives in the last few KB, after the last extrusion move.
+// Pure: callers hand it the text of the windows GcodeStatsWindow kept. Which
+// end of the file that text comes from depends on the slicer, and getting it
+// wrong reads as "this file has no estimate":
+//
+// - PrusaSlicer (and OrcaSlicer for a non-Bambu printer) writes its stats in
+//   the **footer**, after the last extrusion move.
+// - Bambu Studio — and OrcaSlicer for a Bambu printer — writes the print time
+//   in the **header**, on line 3, and only the filament totals at the end.
+//
+// So both ends are scanned. Verified against G-code OrcaSlicer 2.5 produced
+// for a P1S: `; model printing time: 4h 53m 23s; total estimated time: 5h 0m 4s`
+// at byte 83 of an 8 MB file.
 
-// How much of the file's tail to keep. Bambu/Orca append a full config dump
-// after the stats, which runs to tens of KB — 128 KB clears it comfortably
-// while staying small enough to hold in memory per request.
+// How much of each end to keep. The header block is under 1 KB in practice;
+// the tail has to clear the full config dump Bambu/Orca append after the
+// stats, which runs to tens of KB.
+export const GCODE_HEAD_BYTES = 64 * 1024;
 export const GCODE_TAIL_BYTES = 128 * 1024;
 
 export type GcodeStats = {
@@ -50,21 +61,28 @@ function sumList(raw: string): number | null {
 // Bambu Studio uses `key: value`. Order matters only in that the first match
 // wins, and the "total" variants are listed first because a multi-extruder
 // file carries both a per-extruder and a total line.
+// Every capture stops at a `;`, because Bambu/Orca put both of its times on
+// **one line** — `; model printing time: 4h 53m 23s; total estimated time: 5h
+// 0m 4s` — and a greedy capture would hand parseDuration both, summing them
+// into a print that takes twice as long as it does.
 const TIME_PATTERNS = [
   // PrusaSlicer/OrcaSlicer. The "(normal mode)" suffix is optional; a second
   // "(stealth mode)" line may follow, and taking the first match ignores it.
-  /^; estimated printing time.*?=\s*(.+)$/m,
-  // Bambu Studio.
-  /^; total estimated time:\s*(.+)$/m,
-  /^; model printing time:\s*(.+)$/m,
+  /^; estimated printing time.*?=\s*([^;\n]+)/m,
+  // Bambu Studio/OrcaSlicer. "Total estimated" is the number their own UI
+  // shows and the one `slice_info.config` stores as `prediction`, so it is
+  // preferred over "model printing time" (which excludes heating and changes)
+  // and matched even when it is the second clause of that shared line.
+  /^;[^\n]*?total estimated time:\s*([^;\n]+)/m,
+  /^; model printing time:\s*([^;\n]+)/m,
 ];
 
 const GRAMS_PATTERNS = [
-  /^; total filament used \[g\]\s*=\s*(.+)$/m,
-  /^; filament used \[g\]\s*=\s*(.+)$/m,
+  /^; total filament used \[g\]\s*=\s*([^;\n]+)/m,
+  /^; filament used \[g\]\s*=\s*([^;\n]+)/m,
   // Bambu Studio. Note the space before the colon — that is how it writes it.
-  /^; total filament weight \[g\]\s*:\s*(.+)$/m,
-  /^; filament weight \[g\]\s*:\s*(.+)$/m,
+  /^; total filament weight \[g\]\s*:\s*([^;\n]+)/m,
+  /^; filament weight \[g\]\s*:\s*([^;\n]+)/m,
 ];
 
 function firstMatch(tail: string, patterns: RegExp[]): string | null {
@@ -84,41 +102,61 @@ export function parseGcodeStats(tail: string): GcodeStats {
   };
 }
 
-// Keeps the last `maxBytes` of a byte stream without ever holding the whole
-// file: a pushed G-code is routinely hundreds of MB, and it streams straight
-// to S3, so the stats have to be scraped from the bytes on their way past.
-export class TailBuffer {
-  private chunks: Uint8Array[] = [];
-  private length = 0;
+// Latin-1 rather than UTF-8: a window starts and ends at arbitrary byte
+// offsets, so a multi-byte character can be sliced in half. G-code comments
+// are ASCII and every pattern above is ASCII, so decoding byte-per-char cannot
+// corrupt a match the way a replacement character would.
+function decode(chunks: Uint8Array[], length: number): string {
+  const joined = new Uint8Array(length);
+  let offset = 0;
+  for (const chunk of chunks) {
+    joined.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return new TextDecoder("latin1").decode(joined);
+}
 
-  constructor(private readonly maxBytes: number = GCODE_TAIL_BYTES) {}
+// Keeps both ends of a byte stream — the first `headBytes` and the last
+// `tailBytes` — without ever holding the whole file: a pushed G-code is
+// routinely hundreds of MB and streams straight to S3, so the stats have to be
+// scraped from the bytes on their way past. Which end carries them depends on
+// the slicer (see above), so both are kept.
+export class GcodeStatsWindow {
+  private readonly head: Uint8Array[] = [];
+  private headLength = 0;
+  private tail: Uint8Array[] = [];
+  private tailLength = 0;
+
+  constructor(
+    private readonly headBytes: number = GCODE_HEAD_BYTES,
+    private readonly tailBytes: number = GCODE_TAIL_BYTES,
+  ) {}
 
   push(chunk: Uint8Array): void {
-    this.chunks.push(chunk);
-    this.length += chunk.byteLength;
+    if (this.headLength < this.headBytes) {
+      const room = this.headBytes - this.headLength;
+      const slice = chunk.byteLength <= room ? chunk : chunk.subarray(0, room);
+      this.head.push(slice);
+      this.headLength += slice.byteLength;
+    }
+
+    this.tail.push(chunk);
+    this.tailLength += chunk.byteLength;
     // Drop whole leading chunks while the ones behind them still cover the
     // window; only trim inside a chunk when it is the sole survivor.
-    while (this.chunks.length > 1 && this.length - this.chunks[0].byteLength >= this.maxBytes) {
-      this.length -= this.chunks[0].byteLength;
-      this.chunks.shift();
+    while (this.tail.length > 1 && this.tailLength - this.tail[0].byteLength >= this.tailBytes) {
+      this.tailLength -= this.tail[0].byteLength;
+      this.tail.shift();
     }
-    if (this.chunks.length === 1 && this.length > this.maxBytes) {
-      this.chunks[0] = this.chunks[0].subarray(this.length - this.maxBytes);
-      this.length = this.maxBytes;
+    if (this.tail.length === 1 && this.tailLength > this.tailBytes) {
+      this.tail[0] = this.tail[0].subarray(this.tailLength - this.tailBytes);
+      this.tailLength = this.tailBytes;
     }
   }
 
-  // Latin-1 rather than UTF-8: the window starts at an arbitrary byte offset,
-  // so a multi-byte character can be sliced in half. G-code comments are ASCII
-  // and every pattern above is ASCII, so decoding byte-per-char cannot corrupt
-  // a match the way a replacement character would.
+  // Joined with a newline so the seam between the two windows cannot fuse a
+  // truncated header line onto a tail line and match as one.
   text(): string {
-    const joined = new Uint8Array(this.length);
-    let offset = 0;
-    for (const chunk of this.chunks) {
-      joined.set(chunk, offset);
-      offset += chunk.byteLength;
-    }
-    return new TextDecoder("latin1").decode(joined);
+    return `${decode(this.head, this.headLength)}\n${decode(this.tail, this.tailLength)}`;
   }
 }

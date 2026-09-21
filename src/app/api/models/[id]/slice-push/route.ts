@@ -31,10 +31,11 @@ import {
   findReplaceTarget,
   normalizePushFilename,
   parsePushMeta,
+  parsePushStats,
   pushArtifact,
 } from "@/lib/slice-push";
-import { GCODE_TAIL_BYTES, TailBuffer, parseGcodeStats } from "@/lib/gcode-stats";
-import { processPendingSlices } from "@/lib/slicer";
+import { GcodeStatsWindow, parseGcodeStats } from "@/lib/gcode-stats";
+import { applyPushedEstimate, processPendingSlices } from "@/lib/slicer";
 import { logger } from "@/lib/logger";
 import { reportError } from "@/lib/telemetry";
 
@@ -46,14 +47,14 @@ export const maxDuration = 300;
 // multi-plate project runs to a few hundred MB; past this something is wrong.
 const MAX_PUSH_BYTES = 256 * 1024 * 1024;
 
-// Streams the body to S3, and — for G-code — keeps a rolling window of the
-// tail on the way past so the footer stats can be read without ever holding
-// the whole file (or reading it back out of S3 afterwards). Reports the
-// over-cap case through a flag rather than the thrown error's identity, which
-// does not survive the S3 upload's own error wrapping.
+// Streams the body to S3, and — for G-code — keeps both ends of it on the way
+// past so the stats can be read without ever holding the whole file (or
+// reading it back out of S3 afterwards). Reports the over-cap case through a
+// flag rather than the thrown error's identity, which does not survive the S3
+// upload's own error wrapping.
 function tapBody(
   body: ReadableStream<Uint8Array>,
-  tail: TailBuffer | null,
+  scan: GcodeStatsWindow | null,
   state: { tooLarge: boolean },
 ): ReadableStream<Uint8Array> {
   let seen = 0;
@@ -69,7 +70,7 @@ function tapBody(
           state.tooLarge = true;
           throw new Error("push exceeds the size cap");
         }
-        tail?.push(chunk);
+        scan?.push(chunk);
         controller.enqueue(chunk);
       },
     }),
@@ -138,13 +139,13 @@ export async function POST(
     findReplaceTarget(model.files, filename);
   const storedName = replaced ? replaced.filename : filename;
 
-  const tail = artifact === "gcode" ? new TailBuffer(GCODE_TAIL_BYTES) : null;
+  const scan = artifact === "gcode" ? new GcodeStatsWindow() : null;
   const uploadState = { tooLarge: false };
   let staged;
   try {
     staged = await stageStream(
       storedName,
-      tapBody(req.body, tail, uploadState),
+      tapBody(req.body, scan, uploadState),
       // Derived from the validated extension, never the request header —
       // /api/files serves stored types back, so a client-chosen text/html
       // would be stored XSS. G-code has no safe registered type and falls
@@ -166,7 +167,7 @@ export async function POST(
   // numbers in the footer we just streamed past, so it is resolved here and
   // never queued — that path must keep working on instances with no
   // SLICER_URL at all.
-  const stats = tail ? parseGcodeStats(tail.text()) : null;
+  const stats = scan ? parseGcodeStats(scan.text()) : null;
   // A G-code push resolves to "ok" only when the footer actually yielded a
   // print time; a slicer that wrote none leaves the row with no estimate at
   // all, which is not the same thing as a file that failed to slice.
@@ -198,11 +199,19 @@ export async function POST(
           sliceError: null,
         };
 
-  // What the slicer knew and the G-code footer doesn't say: printer, nozzle,
-  // plate, filament slots, and the presets that produced the file. Only the
-  // plugin can supply this (a .3mf carries its own, read by the 3MF parser),
-  // so it is applied to the G-code path only and left null otherwise.
-  const meta = artifact === "gcode" ? parsePushMeta(req.headers.get("x-slice-push-meta")) : null;
+  // What the slicer knew and a file doesn't always say: printer, nozzle,
+  // plate, filament slots, and the presets that produced it — the preset
+  // *names* exist nowhere else. Written for both artifacts: on the .3mf path
+  // the 3MF parser overwrites it moments later with the file's own, and this
+  // is what the row carries if that parse finds nothing.
+  const meta = parsePushMeta(req.headers.get("x-slice-push-meta"));
+  // And the estimate to fall back on when a pushed project's own slice_info
+  // has not caught up with the slice it came from. See applyPushedEstimate.
+  const pushedStats =
+    artifact === "3mf" ? parsePushStats(req.headers.get("x-slice-push-meta")) : null;
+
+  // Which row the estimate fallback below belongs to.
+  let fileId = replaced?.id ?? "";
 
   const orphanedKeys = await db.transaction(async (tx) => {
     // Models predating versioning get their pre-push state recorded first, so
@@ -228,18 +237,22 @@ export async function POST(
         .where(eq(modelFiles.id, replaced.id));
     } else {
       const position = Math.max(0, ...model.files.map((f) => f.position + 1));
-      await tx.insert(modelFiles).values({
-        modelId: model.id,
-        kind: "model" as const,
-        filename: storedName,
-        s3Key: staged.key,
-        size: staged.size,
-        contentType: staged.contentType,
-        contentHash: staged.contentHash,
-        position,
-        printerInfo: meta,
-        ...sliceFields,
-      });
+      const [inserted] = await tx
+        .insert(modelFiles)
+        .values({
+          modelId: model.id,
+          kind: "model" as const,
+          filename: storedName,
+          s3Key: staged.key,
+          size: staged.size,
+          contentType: staged.contentType,
+          contentHash: staged.contentHash,
+          position,
+          printerInfo: meta,
+          ...sliceFields,
+        })
+        .returning({ id: modelFiles.id });
+      fileId = inserted.id;
     }
 
     await tx
@@ -287,7 +300,12 @@ export async function POST(
     "slice-push accepted",
   );
 
-  if (artifact === "3mf") after(() => processPendingSlices(model.id));
+  if (artifact === "3mf") {
+    after(async () => {
+      await processPendingSlices(model.id);
+      if (pushedStats) await applyPushedEstimate(fileId, pushedStats);
+    });
+  }
   revalidatePath(`/models/${model.id}`);
 
   return NextResponse.json({

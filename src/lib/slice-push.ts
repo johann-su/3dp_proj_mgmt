@@ -213,16 +213,47 @@ function compact(info: PrinterInfo): PrinterInfo | null {
   return entries.length > 0 ? (Object.fromEntries(entries) as PrinterInfo) : null;
 }
 
-export function parsePushMeta(header: string | null): PrinterInfo | null {
+// The estimate the plugin read from the G-code footer itself.
+//
+// Only ever a *fallback* for a pushed project: OrcaSlicer rewrites its project
+// checkpoint when the model changes, not when a slice finishes, so a synced
+// `.3mf` can carry `slice_info` predictions from the previous slice — or none,
+// if the project has never been sliced through that checkpoint. The plugin has
+// the G-code it was just handed, so it parses the footer there and sends the
+// pair along. Applied only when the file itself yields nothing (see
+// applyPushedEstimate in src/lib/slicer.ts), because the file's own numbers
+// describe the file.
+export type PushStats = {
+  printTimeSeconds: number | null;
+  filamentGrams: number | null;
+};
+
+export function parsePushStats(header: string | null): PushStats | null {
+  const raw = pushMetaObject(header);
+  if (!raw) return null;
+  // A day of printing is the ceiling on our own slicer estimates too; grams
+  // stops well short of a spool wall's worth of filament.
+  const printTimeSeconds = num(raw.printTimeSeconds, 1, 30 * 86400) ?? null;
+  const filamentGrams = num(raw.filamentGrams, 0.01, 100_000) ?? null;
+  return printTimeSeconds === null && filamentGrams === null
+    ? null
+    : { printTimeSeconds, filamentGrams };
+}
+
+function pushMetaObject(header: string | null): Record<string, unknown> | null {
   if (!header || header.length > MAX_PUSH_META_BYTES) return null;
-  let raw: Record<string, unknown>;
   try {
     const parsed: unknown = JSON.parse(header);
     if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return null;
-    raw = parsed as Record<string, unknown>;
+    return parsed as Record<string, unknown>;
   } catch {
     return null;
   }
+}
+
+export function parsePushMeta(header: string | null): PrinterInfo | null {
+  const raw = pushMetaObject(header);
+  if (!raw) return null;
 
   const presetsRaw =
     raw.presets && typeof raw.presets === "object" && !Array.isArray(raw.presets)

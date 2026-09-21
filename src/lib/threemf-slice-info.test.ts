@@ -24,6 +24,33 @@ const SLICE_INFO = `<config>
   </plate>
 </config>`;
 
+test("a project reports its own plates, not the ones that were sliced", async () => {
+  // Slicing one plate of an 18-plate project writes one <plate> into
+  // slice_info.config, and reading the plate count from there made a synced
+  // file say "1 plate" while holding all of them. The estimate really does
+  // cover only that plate, so both numbers are reported.
+  const zip = zipSync({
+    "3D/3dmodel.model": strToU8("<model/>"),
+    "Metadata/slice_info.config": strToU8(
+      `<config><plate><metadata key="prediction" value="3600"/>` +
+        `<metadata key="weight" value="12.5"/></plate></config>`,
+    ),
+    "Metadata/model_settings.config": strToU8(
+      `<config><plate><metadata key="plater_id" value="1"/></plate>` +
+        `<plate><metadata key="plater_id" value="2"/></plate>` +
+        `<plate><metadata key="plater_id" value="3"/></plate></config>`,
+    ),
+  });
+  const { readRange, size } = readerFor(zip);
+  const data = await readSliceData(readRange, size);
+  assert.deepEqual(data?.sliceInfo, {
+    plateCount: 3,
+    slicedPlateCount: 1,
+    printTimeSeconds: 3600,
+    filamentGrams: 12.5,
+  });
+});
+
 test("readSliceData sums predictions and weights across plates (sliced Bambu file)", async () => {
   const zip = zipSync({
     "3D/3dmodel.model": strToU8("<model/>"),
@@ -50,6 +77,7 @@ test("readSliceData sums predictions and weights across plates (sliced Bambu fil
   const data = await readSliceData(readRange, size);
   assert.deepEqual(data?.sliceInfo, {
     plateCount: 2,
+    slicedPlateCount: null,
     printTimeSeconds: 5400,
     filamentGrams: 20,
   });
@@ -226,6 +254,7 @@ test("readSliceData counts plates from model_settings for unsliced projects", as
   const data = await readSliceData(readRange, size);
   assert.deepEqual(data?.sliceInfo, {
     plateCount: 1,
+    slicedPlateCount: null,
     printTimeSeconds: null,
     filamentGrams: null,
   });

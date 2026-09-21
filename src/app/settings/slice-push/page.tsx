@@ -21,9 +21,10 @@ export default async function SlicePushSettingsPage() {
     <div className="max-w-2xl">
       <h1 className="text-lg font-semibold mb-1">Push from slicer</h1>
       <p className="text-sm text-muted-foreground mb-6">
-        The Print Vault plugin for OrcaSlicer sends a file you just sliced back
-        to the model it came from, as a new revision — so a tuned profile lands
-        in the catalogue instead of drifting out of date on your disk. It
+        The Print Vault plugin for OrcaSlicer sends the project you just
+        worked on back to the model it came from — settings, filaments and
+        colours, where things sit on the plate — as a new revision of that
+        model&rsquo;s own .3mf, so the catalogue keeps up with your disk. It
         recognises the model on its own, so you set this up once per machine,
         not once per model. A token grants the same editing access you already
         have, without a login: revoke one here the moment the machine holding it

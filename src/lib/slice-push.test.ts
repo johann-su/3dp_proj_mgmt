@@ -7,6 +7,7 @@ import {
   isContentHash,
   normalizePushFilename,
   parsePushMeta,
+  parsePushStats,
   pushArtifact,
   rankPushCandidates,
   type PushCandidate,
@@ -155,6 +156,31 @@ test("junk metadata never costs us the bytes", () => {
   // Out-of-range numbers are dropped, not clamped: a 90 mm "nozzle" is a bug
   // somewhere, and a wrong number is worse than a missing one.
   assert.equal(parsePushMeta(JSON.stringify({ nozzleDiameterMm: 90 })), null);
+});
+
+test("a synced project may carry the estimate its own slice_info lacks", () => {
+  // OrcaSlicer rewrites its project checkpoint when the *model* changes, not
+  // when a slice finishes, so a pushed project can hold the previous slice's
+  // predictions or none at all. The plugin parses the G-code footer it was
+  // handed and sends the pair; the route applies it only if the file itself
+  // yields nothing.
+  const stats = parsePushStats(
+    JSON.stringify({ model: "Bambu Lab P1S", printTimeSeconds: 18004, filamentGrams: 21.65 }),
+  );
+  assert.equal(stats?.printTimeSeconds, 18004);
+  assert.equal(stats?.filamentGrams, 21.65);
+
+  // Metadata with no numbers in it is not an estimate of zero.
+  assert.equal(parsePushStats(JSON.stringify({ model: "Bambu Lab P1S" })), null);
+  assert.equal(parsePushStats("not json"), null);
+  // A weight with no time cannot resolve a file to "ok", but it is still the
+  // filament figure the slicer reported.
+  const weightOnly = parsePushStats(JSON.stringify({ filamentGrams: 12.5 }));
+  assert.equal(weightOnly?.printTimeSeconds, null);
+  assert.equal(weightOnly?.filamentGrams, 12.5);
+  // Out of range is dropped rather than clamped, as everywhere else in this
+  // header: a print of negative length is a bug, not a fast print.
+  assert.equal(parsePushStats(JSON.stringify({ printTimeSeconds: -5 })), null);
 });
 
 test("a push names the file it revises, so the revision keeps that name", () => {

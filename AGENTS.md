@@ -10,6 +10,12 @@ Unit tests run on Node's built-in test runner (`node:test` + `node:assert/strict
 via `tsx` — there is no Vitest/Jest. Run the whole suite with `npm test`, which
 covers `src/**/*.test.ts` plus the slicer service's `slicer/*.test.mjs`.
 
+One test is not Node's: the OrcaSlicer plugin is Python, and the project merge
+at the heart of slice-push is pure logic over 3MF archives, so it is checked by
+`python3 orca-plugin/assemble.test.py` (stdlib only, no slicer and no instance).
+CI runs it next to `npm test`; run it yourself after touching
+`orca-plugin/orca_print_vault_plugin_any.py`.
+
 ## What the suite is for
 
 This is a young, fast-moving project where most changes land through AI agents.

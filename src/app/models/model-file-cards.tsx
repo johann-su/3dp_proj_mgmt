@@ -61,6 +61,10 @@ export type PrintFileData = {
   grams: number | null;
   approx: boolean;
   plateCount: number | null;
+  // Set when the estimate covers fewer plates than the project holds — slicing
+  // one plate of an 18-plate project predicts that plate only, and "5 h" next
+  // to "18 plates" would read as the whole project.
+  slicedPlateCount?: number | null;
   printer: PrinterInfo | null;
   sliceStatus: string | null;
   sliceError: string | null;
@@ -201,6 +205,13 @@ function PrintFileRow({
               {formatGrams(file.grams)}
             </span>
           )}
+          {file.printTime != null &&
+            file.slicedPlateCount != null &&
+            file.plateCount != null && (
+              <span className="text-xs text-muted-foreground">
+                for {file.slicedPlateCount} of {file.plateCount} plates
+              </span>
+            )}
         </div>
         <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
           {file.plateCount != null && (

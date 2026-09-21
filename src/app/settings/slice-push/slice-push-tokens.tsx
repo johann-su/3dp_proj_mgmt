@@ -103,7 +103,8 @@ export function SlicePushTokens({
           {fresh ? (
             <div className="space-y-3 rounded-md border border-primary/40 bg-primary/5 p-3">
               <p className="text-sm font-medium">
-                Paste this into OrcaSlicer → Plugins → Print Vault → Config:
+                Paste this into OrcaSlicer → Plugins → Sync with Print Vault →
+                ▷ Run → <em>Connect</em>:
               </p>
               <div className="flex items-start gap-2">
                 <pre className="min-w-0 flex-1 overflow-x-auto rounded-md bg-muted px-2 py-1.5 font-mono text-xs">
@@ -114,7 +115,11 @@ export function SlicePushTokens({
               <p className="text-xs text-muted-foreground">
                 <strong>Copy it now</strong> — the token is stored hashed and
                 cannot be shown again. Revoke and create a new one if you lose
-                it.
+                it. The plugin&rsquo;s own window keeps it in the plugin
+                folder; the Config tab works too, but OrcaSlicer saves a
+                plugin&rsquo;s config with your <em>print profile</em>, so a
+                token entered there is moved out to the folder the first time
+                the plugin runs.
               </p>
             </div>
           ) : (

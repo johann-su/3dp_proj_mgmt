@@ -334,8 +334,10 @@ and applies it, keeping the pre-sync state as a version.
 
 ### `POST /api/models/<id>/slice-push`
 
-Attaches a freshly sliced file to the model as a new revision — the endpoint the
-[OrcaSlicer plugin](/features/slicing#push-from-slicer) calls after a slice.
+Attaches a project or sliced file to the model as a new revision — the endpoint
+the [OrcaSlicer plugin](/features/slicing#push-from-slicer) calls when it syncs
+the open project (normally a `.3mf` that replaces the model's own file, keeping
+its name).
 
 **One of the few endpoints that does not take a session cookie for a write.** It
 authenticates with a push token (`Authorization: Bearer pvpush_…`) created in
@@ -343,17 +345,25 @@ Settings → Push from slicer and revocable there. A token stands for a slicer
 install, not a model, so the caller is expected to have resolved the target with
 `/api/slice-push/resolve` first.
 
-- **Query params** — `filename` (required; must end in `.3mf` or `.gcode`).
-  Directories are stripped and unsafe characters replaced.
+- **Query params** — `filename` (required; must end in `.3mf` or `.gcode`;
+  directories are stripped and unsafe characters replaced), `replaces` (the id
+  of the file this revises, so the revision keeps that file's name — honoured
+  only within the same artifact family), and `batch`/`batchFinal` (several
+  pushes recorded as one version, for a slice that arrives one plate at a
+  time).
 - **Headers** — `X-Slice-Push-Meta` (optional): a small JSON object describing
   the machine and presets that produced the file (`model`, `nozzleDiameterMm`,
-  `bedType`, `filamentTypes`, `filamentColors`, `usesSupport`, `presets`).
-  Applied to `.gcode` pushes, where the file itself carries none of it.
+  `bedType`, `filamentTypes`, `filamentColors`, `usesSupport`, `presets`), plus
+  `printTimeSeconds` and `filamentGrams`. The machine and preset fields are
+  what a `.gcode` cannot carry at all; the two estimates are a fallback for a
+  `.3mf` whose own embedded predictions are missing or out of date.
 - **Body** — the raw file bytes, streamed. Capped at 256 MB.
-- A `.gcode` has its print time and filament weight read from the footer as it
-  streams; a `.3mf` is queued for the normal estimate pipeline instead. A push
-  whose filename matches a file already on the model **replaces** that file
-  (as a new version); otherwise it is appended.
+- A `.gcode` has its print time and filament weight read out of it as it
+  streams; a `.3mf` is queued for the normal estimate pipeline instead, which
+  reads the per-plate predictions embedded in it. A push that names the file it
+  revises (`replaces=<fileId>`), or whose filename matches one already on the
+  model, **replaces** that file as a new version and keeps its name; otherwise
+  it is appended.
 
 | Status | Body / meaning |
 |---|---|

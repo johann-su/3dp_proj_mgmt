@@ -82,9 +82,10 @@ export function SlicePushDialog() {
         <DialogHeader>
           <DialogTitle>Push from slicer</DialogTitle>
           <DialogDescription>
-            Slice this model in OrcaSlicer and send the result straight back
-            here as a new revision, so the catalogue keeps the settings you
-            tuned instead of waiting for a manual re-upload.
+            Change this model in OrcaSlicer — process settings, filaments and
+            colours, the layout on the plate — and send the project straight
+            back here as a new revision of its .3mf, instead of downloading,
+            editing, saving and re-uploading by hand.
           </DialogDescription>
         </DialogHeader>
 
@@ -132,14 +133,21 @@ export function SlicePushDialog() {
               machine, not once per model.
             </p>
           </Step>
-          <Step n={3} title="Slice a file from this model, then export it">
-            OrcaSlicer only hands the result to a plugin on <em>export</em> —
-            use <em>Print plate&nbsp;▾ → Export plate sliced file</em>, or send
-            it to the printer. Then run <em>Plugins → Print Vault: review &amp;
-            push</em> to choose what happens; that window can also push an
-            already-exported file straight from your Downloads folder. Repeat
-            pushes of the same plate become revisions of one file, and every one
-            of them stays in this model&rsquo;s history.
+          <Step n={3} title="Open this model's .3mf, change it, and sync">
+            Run <em>Plugins → Sync with Print Vault</em> (pin it to the Actions
+            Speed Dial and it is one click from the plate) and press{" "}
+            <em>Update the model&rsquo;s file</em>. Nothing needs exporting: the
+            window reads the project OrcaSlicer is already checkpointing, so the
+            file here ends up carrying your settings, filaments and layout under
+            its own name. Each sync is one revision, and every one of them stays
+            in this model&rsquo;s history.
+          </Step>
+          <Step n={4} title="Optional: sync after every slice">
+            Print Settings → <em>Others</em> → <em>Slicing Pipeline Plugin</em>{" "}
+            → <em>Push sliced file to Print Vault</em>, then save the profile
+            (Advanced mode, and per profile). That queues a sync every time you
+            slice, so the window has an answer waiting instead of you
+            remembering to open it.
           </Step>
         </ol>
 

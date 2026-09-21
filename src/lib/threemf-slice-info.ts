@@ -21,8 +21,16 @@ import type { PrinterInfo } from "@/db/schema";
 import { bedSizeForModel } from "@/lib/printer-beds";
 
 export type SliceInfo = {
+  // How many plates the project *holds*, which is not the same as how many
+  // were sliced: `slice_info.config` gets one `<plate>` per plate the slicer
+  // has predictions for, so slicing plate 1 of an 18-plate project writes one.
+  // Counting that as the project's plates made a synced file read as "1 plate".
   plateCount: number;
-  // Sums over all plates; null for unsliced files (no predictions).
+  // The plates the predictions below cover, when that is fewer than the
+  // project has. An estimate for 1 of 18 plates must not read as the whole
+  // project's, so the UI says which it is.
+  slicedPlateCount: number | null;
+  // Sums over the plates that were sliced; null for unsliced files.
   printTimeSeconds: number | null;
   filamentGrams: number | null;
 };
@@ -362,10 +370,10 @@ export async function readSliceData(
 
   let printTimeSeconds: number | null = null;
   let filamentGrams: number | null = null;
-  let plateCount = 0;
+  let predictedPlates = 0;
   const sliceXml = await entryText(SLICE_INFO_PATH);
   if (sliceXml) {
-    plateCount = countPlates(sliceXml);
+    predictedPlates = countPlates(sliceXml);
     for (const match of sliceXml.matchAll(/key="prediction"\s+value="(\d+)"/g)) {
       printTimeSeconds = (printTimeSeconds ?? 0) + Number(match[1]);
     }
@@ -373,12 +381,22 @@ export async function readSliceData(
       filamentGrams = (filamentGrams ?? 0) + Number(match[1]);
     }
   }
-  // Unsliced project files have an empty slice_info.config but still define
-  // their plates in model_settings.config.
-  if (plateCount === 0 && modelXml) plateCount = countPlates(modelXml);
-  if (plateCount === 0) plateCount = platePngCount;
+  // The project's own plates: model_settings.config defines them whether or
+  // not anything has been sliced, with the plate thumbnails as a fallback for
+  // archives that carry no model settings. Falls back to the sliced count so a
+  // bundle holding nothing else still reports what it has.
+  const projectPlates = (modelXml ? countPlates(modelXml) : 0) || platePngCount;
+  const plateCount = Math.max(projectPlates, predictedPlates);
   const sliceInfo =
-    plateCount > 0 ? { plateCount, printTimeSeconds, filamentGrams } : null;
+    plateCount > 0
+      ? {
+          plateCount,
+          slicedPlateCount:
+            predictedPlates > 0 && predictedPlates < plateCount ? predictedPlates : null,
+          printTimeSeconds,
+          filamentGrams,
+        }
+      : null;
 
   let printerInfo: PrinterInfo | null = null;
   const projectJson = await entryText(PROJECT_SETTINGS_PATH);
