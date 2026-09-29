@@ -42,6 +42,23 @@ Legacy `.step` files (from before Onshape imports switched to 3MF) and files
 uploaded before this feature are skipped. The service is optional: without
 `SLICER_URL`, unsliced files simply show no estimates and stay `pending`.
 
+### "Larger than this plate"
+
+The preview's overflow warning measures a plate's footprint from the geometry's
+**vertices** — `measureBounds` in `src/lib/plate-fit.ts`, which passes three's
+`precise` flag. The default `Box3.setFromObject` instead unions each mesh's
+bounding box *after* transforming it, i.e. the box around a rotated box, which
+overstates any part that doesn't fill its own box. That is the normal case, not
+a corner case: a slicer fits a long part onto a square bed by turning it
+diagonally. The Stallion fuselage's 296 × 128 mm section at 46° really covers
+219 × 223 mm, but its rotated box spans 299 × 302, so four of that file's
+sixteen plates warned against the 256 mm bed Bambu Studio prints them on.
+
+Because the measurement only happens at load, each plate carries its size (in
+the .3mf's Z-up space) and `showPlate` re-expresses it in world axes rather than
+re-measuring — which relies on the load step's recentering, so the two move
+together.
+
 ### Queueing a file for (re-)slicing
 
 Every `.3mf` row in the create/edit wizard carries a toggle for handing that
