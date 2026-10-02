@@ -1,11 +1,44 @@
 # Uploads, downloads & file tokens
 
-*Read before touching upload/download routes, image rendering, or file tokens.
-Update in the same PR that changes this behaviour.*
+*Read before touching upload/download routes, image rendering, file tokens or
+the storage backends. Update in the same PR that changes this behaviour.*
+
+## Storage backends
+
+File bytes live behind the `BlobStore` interface (`src/lib/blob-store.ts`):
+`put` / `get` (optionally a byte range) / `delete`, by key. Two
+implementations — `S3BlobStore` (`blob-store-s3.ts`) and `FsBlobStore`
+(`blob-store-fs.ts`, a directory such as a Docker volume) — picked by
+`STORAGE_BACKEND` through `resolveStorageConfig`. **Nothing outside those
+files may touch a backend directly**: go through `blobStore()` in
+`src/lib/storage.ts` (or the helpers there and `deleteS3Keys`). The store is
+built on first use, not at import, so importing storage code has no side
+effects and a misconfiguration fails where files are touched.
+
+The contract every backend must keep (and `blob-store-fs.test.ts` pins for
+the filesystem one):
+
+- **`get` returns `null` for a missing key** (the routes 404 on it) and
+  throws for anything else. A range is inclusive and clamped to the object;
+  `contentLength` is the length actually returned, used as the
+  `Content-Length` of `206` responses.
+- **A failed `put` leaves nothing readable under the key** — the filesystem
+  store writes a `.partial` temp file and renames it into place.
+- **`delete` is idempotent** — versioning can delete a key that's already
+  gone.
+- **Keys are opaque relative paths** (`uploads/<uuid>/<name>`), generated
+  server-side and never renamed (snapshots reference them, see
+  [versioning.md](./versioning.md)). The filesystem store still rejects any
+  key that could resolve outside its root, since keys round-trip through the
+  DB. The `s3_key` column / `s3Key` field predate the abstraction and hold a
+  key for whichever backend is configured.
+
+One backend per instance: there is no per-file backend column, so switching
+means copying all objects under the same keys.
 
 ## Uploads
 
-Uploads stream through `POST /api/upload` to S3 (no browser↔S3 CORS setup
+Uploads stream through `POST /api/upload` to storage (no browser↔S3 CORS setup
 needed); only signed-in users can upload, and file extensions are validated
 server-side. Kinds are `model`, `image`, `pdf` and `video`; **`image` and
 `video` are one gallery group** (`GALLERY_KINDS`, `src/lib/file-kind.ts`) —
@@ -20,7 +53,7 @@ extension (`contentTypeForFilename`), never from a client header/value —
 
 `stageStream`/`stageBuffer` (`src/lib/storage.ts`) return a **SHA-256
 `contentHash`** alongside the size, both derived from the bytes as they stream
-to S3 so the object never has to be read back. `createModel`/`updateModel`
+to storage so the object never has to be read back. `createModel`/`updateModel`
 store it on `kind: "model"` rows only (`model_files.content_hash`) — images and
 PDFs are legitimately shared between models — and use it to flag re-uploaded
 files as duplicates (see
@@ -30,10 +63,10 @@ on the way in; it is a dedup hint, not a trust boundary.
 
 ## Downloads & images
 
-Downloads and images stream from S3 through `GET /api/files/[id]`, so the S3
-endpoint never needs to be reachable from the browser. Both file routes
+Downloads and images stream from storage through `GET /api/files/[id]`, so the
+storage backend never needs to be reachable from the browser. Both file routes
 **answer byte-range requests** (`src/lib/http-range.ts` parses the header, the
-route passes it to S3 and replies `206` + `Content-Range`, or `416` for a start
+route passes it to the blob store and replies `206` + `Content-Range`, or `416` for a start
 past the end): a `<video>` seeks by range, and Safari refuses to play a source
 whose server doesn't do this at all. Ranged responses are deliberately *not*
 counted as downloads — one scrub would otherwise register dozens. The route accepts a

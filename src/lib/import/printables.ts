@@ -2,7 +2,7 @@
 // SPA talks to. Metadata and download links are available anonymously.
 
 import { htmlishToMarkdown } from "@/lib/html";
-import { MODEL_EXTENSIONS, fileExtension } from "@/lib/s3";
+import { MODEL_EXTENSIONS, fileExtension } from "@/lib/file-kind";
 import {
   ImportError,
   IMPORT_CONFIRM_FILE_THRESHOLD,

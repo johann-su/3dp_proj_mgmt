@@ -15,7 +15,7 @@ these only stay useful if they move in lockstep with the code.
 |---|---|
 | Auth, sessions, roles, access control | [`auth-and-access.md`](./auth-and-access.md) |
 | Model mutations, versioning, trash | [`versioning.md`](./versioning.md) |
-| Uploads, downloads, file tokens/images | [`files.md`](./files.md) |
+| Storage backends, uploads, downloads, file tokens/images | [`files.md`](./files.md) |
 | Platform import (.3mf, MakerWorld/Printables URL, source sync, collections) | [`import.md`](./import.md) |
 | Onshape import/sync + API client | [`onshape.md`](./onshape.md) |
 | Slicer estimates & "open in slicer" deep links | [`slicing.md`](./slicing.md) |

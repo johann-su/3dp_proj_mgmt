@@ -355,7 +355,7 @@ export function formIsDirty(
 
 // Only .3mf files carry the geometry and embedded settings the slicer reads —
 // mirrors sliceEligible in @/lib/slicer, which a client component can't import
-// (it builds an S3 client at load time).
+// (it pulls in the DB and storage backends).
 function isSliceable(entry: ModelFileEntry): boolean {
   return entry.filename.toLowerCase().endsWith(".3mf");
 }

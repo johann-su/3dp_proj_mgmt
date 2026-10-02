@@ -1,13 +1,14 @@
 // Shared validation for the customize endpoints (generate + preview): checks
-// the viewer is signed in, locates the .scad file, fetches its source from S3
+// the viewer is signed in, locates the .scad file, fetches its source from storage
 // and coerces the submitted customizer values against the parsed schema.
 
 import { eq } from "drizzle-orm";
-import { GetObjectCommand } from "@aws-sdk/client-s3";
 import { db } from "@/db";
 import { modelFiles, models } from "@/db/schema";
 import { getSession } from "@/lib/auth";
-import { s3, S3_BUCKET, fileExtension } from "@/lib/s3";
+import { fileExtension } from "@/lib/file-kind";
+import { readBlobBytes } from "@/lib/blob-store";
+import { blobStore } from "@/lib/storage";
 import { MAX_SCAD_SOURCE_BYTES } from "@/lib/openscad";
 import {
   coerceScadValues,
@@ -62,15 +63,11 @@ export async function prepareScadRender(
     return { error: "Source file too large", status: 422 };
   }
 
-  const object = await s3.send(
-    new GetObjectCommand({ Bucket: S3_BUCKET, Key: source.s3Key }),
-  );
-  if (!object.Body) {
+  const bytes = await readBlobBytes(blobStore(), source.s3Key);
+  if (!bytes) {
     return { error: "Source file unavailable", status: 502 };
   }
-  const scadSource = Buffer.from(await object.Body.transformToByteArray()).toString(
-    "utf8",
-  );
+  const scadSource = Buffer.from(bytes).toString("utf8");
 
   const violations = findForbiddenFileRefs(scadSource);
   if (violations.length > 0) {

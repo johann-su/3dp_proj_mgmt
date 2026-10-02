@@ -9,7 +9,7 @@ import {
   IMAGE_EXTENSIONS,
   PDF_EXTENSIONS,
   VIDEO_EXTENSIONS,
-} from "@/lib/s3";
+} from "@/lib/file-kind";
 import { extractScadFiles } from "./scad-archive";
 import { IMPORT_USER_AGENT, type ImportedProject, type RemoteAsset } from "./types";
 
