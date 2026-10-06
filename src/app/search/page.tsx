@@ -100,6 +100,7 @@ export default async function SearchPage({
           ) : (
             <SearchResults
               key={resultsKey.toString()}
+              restoreKey={resultsKey.toString()}
               initialItems={items}
               initialCursor={nextCursor}
               params={params}

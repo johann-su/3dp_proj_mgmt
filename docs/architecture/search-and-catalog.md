@@ -55,3 +55,31 @@ oldest, recently updated, most viewed, most downloaded) — and shares its
 id-hydration step with search via `src/lib/catalog-hydrate.ts`; its own pure
 sort/cursor parsing lives in `src/lib/feed-params.ts`. Its search box just
 submits the query to `/search`.
+
+## Back/Forward restores the scroll position
+
+Both lists append pages client-side (`useInfiniteScroll`), so on Back the
+server-rendered page holds only page one and the browser can't scroll back
+to where the user was. `useListRestore` (`src/hooks/use-list-restore.ts`,
+pure core + tests in `src/lib/list-restore.ts`) snapshots the loaded items,
+cursor and scroll offset to `sessionStorage` and puts them back when a
+history entry is *revisited*. Contracts worth knowing before touching it:
+
+- **Revisit vs fresh visit is per history entry.** The first mount stamps an
+  id into `history.state` via `replaceState`; Next's patched `replaceState`
+  keeps it on that entry and new pushes start without one. So Back/Forward
+  and reload restore, while a link (sidebar Home, a new sort or query) starts
+  at the top. Pass a `restoreKey` that is unique per query — the feed uses
+  `feed:<category>:<sort>`, search its results key.
+- **`history.scrollRestoration` is `manual` on a list's entry only.** On
+  `auto` the browser re-applies its own stale, clamped position after the
+  page settles and undoes the restore. Pushed entries inherit the mode, so
+  the cleanup sets it back to `auto` for the next page.
+- **Scroll is recorded from scroll events while the URL is still the
+  list's**, because Next scrolls the next page to the top before the list
+  unmounts. The restore retries while the page grows (ResizeObserver) and
+  stops on user input or after 2 s.
+- **Snapshots expire after an hour** (stale lists, expiring file tokens in
+  card image URLs) and only the 10 most recent are kept.
+- Dev Strict Mode replays the effects; the restore path seeds what the
+  cleanup saves so a replay can't overwrite the snapshot with page one.
