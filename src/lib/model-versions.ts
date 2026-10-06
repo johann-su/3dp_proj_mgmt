@@ -10,7 +10,6 @@
 // src/lib/version-snapshot.ts.
 
 import { and, asc, eq, inArray, isNotNull, lt } from "drizzle-orm";
-import { DeleteObjectsCommand } from "@aws-sdk/client-s3";
 import { db } from "@/db";
 import {
   bomItems,
@@ -21,7 +20,7 @@ import {
   type ModelVersionReason,
   type ModelVersionSnapshot,
 } from "@/db/schema";
-import { s3, S3_BUCKET } from "@/lib/s3";
+import { blobStore } from "@/lib/storage";
 import { linkTags, normalizeTagNames } from "@/lib/tags";
 import { reportError } from "@/lib/telemetry";
 import { buildSnapshot, snapshotsEqual } from "@/lib/version-snapshot";
@@ -281,15 +280,8 @@ export async function sweepExpiredTrash(userId?: string): Promise<void> {
   }
 }
 
+// Deletes stored objects by key (model_files.s3_key), whichever storage
+// backend is configured.
 export async function deleteS3Keys(keys: string[]): Promise<void> {
-  // DeleteObjects takes at most 1000 keys per call.
-  for (let i = 0; i < keys.length; i += 1000) {
-    const chunk = keys.slice(i, i + 1000);
-    await s3.send(
-      new DeleteObjectsCommand({
-        Bucket: S3_BUCKET,
-        Delete: { Objects: chunk.map((Key) => ({ Key })) },
-      }),
-    );
-  }
+  await blobStore().delete(keys);
 }

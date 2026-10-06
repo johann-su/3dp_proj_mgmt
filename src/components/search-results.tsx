@@ -15,17 +15,21 @@ export function SearchResults({
   initialItems,
   initialCursor,
   params,
+  restoreKey,
 }: {
   initialItems: SearchItem[];
   initialCursor: string | null;
   // The flat query params for the current search, echoed to the load-more
   // action so paged results match the visible filters.
   params: Record<string, string | string[] | undefined>;
+  // Identifies the query for Back/Forward restore (the page's results key).
+  restoreKey: string;
 }) {
   const { items, hasMore, error, sentinelRef, loadMore } = useInfiniteScroll(
     initialItems,
     initialCursor,
     (cursor) => loadMoreSearch({ params, cursor }),
+    { restoreKey: `search:${restoreKey}` },
   );
 
   return (

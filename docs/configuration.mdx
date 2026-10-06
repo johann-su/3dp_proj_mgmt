@@ -26,11 +26,29 @@ All configuration is via environment variables. The `app` service in
 | `INITIAL_ADMIN_EMAIL` | unset | Bootstrap the first admin: while the database has no admin at all, the account with this email is promoted. Inert once an admin exists. See [User roles](/roles). |
 | `TRUSTED_PROXY_CIDRS` | unset | Comma-separated IP(s)/CIDR(s) of your reverse proxy. Sign-in, sign-up and password/email changes are rate-limited by client IP in production; without this, a proxy that appends to `X-Forwarded-For` (nginx, Traefik, Caddy defaults) makes every visitor share one rate-limit bucket instead of getting their own. Only needed when running behind a reverse proxy. |
 
-## S3 storage
+## File storage
+
+Uploaded model files, images, PDFs and videos are stored either in
+S3-compatible object storage (the default) or in a directory on the host —
+typically a Docker volume. Every file is served through the app, so neither
+needs to be reachable from browsers.
 
 | Variable | Default | Description |
 |---|---|---|
-| `S3_ENDPOINT` | — (required) | Endpoint of your S3-compatible storage (AWS S3, MinIO, Garage, …). |
+| `STORAGE_BACKEND` | `s3` | `s3` or `filesystem`. An instance uses one backend; to switch an existing instance, copy every object across under the same key/path first (e.g. with `rclone`). |
+| `STORAGE_PATH` | — (required for `filesystem`) | Directory files are stored in. Must be persistent and writable by the app. `compose.yml` sets it to `/app/data/files` on the `file-data` volume. |
+
+With `STORAGE_BACKEND=filesystem`, back the directory up together with the
+database (rows reference files in it), and run a single app replica unless
+every replica mounts the same directory.
+
+### S3 storage
+
+Used when `STORAGE_BACKEND` is `s3` (or unset).
+
+| Variable | Default | Description |
+|---|---|---|
+| `S3_ENDPOINT` | unset (AWS S3) | Endpoint of your S3-compatible storage (MinIO, Garage, …). |
 | `S3_REGION` | `us-east-1` | Region. Garage users: must match `s3_api.s3_region` from the Garage config (default `garage`). |
 | `S3_ACCESS_KEY_ID` | — (required) | Access key with read/write on the bucket. |
 | `S3_SECRET_ACCESS_KEY` | — (required) | Secret key. |

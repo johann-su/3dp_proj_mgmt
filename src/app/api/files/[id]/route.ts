@@ -1,13 +1,13 @@
 import { NextRequest, NextResponse, after } from "next/server";
-import { GetObjectCommand } from "@aws-sdk/client-s3";
 import { eq } from "drizzle-orm";
 import { db } from "@/db";
 import { modelFiles } from "@/db/schema";
-import { s3, S3_BUCKET, contentTypeForFilename, isGalleryKind } from "@/lib/s3";
+import { contentTypeForFilename, isGalleryKind } from "@/lib/file-kind";
 import { getSession } from "@/lib/auth";
 import { verifyFileToken } from "@/lib/file-token";
 import { incrementFileDownloadCount } from "@/lib/metrics";
-import { parseByteRange, toS3Range } from "@/lib/http-range";
+import { parseByteRange } from "@/lib/http-range";
+import { blobStore } from "@/lib/storage";
 
 export const runtime = "nodejs";
 
@@ -50,14 +50,8 @@ export async function GET(
     });
   }
 
-  const object = await s3.send(
-    new GetObjectCommand({
-      Bucket: S3_BUCKET,
-      Key: file.s3Key,
-      ...(range ? { Range: toS3Range(range) } : {}),
-    }),
-  );
-  if (!object.Body) {
+  const object = await blobStore().get(file.s3Key, range ?? undefined);
+  if (!object) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
 
@@ -74,8 +68,8 @@ export async function GET(
   // attacker-chosen type inline (text/html) on our origin would be stored XSS.
   headers.set("Content-Type", contentTypeForFilename(file.filename));
   headers.set("X-Content-Type-Options", "nosniff");
-  if (object.ContentLength !== undefined) {
-    headers.set("Content-Length", String(object.ContentLength));
+  if (object.contentLength !== undefined) {
+    headers.set("Content-Length", String(object.contentLength));
   }
   // Advertised unconditionally so a player knows it may seek before it has
   // issued its first range request.
@@ -101,7 +95,7 @@ export async function GET(
       : "private, max-age=3600",
   );
 
-  return new Response(object.Body.transformToWebStream(), {
+  return new Response(object.stream, {
     status: range ? 206 : 200,
     headers,
   });

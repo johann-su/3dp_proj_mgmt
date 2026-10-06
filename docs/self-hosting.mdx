@@ -8,9 +8,11 @@ description: Run your own Print Vault instance with Docker Compose
 ## What you need
 
 - **Docker** (with Compose)
-- An **S3-compatible storage** (AWS S3, MinIO, [Garage](https://garagehq.deuxfleurs.fr/), …)
-  with a bucket whose credentials have read/write access — model files, images
-  and documents are stored there, not on the local disk
+- Somewhere to store files — model files, images and documents go either to
+  an **S3-compatible storage** (AWS S3, MinIO,
+  [Garage](https://garagehq.deuxfleurs.fr/), …) with a bucket whose
+  credentials have read/write access, or to a **Docker volume** on the host
+  (see [File storage](/configuration#file-storage))
 
 Postgres, the [slicer service](/configuration#optional-services) (print
 estimates) and the [OpenSCAD service](/configuration#optional-services)
@@ -30,6 +32,10 @@ export S3_ENDPOINT=https://your-s3-endpoint
 export S3_ACCESS_KEY_ID=… S3_SECRET_ACCESS_KEY=… S3_BUCKET=models
 docker compose --profile app up -d --build
 ```
+
+To keep files on the host instead of S3, replace the two `S3_*` lines with
+`export STORAGE_BACKEND=filesystem`: files then go to the `file-data` volume
+(mounted at `/app/data`). Back that volume up together with the database.
 
 The app listens on `127.0.0.1:3000`; put your reverse proxy in front of it and
 set `BETTER_AUTH_URL` to the public URL it serves (no trailing slash) —

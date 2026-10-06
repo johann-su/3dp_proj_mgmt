@@ -13,11 +13,11 @@
 // Files stay "pending" when the service is unreachable or SLICER_URL is
 // unset, so nothing is permanently marked failed because of an outage.
 
-import { GetObjectCommand } from "@aws-sdk/client-s3";
 import { and, eq } from "drizzle-orm";
 import { db } from "@/db";
 import { modelFiles } from "@/db/schema";
-import { s3, S3_BUCKET, fileExtension } from "@/lib/s3";
+import { fileExtension } from "@/lib/file-kind";
+import { blobStore } from "@/lib/storage";
 import { recordSliceEstimate, reportError } from "@/lib/telemetry";
 import { get3mfPrinterInfo, get3mfSliceInfo } from "@/lib/threemf-remote";
 
@@ -92,10 +92,8 @@ async function estimateFile(file: FileRow, slicerUrl: string | undefined) {
     return;
   }
 
-  const object = await s3.send(
-    new GetObjectCommand({ Bucket: S3_BUCKET, Key: file.s3Key }),
-  );
-  if (!object.Body) return;
+  const object = await blobStore().get(file.s3Key);
+  if (!object) return;
 
   const startedAt = performance.now();
   const elapsedSeconds = () => (performance.now() - startedAt) / 1000;
@@ -104,7 +102,7 @@ async function estimateFile(file: FileRow, slicerUrl: string | undefined) {
     res = await fetch(new URL("/estimate", slicerUrl), {
       method: "POST",
       headers: { "content-type": "application/octet-stream" },
-      body: object.Body.transformToWebStream(),
+      body: object.stream,
       signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
       // Node requires half-duplex for streamed request bodies.
       duplex: "half",

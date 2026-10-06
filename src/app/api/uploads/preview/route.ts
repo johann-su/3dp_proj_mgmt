@@ -1,21 +1,19 @@
 import { NextRequest, NextResponse } from "next/server";
-import { GetObjectCommand } from "@aws-sdk/client-s3";
 import { getSession } from "@/lib/auth";
+import { blobStore } from "@/lib/storage";
 import {
-  s3,
-  S3_BUCKET,
   contentTypeForFilename,
   fileExtension,
   IMAGE_EXTENSIONS,
   VIDEO_EXTENSIONS,
-} from "@/lib/s3";
+} from "@/lib/file-kind";
 
 export const runtime = "nodejs";
 
 // Serves staged gallery media ("uploads/…") so the create form can show
 // thumbnails — and play videos — for files imported by URL before the model
 // exists. Images and videos only: staged keys are unguessable UUIDs, but this
-// must not become a general S3 proxy.
+// must not become a general storage proxy.
 export async function GET(req: NextRequest) {
   const session = await getSession();
   if (!session) {
@@ -35,11 +33,11 @@ export async function GET(req: NextRequest) {
 
   let object;
   try {
-    object = await s3.send(new GetObjectCommand({ Bucket: S3_BUCKET, Key: key }));
+    object = await blobStore().get(key);
   } catch {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
-  if (!object.Body) {
+  if (!object) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
 
@@ -48,11 +46,11 @@ export async function GET(req: NextRequest) {
   // rather than trusting whatever ContentType the object was staged with.
   headers.set("Content-Type", contentTypeForFilename(key));
   headers.set("X-Content-Type-Options", "nosniff");
-  if (object.ContentLength !== undefined) {
-    headers.set("Content-Length", String(object.ContentLength));
+  if (object.contentLength !== undefined) {
+    headers.set("Content-Length", String(object.contentLength));
   }
   headers.set("Content-Disposition", "inline");
   headers.set("Cache-Control", "private, max-age=3600");
 
-  return new Response(object.Body.transformToWebStream(), { headers });
+  return new Response(object.stream, { headers });
 }

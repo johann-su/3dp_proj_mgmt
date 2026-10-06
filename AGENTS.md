@@ -47,9 +47,8 @@ behaviour, and duplicating one function's cases across several files.
 - Import from source with the `@/` alias; `tsx` resolves it from `tsconfig.json`.
 - Prefer **pure logic** (URL parsers, formatters, BOM/CSV, crypto round-trips,
   the ZIP/config parsers). Do not import modules with load-time side effects
-  into a test — e.g. `@/lib/s3` builds an S3 client from env, `@/db` opens a
-  pool. Extract the pure core and test that: `threemf-slice-info.ts` holds the
-  parsing (unit-tested) while `threemf-remote.ts` only wires it to S3, and the
+  into a test — e.g. `@/db` opens a pool. Extract the pure core and test that: `threemf-slice-info.ts` holds the
+  parsing (unit-tested) while `threemf-remote.ts` only wires it to storage, and the
   slicer's `lib.mjs` holds the parsing/translation while `server.mjs` does I/O.
   Follow that split when a new feature mixes logic with a client.
 - No DB or network in unit tests. If a function needs bytes, build them in
@@ -158,7 +157,7 @@ every session and defeat the point).
 |---|---|
 | Auth, sessions, roles, access control | [`auth-and-access.md`](docs/architecture/auth-and-access.md) |
 | Model mutations, versioning, trash | [`versioning.md`](docs/architecture/versioning.md) |
-| Uploads, downloads, file tokens/images | [`files.md`](docs/architecture/files.md) |
+| Storage backends, uploads, downloads, file tokens/images | [`files.md`](docs/architecture/files.md) |
 | Platform import (.3mf, MakerWorld/Printables URL, source sync, collections) | [`import.md`](docs/architecture/import.md) |
 | Onshape import/sync + API client | [`onshape.md`](docs/architecture/onshape.md) |
 | Slicer estimates & "open in slicer" deep links | [`slicing.md`](docs/architecture/slicing.md) |

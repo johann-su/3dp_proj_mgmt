@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { allowedExtensions, contentTypeForFilename, fileExtension } from "@/lib/s3";
+import { allowedExtensions, contentTypeForFilename, fileExtension } from "@/lib/file-kind";
 import { stageStream } from "@/lib/storage";
 import { getSession } from "@/lib/auth";
 
