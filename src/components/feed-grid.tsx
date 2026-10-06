@@ -29,6 +29,7 @@ export function FeedGrid({
     initialItems,
     initialCursor,
     (cursor) => loadMoreFeed({ category, sort, cursor }),
+    { restoreKey: `feed:${category ?? ""}:${sort ?? ""}` },
   );
 
   return (
