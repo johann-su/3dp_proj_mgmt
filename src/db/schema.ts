@@ -584,6 +584,29 @@ export const collectionPins = pgTable("collection_pins", {
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
+// Public share links (anyone with the URL may view, no session): at most one
+// live link per model/collection, keyed by the target like the pins so it
+// cascades with it. Revoking deletes the row; re-enabling mints a fresh token,
+// so a revoked URL can never come back. See src/lib/share-links.ts and
+// docs/architecture/auth-and-access.md#public-share-links.
+export const modelShareLinks = pgTable("model_share_links", {
+  modelId: uuid("model_id")
+    .primaryKey()
+    .references(() => models.id, { onDelete: "cascade" }),
+  token: text("token").notNull().unique(),
+  createdBy: text("created_by").references(() => user.id, { onDelete: "set null" }),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export const collectionShareLinks = pgTable("collection_share_links", {
+  collectionId: uuid("collection_id")
+    .primaryKey()
+    .references(() => collections.id, { onDelete: "cascade" }),
+  token: text("token").notNull().unique(),
+  createdBy: text("created_by").references(() => user.id, { onDelete: "set null" }),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
 // Lifecycle of a bulk import (MakerWorld collection import): the job runs in
 // the background after POST /api/import/collection responds (next/server
 // `after`), models land in `collectionId` as they finish, and the header

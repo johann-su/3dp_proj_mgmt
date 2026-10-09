@@ -120,7 +120,10 @@ subsystem's non-obvious contracts and are read on demand.
   every page/route/action *also* verifies the session server-side. Pages must
   guard with `if (!session) redirect(await signInRedirect())` (from
   `@/lib/auth`), not a bare `redirect("/sign-in")`; API/actions check too
-  (list-type actions return an empty page). **Editing is collaborative** — any
+  (list-type actions return an empty page). The single exception is the
+  public share-link surface (`/share/*`, `/api/files/shared/*`), which
+  authorizes by link token via `src/lib/share-links.ts` — never widen it
+  without reading the auth doc. **Editing is collaborative** — any
   signed-in user may edit a model/collection. **Destructive/owner actions stay
   owner-gated** via `canActAsOwner(session.user, record.userId)` (which also
   passes for moderators/admins). See

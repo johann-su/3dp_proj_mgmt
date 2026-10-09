@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { ChevronDown, Download } from "lucide-react";
+import { bomToCsv } from "@/lib/bom";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
@@ -16,14 +17,28 @@ type BomItem = React.ComponentProps<typeof BomList>["items"][number];
 
 export function BomSection({
   items,
-  downloadUrl,
+  csvFilename,
   interactive = true,
 }: {
   items: BomItem[];
-  downloadUrl?: string;
+  // Enables "Download CSV": the CSV is built in the browser from `items`
+  // (bomToCsv) and saved under this name. Client-side for members and the
+  // public share view alike — the page already holds the data, so there is
+  // no route to keep access-checked. Unset in the create/version previews.
+  csvFilename?: string;
   interactive?: boolean;
 }) {
   const [open, setOpen] = useState(false);
+
+  function downloadCsv() {
+    const blob = new Blob([bomToCsv(items)], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = csvFilename!;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
 
   return (
     <Collapsible open={open} onOpenChange={setOpen} asChild>
@@ -40,12 +55,10 @@ export function BomSection({
               Bill of materials ({items.length})
             </span>
           </CollapsibleTrigger>
-          {downloadUrl ? (
-            <Button asChild size="sm" variant="outline">
-              <a href={downloadUrl}>
-                <Download className="size-4" />
-                Download CSV
-              </a>
+          {csvFilename ? (
+            <Button size="sm" variant="outline" onClick={downloadCsv}>
+              <Download className="size-4" />
+              Download CSV
             </Button>
           ) : (
             <Button size="sm" variant="outline" disabled>

@@ -111,6 +111,12 @@ The app sends its own baseline security headers (CSP, HSTS, `frame-ancestors`,
 those. Note that HSTS is served with `includeSubDomains`; drop it in
 `next.config.ts` if a sibling subdomain of your deployment is HTTP-only.
 
+**Public share links** are the one deliberate exception to "everything needs
+a sign-in": an owner can publish a single model or collection (including its
+file downloads) to anyone holding a random link, and revoke it again — see
+[Sharing & public links](/features/sharing). If nothing may ever leave the
+instance, set `DISABLE_PUBLIC_SHARING=true`.
+
 Two things stay open to signed-in users by design and are worth knowing before
 you widen access: uploads and OpenSCAD renders are not size- or quota-capped
 (a trusted-user assumption), and importing from MakerWorld/Printables makes the
