@@ -53,7 +53,14 @@ and revoking it takes effect immediately:
 - **Who** — `setPublicShare` (`src/app/share/actions.ts`) is asymmetric:
   *enabling* is owner-gated (`canActAsOwner`) because it publishes possibly paid
   content outside the instance; *revoking* is open to any session because it
-  only ever makes things more private.
+  only ever makes things more private. **Known gap, accepted for now:** the
+  gate is on the *collection's* owner, not its members' owners — a user's
+  public collection exposes every model in it, including other users' models
+  they couldn't share individually, and since collection editing is
+  collaborative anyone can add models to a public collection. A stricter
+  `shareGrantsModel` (e.g. only members whose owner could share them, or a
+  per-model opt-in) would close it; the user docs warn about it
+  (`docs/features/sharing.mdx`).
 - **Resolution** — every public page and file request goes through
   `resolveShareLink` + `shareGrantsModel` (`src/lib/share-links.ts`): token
   shape check before any query, `DISABLE_PUBLIC_SHARING` checked per request
