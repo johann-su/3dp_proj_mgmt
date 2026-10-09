@@ -44,8 +44,11 @@ export const config = {
   // internals, and static/metadata files. `.well-known` holds the OAuth
   // discovery documents for the MCP server (issue #96), which a client must be
   // able to read *before* it has any credential — the routes themselves serve
-  // nothing but public metadata.
+  // nothing but public metadata. Image files are `public/` assets (platform
+  // logos, the customizer badge) that the public share pages render for
+  // signed-out visitors; no page route ends in an image extension, and
+  // uploaded files are served from /api/files, never from here.
   matcher: [
-    "/((?!api|_next/static|_next/image|favicon.ico|sitemap.xml|robots.txt|\\.well-known).*)",
+    "/((?!api|_next/static|_next/image|favicon.ico|sitemap.xml|robots.txt|\\.well-known|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico)$).*)",
   ],
 };
