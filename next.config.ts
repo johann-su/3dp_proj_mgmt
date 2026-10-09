@@ -70,6 +70,18 @@ const nextConfig: NextConfig = {
         source: "/share/:path*",
         headers: [{ key: "X-Robots-Tag", value: "noindex, nofollow" }],
       },
+      {
+        // The BOM image proxy streams third-party bytes on our origin. Only
+        // raster types get through (allowedBomImageType), but if its URL is
+        // ever opened as a document rather than an <img>, nothing in it may
+        // run or load anything. Must come after the "/:path*" rule: for the
+        // same header key the last matching rule wins — a CSP set in the
+        // route handler itself is overridden by the global one above.
+        source: "/api/bom-image",
+        headers: [
+          { key: "Content-Security-Policy", value: "default-src 'none'; sandbox" },
+        ],
+      },
     ];
   },
   images: {

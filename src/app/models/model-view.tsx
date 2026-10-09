@@ -66,7 +66,8 @@ export type ModelViewData = {
   // Previewable .3mf files for the gallery's interactive 3D view (issue #35),
   // each carrying its real bed size for the plate reference (issue #80).
   modelFiles: ViewerFile[];
-  bom: BomItemInput[];
+  // `imageSrc` overrides the member image proxy (public share view).
+  bom: Array<BomItemInput & { imageSrc?: string | null }>;
   printFiles: PrintFileData[];
   pdfFiles: PdfFileData[];
   modelId: string | null;

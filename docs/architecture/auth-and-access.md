@@ -64,11 +64,14 @@ and revoking it takes effect immediately:
 - **Surface** — `/share/<token>` and `/share/<token>/models/<id>` (allowed
   through `proxy.ts`'s `PUBLIC_PATHS`) and `/api/files/shared/<fileId>?share=`
   (plus its path form `/api/files/shared/<fileId>/<token>/<name>` for slicer
-  deep links — `sharedSlicerFileBase`, same check).
+  deep links — `sharedSlicerFileBase`, same check), and the BOM image proxy's
+  item mode `/api/bom-image?share=<token>&item=<bomItemId>`
+  (`sharedBomImageSrc`): it fetches only the URL stored on that item after the
+  same share/model check, so visitors name an item, never a URL. The proxy's
+  member `?url=` mode (an arbitrary server-side fetch) stays session-only.
   The pages render `ModelView` from `loadSharedModelView`
   (`src/app/share/[token]/shared-model.ts`), an **allowlist** projection: no
-  history, likes, collections, customizer or BOM images (the
-  `/api/bom-image` fetch proxy stays session-only), category/tag badges
+  history, likes, collections or customizer, category/tag badges
   unlinked, `modelId: null` so no mutating UI renders. **Adding a field to the
   member model page does not expose it publicly** — add it there only if it is
   meant for anonymous visitors.

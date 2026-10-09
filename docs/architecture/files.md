@@ -93,6 +93,20 @@ routes stream through `serveModelFile` (`src/lib/serve-file.ts`) — the range,
 content-type and download-count handling lives there; each route only does
 its own authorization and picks its `Cache-Control`.
 
+BOM item images are not stored files: they are vendor URLs fetched through
+`/api/bom-image` (same-origin, so the `img-src 'self'` CSP holds). Because it
+serves third-party bytes on our origin, it passes **raster types only**
+(`allowedBomImageType` — `image/svg+xml` is rejected, since an SVG opened
+directly as a document would run its script as the viewer), and its responses
+get `Content-Security-Policy: default-src 'none'; sandbox` from
+`next.config.ts`. That header has to live there, after the global rule: for
+the same key the last matching `headers()` rule wins, so a CSP set in the
+route handler is silently replaced by the app-wide one. Members call it with
+`?url=`; public share pages with `?share=&item=` (see
+[auth-and-access.md](./auth-and-access.md#public-share-links)). Accepted gap:
+the private-IP check resolves the host separately from the fetch, so DNS
+rebinding between the two is not prevented.
+
 ## Export zip
 
 `GET /api/models/[id]/export` bundles one model into a `.zip`: `metadata.json`

@@ -5,6 +5,7 @@ import {
   isWellFormedShareToken,
   publicSharingEnabled,
   sharedFileSrc,
+  sharedBomImageSrc,
   sharedSlicerFileBase,
 } from "@/lib/share-token";
 
@@ -55,4 +56,14 @@ test("sharedSlicerFileBase carries the share token in the path, not the query", 
   assert.equal(url.search, "");
   assert.ok(url.pathname.startsWith("/api/files/"));
   assert.deepEqual(url.pathname.split("/").slice(-3), ["file-id", "tok", "part.3mf"]);
+});
+
+// Anonymous visitors name a BOM item, never a URL — the member `?url=` mode
+// of the proxy must not appear in the public src.
+test("sharedBomImageSrc addresses the proxy by item id, without a url param", () => {
+  const url = new URL(sharedBomImageSrc("tok", "item-id"), "http://x");
+  assert.equal(url.pathname, "/api/bom-image");
+  assert.equal(url.searchParams.get("share"), "tok");
+  assert.equal(url.searchParams.get("item"), "item-id");
+  assert.equal(url.searchParams.has("url"), false);
 });

@@ -6,18 +6,23 @@ import { get3mfSliceInfo } from "@/lib/threemf-remote";
 import { fileExtension } from "@/lib/file-kind";
 import { platformFromSourceUrl } from "@/lib/platform";
 import { parseOnshapeUrl } from "@/lib/onshape/api";
-import { sharedFileSrc, sharedSlicerFileBase } from "@/lib/share-token";
+import {
+  sharedBomImageSrc,
+  sharedFileSrc,
+  sharedSlicerFileBase,
+} from "@/lib/share-token";
 import type { ModelViewData, PrintFileData } from "@/app/models/model-view";
 
 // The anonymous projection of a model for the public share pages. Built as an
 // allowlist rather than by reusing the member page's loader: anything not
 // copied in here never reaches someone without an account. Deliberately left
-// out — edit history and editor names, likes/pins/collections, customizer
-// schemas (rendering needs the session-gated API), and BOM item images (they
-// go through the session-gated /api/bom-image fetch proxy, which must not be
-// opened to anonymous callers). Every file URL is share-scoped
-// (sharedFileSrc) so it dies with the link; `modelId: null` makes ModelView
-// drop every mutating affordance, as in the version preview.
+// out — edit history and editor names, likes/pins/collections, and customizer
+// schemas (rendering needs the session-gated API). Every file URL is
+// share-scoped (sharedFileSrc) so it dies with the link, and so are BOM
+// images: they load through /api/bom-image's item mode (sharedBomImageSrc),
+// never its member `?url=` mode, which must not be opened to anonymous
+// callers. `modelId: null` makes ModelView drop every mutating affordance,
+// as in the version preview.
 //
 // The caller must already have checked that the share grants this model.
 export async function loadSharedModelView(
@@ -121,7 +126,9 @@ export async function loadSharedModelView(
       name: item.name,
       quantity: item.quantity,
       link: item.link,
-      imageUrl: null,
+      // Kept for the CSV's image column; display goes through imageSrc.
+      imageUrl: item.imageUrl,
+      imageSrc: item.imageUrl ? sharedBomImageSrc(token, item.id) : null,
       section: item.section,
     })),
     printFiles: printFiles

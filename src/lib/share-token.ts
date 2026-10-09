@@ -50,3 +50,10 @@ export function sharedSlicerFileBase(token: string, fileId: string): string {
 export function sharedFileSrc(token: string, fileId: string): string {
   return `/api/files/shared/${fileId}?share=${token}`;
 }
+
+// BOM item image for anonymous viewers: the proxy fetches the URL stored on
+// that item (after checking the share grants its model) — visitors name an
+// item, never a URL, so they can't point the server's fetch anywhere new.
+export function sharedBomImageSrc(token: string, bomItemId: string): string {
+  return `/api/bom-image?share=${token}&item=${bomItemId}`;
+}

@@ -22,6 +22,24 @@ export function bomImageProxySrc(imageUrl: string): string {
   return `/api/bom-image?url=${encodeURIComponent(imageUrl)}`;
 }
 
+// Upstream content types the BOM image proxy will pass through: raster
+// formats only. The proxy serves on our own origin, so an `image/svg+xml`
+// reply (which can carry <script>) opened directly would run as the viewer —
+// the "starts with image/" check it used to do let SVG through. Returns the
+// normalized type to send, or null to reject.
+const BOM_IMAGE_TYPES = new Set([
+  "image/png",
+  "image/jpeg",
+  "image/webp",
+  "image/gif",
+  "image/avif",
+]);
+
+export function allowedBomImageType(contentType: string | null): string | null {
+  const type = contentType?.split(";")[0].trim().toLowerCase() ?? "";
+  return BOM_IMAGE_TYPES.has(type) ? type : null;
+}
+
 // Groups items under their section heading, preserving list order: ungrouped
 // items first, then each section in the order it first appears. Shared by the
 // read-only BOM list (src/app/models/bom-list.tsx) and the MCP tool, which
