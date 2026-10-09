@@ -137,6 +137,7 @@ export async function loadSharedModelView(
       src: src(file.id),
     })),
     modelId: null,
+    publicShare: true,
     canManage: false,
     isLoggedIn: false,
     collectionOptions: [],

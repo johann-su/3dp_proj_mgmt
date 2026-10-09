@@ -11,6 +11,7 @@ import type { SourcePlatform } from "@/lib/platform";
 import { platformLabels } from "@/lib/platform";
 import { formatDate } from "@/lib/format";
 import type { BomItemInput } from "@/lib/bom";
+import { safeFileBase } from "@/lib/file-kind";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
@@ -82,6 +83,10 @@ export type ModelViewData = {
   slicerConfigured: boolean;
   // Edit history, newest first (absent in the create-wizard preview).
   history?: ModelHistoryEntry[];
+  // The anonymous public-share view: read-only like the previews
+  // (`modelId: null`), but what a visitor can act on stays live — BOM vendor
+  // links and the BOM CSV (built client-side; the CSV route needs a session).
+  publicShare?: boolean;
   // Share dialog state (absent in the previews and the public share view).
   share?: {
     token: string | null;
@@ -119,6 +124,7 @@ export function ModelView({ data }: { data: ModelViewData }) {
     slicerConfigured,
     history,
     share,
+    publicShare,
   } = data;
 
   return (
@@ -179,7 +185,10 @@ export function ModelView({ data }: { data: ModelViewData }) {
           <BomSection
             items={bom}
             downloadUrl={modelId ? `/api/models/${modelId}/bom` : undefined}
-            interactive={modelId !== null}
+            csvFilename={
+              publicShare ? `${safeFileBase(title)}-bom.csv` : undefined
+            }
+            interactive={modelId !== null || !!publicShare}
           />
         )}
 
