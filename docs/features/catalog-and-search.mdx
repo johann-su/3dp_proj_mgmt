@@ -20,6 +20,15 @@ downloaded) drive it, and results are keyset-paginated (a cursor that encodes
 the sort value, so paging stays stable as new content is added). The search box
 on the homepage just submits your query to `/search`.
 
+### Pinned items
+
+Any signed-in user can pin a model or collection to the homepage with the
+**Pin to home** button on its page. Pins are shared: everyone sees everyone's
+pins in a **Pinned** section above the regular feed, newest pin first, and any
+user can unpin them again. The section only appears when something is pinned,
+and is hidden while the homepage is filtered by category. Trashed models drop
+out of it until restored.
+
 ## Search
 
 `/search` runs **one** keyset-paginated SQL query over the same

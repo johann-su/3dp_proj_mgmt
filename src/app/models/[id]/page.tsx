@@ -22,6 +22,7 @@ import { MAX_SCAD_SOURCE_BYTES, openscadConfigured } from "@/lib/openscad";
 import { parseScadParameters } from "@/lib/scad-params";
 import { fileExtension } from "@/lib/file-kind";
 import { parseOnshapeUrl } from "@/lib/onshape/api";
+import { isPinned } from "@/lib/pins";
 import { platformFromSourceUrl } from "@/lib/platform";
 import {
   ModelView,
@@ -203,14 +204,19 @@ export default async function ModelPage({
     }));
   }
 
-  // Whether the current viewer has liked this model, for the Like button.
-  const liked = !!(await db.query.modelLikes.findFirst({
-    where: and(
-      eq(modelLikes.userId, session.user.id),
-      eq(modelLikes.modelId, model.id),
-    ),
-    columns: { modelId: true },
-  }));
+  // Whether the current viewer has liked this model (Like button) and whether
+  // anyone has pinned it to the shared homepage section (Pin button).
+  const [likeRow, pinned] = await Promise.all([
+    db.query.modelLikes.findFirst({
+      where: and(
+        eq(modelLikes.userId, session.user.id),
+        eq(modelLikes.modelId, model.id),
+      ),
+      columns: { modelId: true },
+    }),
+    isPinned("model", model.id),
+  ]);
+  const liked = !!likeRow;
 
   const data: ModelViewData = {
     title: model.title,
@@ -301,6 +307,7 @@ export default async function ModelPage({
     canManage,
     isLoggedIn: !!session,
     liked,
+    pinned,
     collectionOptions,
     slicerConfigured,
     history,
