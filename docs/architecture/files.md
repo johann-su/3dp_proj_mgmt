@@ -83,6 +83,15 @@ downloads, so `?token=` would corrupt the filename). `next.config.ts` must keep
 `images.localPatterns` allowing `/api/files/**` with unrestricted `search`, or
 Next 16 rejects the tokened srcs.
 
+A third, anonymous variant serves public share links:
+`/api/files/shared/[fileId]?share=<token>` re-checks the share link and the
+file's model membership on every request instead of trusting a signed file
+token, so a revoked link stops serving at once (see
+[auth-and-access.md](./auth-and-access.md#public-share-links)). All three
+routes stream through `serveModelFile` (`src/lib/serve-file.ts`) — the range,
+content-type and download-count handling lives there; each route only does
+its own authorization and picks its `Cache-Control`.
+
 ## Export zip
 
 `GET /api/models/[id]/export` bundles one model into a `.zip`: `metadata.json`

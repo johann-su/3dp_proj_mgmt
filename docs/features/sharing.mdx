@@ -1,0 +1,52 @@
+---
+title: Sharing & public links
+description: Members-only links by default, and revocable public links for a single model or collection
+---
+
+# Sharing & public links
+
+The **Share** button on a model or collection page opens a dialog with two
+kinds of link.
+
+## Members link (default)
+
+The page's normal URL. Only people signed in to your instance can open it; a
+signed-out visitor is sent to the sign-in page and lands on the shared page
+afterwards. Nothing about the item changes by copying it.
+
+## Public link
+
+Ticking **"Anyone with the link can view"** creates a separate link of the form
+`https://<your-instance>/share/<token>` that works **without an account**:
+
+- For a **model**, visitors see the title, description, gallery and 3D
+  preview, file list with print estimates, documents and bill of materials, and
+  can **download its files**.
+- For a **collection**, visitors see the collection and every model in it,
+  with the same per-model view. A model removed from the collection (or moved
+  to the trash) stops being reachable through the link straight away. For a
+  **smart collection**, models that start matching its rules later become
+  visible too — the dialog warns about this.
+
+Public visitors do **not** see edit history, likes, other collections, the
+customizer or slicer deep links, and nothing they can click leads into the rest
+of your catalog. Public pages are marked `noindex` for search engines.
+
+Only the item's **owner** (or a [moderator/admin](/roles)) can create a public
+link, since it publishes the item outside your instance — check the licence of
+paid models before sharing them. **Anyone signed in can turn a public link
+off**, so a member who spots something that shouldn't be public can stop it.
+
+### Revoking
+
+Unticking the box **invalidates the link immediately** — the page and every
+file behind it return "not found". Ticking it again creates a **new** link;
+the old one never works again. Deleting the model or collection removes its
+link too.
+
+One caveat: images a visitor has already loaded may stay in their browser cache
+for a few minutes, and resized gallery images can stay in the app's own image
+cache for a few hours (still only reachable by someone who had the link).
+
+Operators can switch the feature off for the whole instance with
+[`DISABLE_PUBLIC_SHARING`](/configuration#public-sharing).

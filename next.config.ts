@@ -63,6 +63,13 @@ const nextConfig: NextConfig = {
           },
         ],
       },
+      {
+        // Public share links are bearer URLs (the token is the credential):
+        // keep the pages out of search indexes even if a link is posted
+        // somewhere crawlable. The shared file route sets the same header.
+        source: "/share/:path*",
+        headers: [{ key: "X-Robots-Tag", value: "noindex, nofollow" }],
+      },
     ];
   },
   images: {

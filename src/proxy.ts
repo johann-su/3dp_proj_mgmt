@@ -10,8 +10,11 @@ import { CALLBACK_PATH_HEADER, signInPath } from "@/lib/callback-url";
 // Note: in this Next.js version the middleware convention was renamed to
 // `proxy` (see node_modules/next/dist/docs/.../proxy.md).
 
-// Routes that must stay reachable while signed out.
-const PUBLIC_PATHS = ["/sign-in", "/sign-up"];
+// Routes that must stay reachable while signed out. /share is the public
+// share-link view: its pages authorize by the link token alone (see
+// src/lib/share-links.ts) and 404 on anything else, never falling back to
+// catalog access.
+const PUBLIC_PATHS = ["/sign-in", "/sign-up", "/share"];
 
 export function proxy(request: NextRequest) {
   const { pathname, search } = request.nextUrl;

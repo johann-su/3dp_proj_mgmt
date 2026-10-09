@@ -82,6 +82,12 @@ export type ModelViewData = {
   slicerConfigured: boolean;
   // Edit history, newest first (absent in the create-wizard preview).
   history?: ModelHistoryEntry[];
+  // Share dialog state (absent in the previews and the public share view).
+  share?: {
+    token: string | null;
+    canEnable: boolean;
+    available: boolean;
+  };
 };
 
 export function ModelView({ data }: { data: ModelViewData }) {
@@ -112,6 +118,7 @@ export function ModelView({ data }: { data: ModelViewData }) {
     collectionOptions,
     slicerConfigured,
     history,
+    share,
   } = data;
 
   return (
@@ -297,7 +304,15 @@ export function ModelView({ data }: { data: ModelViewData }) {
               <div className="flex flex-wrap items-center gap-2">
                 <LikeButton modelId={modelId} initialLiked={liked ?? false} />
                 <PinButton kind="model" id={modelId} initialPinned={pinned ?? false} />
-                <ShareButton />
+                {share && (
+                  <ShareButton
+                    kind="model"
+                    id={modelId}
+                    initialToken={share.token}
+                    canEnable={share.canEnable}
+                    publicSharingAvailable={share.available}
+                  />
+                )}
                 <ExportButton modelId={modelId} />
                 <Button asChild variant="outline" size="sm">
                   <Link href={`/models/${modelId}/edit`}>

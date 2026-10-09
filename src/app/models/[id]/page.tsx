@@ -23,6 +23,8 @@ import { parseScadParameters } from "@/lib/scad-params";
 import { fileExtension } from "@/lib/file-kind";
 import { parseOnshapeUrl } from "@/lib/onshape/api";
 import { isPinned } from "@/lib/pins";
+import { getShareToken } from "@/lib/share-links";
+import { publicSharingEnabled } from "@/lib/share-token";
 import { platformFromSourceUrl } from "@/lib/platform";
 import {
   ModelView,
@@ -206,7 +208,7 @@ export default async function ModelPage({
 
   // Whether the current viewer has liked this model (Like button) and whether
   // anyone has pinned it to the shared homepage section (Pin button).
-  const [likeRow, pinned] = await Promise.all([
+  const [likeRow, pinned, shareToken] = await Promise.all([
     db.query.modelLikes.findFirst({
       where: and(
         eq(modelLikes.userId, session.user.id),
@@ -215,6 +217,7 @@ export default async function ModelPage({
       columns: { modelId: true },
     }),
     isPinned("model", model.id),
+    getShareToken("model", model.id),
   ]);
   const liked = !!likeRow;
 
@@ -311,6 +314,11 @@ export default async function ModelPage({
     collectionOptions,
     slicerConfigured,
     history,
+    share: {
+      token: shareToken,
+      canEnable: canManage,
+      available: publicSharingEnabled(),
+    },
   };
 
   return (

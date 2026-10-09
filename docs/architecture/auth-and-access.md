@@ -37,6 +37,51 @@ this split — open editing to any session, gate only deletion/ownership transfe
 on `canActAsOwner(session.user, record.userId)` (owner, or a moderator/admin
 acting owner-equivalent — see the roles section below).
 
+## Public share links
+
+The one deliberate hole in "signed in = read access": an owner can give a single
+model or collection a **public link** (`/share/<token>`) that works without a
+session. Everything about it is built so the token is the *only* credential
+and revoking it takes effect immediately:
+
+- **Storage** — `model_share_links` / `collection_share_links`, keyed by the
+  target id (≤ 1 live link per item, cascading with it). The token is 32 random
+  bytes base64url (`generateShareToken`, `src/lib/share-token.ts`), stored
+  in plaintext so the dialog can show it again — a DB-read compromise already
+  exposes far more. Revoke = delete the row; re-enable mints a new token, so a
+  revoked URL never resolves again.
+- **Who** — `setPublicShare` (`src/app/share/actions.ts`) is asymmetric:
+  *enabling* is owner-gated (`canActAsOwner`) because it publishes possibly paid
+  content outside the instance; *revoking* is open to any session because it
+  only ever makes things more private.
+- **Resolution** — every public page and file request goes through
+  `resolveShareLink` + `shareGrantsModel` (`src/lib/share-links.ts`): token
+  shape check before any query, `DISABLE_PUBLIC_SHARING` checked per request
+  (kill switch that keeps the rows), trashed models resolve to nothing, and
+  collection links grant only *current* non-trashed members (live rule
+  evaluation for smart collections — so a smart link can widen by itself; the
+  dialog warns). Every failure is a plain 404, never a sign-in redirect.
+- **Surface** — `/share/<token>` and `/share/<token>/models/<id>` (allowed
+  through `proxy.ts`'s `PUBLIC_PATHS`) and `/api/files/shared/<fileId>?share=`.
+  The pages render `ModelView` from `loadSharedModelView`
+  (`src/app/share/[token]/shared-model.ts`), an **allowlist** projection: no
+  history, likes, collections, customizer, slicer deep links or BOM images (the
+  `/api/bom-image` fetch proxy stays session-only), category/tag badges
+  unlinked, `modelId: null` so no mutating UI renders. **Adding a field to the
+  member model page does not expose it publicly** — add it there only if it is
+  meant for anonymous visitors.
+- **Files** are served with share-scoped URLs (`sharedFileSrc`), never
+  `fileSrc` file tokens — those live 1–2 weeks and would outlive a revocation.
+  The route sends `private, max-age=300` (no shared/CDN caching). Accepted
+  residual: the next/image optimizer keeps resized images for
+  `minimumCacheTTL`, reachable only via the optimizer URL of someone who had
+  the link.
+- **Chrome / indexing** — anonymous visitors on `/share/*` get a bare header
+  instead of the catalog sidebar (`src/components/app-shell.tsx`); pages carry
+  `robots: noindex` metadata and an `X-Robots-Tag` header (`next.config.ts`).
+  Referrer-Policy `strict-origin-when-cross-origin` keeps the token out of
+  third-party `Referer`s.
+
 ## User roles
 
 (issue #54; tier definitions + pure helpers in `src/lib/roles.ts`):
