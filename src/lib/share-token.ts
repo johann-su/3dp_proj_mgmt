@@ -36,6 +36,13 @@ export function sharedModelPath(token: string, modelId: string): string {
   return `/share/${token}/models/${modelId}`;
 }
 
+// Slicer deep-link prefix for anonymous viewers — the share-link twin of
+// slicerFileBase: /api/files/shared/<id>/<token>/<name>.3mf, credential in the
+// path for the same Orca reason, and re-checked per request like sharedFileSrc.
+export function sharedSlicerFileBase(token: string, fileId: string): string {
+  return `/api/files/shared/${fileId}/${token}`;
+}
+
 // File URL for anonymous viewers. Lives under /api/files/** so next.config's
 // images.localPatterns covers it, and carries the share token (not a
 // file-token) so revoking the link cuts off files immediately. Always has a

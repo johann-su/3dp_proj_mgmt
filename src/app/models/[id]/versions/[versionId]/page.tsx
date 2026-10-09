@@ -137,7 +137,7 @@ export default async function ModelVersionPreviewPage({
       const persisted = file.sliceStatus === "ok";
       return {
         id: null,
-        downloadToken: null,
+        slicerPath: null,
         src: file.src,
         filename: file.filename,
         imported: file.imported ?? false,

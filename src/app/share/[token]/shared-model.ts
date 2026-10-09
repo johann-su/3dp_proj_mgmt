@@ -6,7 +6,7 @@ import { get3mfSliceInfo } from "@/lib/threemf-remote";
 import { fileExtension } from "@/lib/file-kind";
 import { platformFromSourceUrl } from "@/lib/platform";
 import { parseOnshapeUrl } from "@/lib/onshape/api";
-import { sharedFileSrc } from "@/lib/share-token";
+import { sharedFileSrc, sharedSlicerFileBase } from "@/lib/share-token";
 import type { ModelViewData, PrintFileData } from "@/app/models/model-view";
 
 // The anonymous projection of a model for the public share pages. Built as an
@@ -67,10 +67,10 @@ export async function loadSharedModelView(
     const info = sliceInfoByFileId.get(file.id);
     const persisted = file.sliceStatus === "ok";
     return {
-      // No id/downloadToken: the row then downloads from `src` (plain link,
-      // no slicer deep links — those need the file-token URL).
+      // No id: downloads go to the share-scoped `src`, and slicer deep links
+      // to the share-scoped path route — both die with the link.
       id: null,
-      downloadToken: null,
+      slicerPath: sharedSlicerFileBase(token, file.id),
       src: src(file.id),
       filename: file.filename,
       imported: file.imported,

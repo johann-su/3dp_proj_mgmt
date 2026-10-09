@@ -62,10 +62,12 @@ and revoking it takes effect immediately:
   evaluation for smart collections — so a smart link can widen by itself; the
   dialog warns). Every failure is a plain 404, never a sign-in redirect.
 - **Surface** — `/share/<token>` and `/share/<token>/models/<id>` (allowed
-  through `proxy.ts`'s `PUBLIC_PATHS`) and `/api/files/shared/<fileId>?share=`.
+  through `proxy.ts`'s `PUBLIC_PATHS`) and `/api/files/shared/<fileId>?share=`
+  (plus its path form `/api/files/shared/<fileId>/<token>/<name>` for slicer
+  deep links — `sharedSlicerFileBase`, same check).
   The pages render `ModelView` from `loadSharedModelView`
   (`src/app/share/[token]/shared-model.ts`), an **allowlist** projection: no
-  history, likes, collections, customizer, slicer deep links or BOM images (the
+  history, likes, collections, customizer or BOM images (the
   `/api/bom-image` fetch proxy stays session-only), category/tag badges
   unlinked, `modelId: null` so no mutating UI renders. **Adding a field to the
   member model page does not expose it publicly** — add it there only if it is

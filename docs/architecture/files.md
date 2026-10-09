@@ -84,7 +84,8 @@ downloads, so `?token=` would corrupt the filename). `next.config.ts` must keep
 Next 16 rejects the tokened srcs.
 
 A third, anonymous variant serves public share links:
-`/api/files/shared/[fileId]?share=<token>` re-checks the share link and the
+`/api/files/shared/[fileId]?share=<token>` (and its slicer-deep-link path form
+`/api/files/shared/[fileId]/[token]/[filename]`) re-checks the share link and the
 file's model membership on every request instead of trusting a signed file
 token, so a revoked link stops serving at once (see
 [auth-and-access.md](./auth-and-access.md#public-share-links)). All three

@@ -12,7 +12,7 @@ import {
 import { buildSnapshot, summarizeVersionChange } from "@/lib/version-snapshot";
 import { getSession, signInRedirect } from "@/lib/auth";
 import { canActAsOwner } from "@/lib/roles";
-import { fileSrc, fileToken } from "@/lib/file-token";
+import { fileSrc, slicerFileBase } from "@/lib/file-token";
 import { resolveBedSizeMm } from "@/lib/printer-beds";
 import { get3mfSliceInfo } from "@/lib/threemf-remote";
 import { processPendingSlices } from "@/lib/slicer";
@@ -260,9 +260,9 @@ export default async function ModelPage({
           id: file.id,
           filename: file.filename,
           imported: file.imported,
-          // Signed access token for the slicer deep links, which download the
+          // Signed URL prefix for the slicer deep links, which download the
           // file without the session cookie (see file-download-menu.tsx).
-          downloadToken: fileToken(file.id),
+          slicerPath: slicerFileBase(file.id),
           size: file.size,
           printTime:
             info?.printTimeSeconds ??

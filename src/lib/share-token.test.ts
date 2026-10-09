@@ -5,6 +5,7 @@ import {
   isWellFormedShareToken,
   publicSharingEnabled,
   sharedFileSrc,
+  sharedSlicerFileBase,
 } from "@/lib/share-token";
 
 test("generated share tokens are well-formed and unique", () => {
@@ -44,4 +45,14 @@ test("sharedFileSrc stays under /api/files and carries a query string", () => {
   const src = sharedFileSrc("tok", "file-id");
   assert.ok(src.startsWith("/api/files/"));
   assert.equal(new URL(`${src}&download=1`, "http://x").searchParams.get("share"), "tok");
+});
+
+// Orca names the download after the URL's last path segment and keeps any
+// query string, so the slicer form must carry the token in the path with no
+// "?" — the menu appends "/<name>.3mf".
+test("sharedSlicerFileBase carries the share token in the path, not the query", () => {
+  const url = new URL(`${sharedSlicerFileBase("tok", "file-id")}/part.3mf`, "http://x");
+  assert.equal(url.search, "");
+  assert.ok(url.pathname.startsWith("/api/files/"));
+  assert.deepEqual(url.pathname.split("/").slice(-3), ["file-id", "tok", "part.3mf"]);
 });
