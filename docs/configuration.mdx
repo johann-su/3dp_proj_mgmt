@@ -88,6 +88,12 @@ disappears from the UI.
 | `SLICER_URL` | `http://slicer:8000` | Headless PrusaSlicer service (`slicer` in `compose.yml`). Estimates print time & filament use for unsliced `.3mf` uploads; without it, such files show no estimates. |
 | `OPENSCAD_URL` | `http://openscad:8000` | Headless OpenSCAD service (`openscad` in `compose.yml`). Renders customized `.3mf` files from parametric `.scad` models; without it, the customizer UI is hidden and `.scad` files are plain downloads. |
 
+## Public sharing
+
+| Variable | Default | Description |
+|---|---|---|
+| `DISABLE_PUBLIC_SHARING` | unset (on) | Set to `true` to turn off [public share links](/features/sharing) instance-wide: the option disappears from the Share dialog and **existing public links stop working** (they are kept, so unsetting the variable brings them back). Use it when nothing in the catalog may ever leave the instance. |
+
 ## MCP server (optional)
 
 | Variable | Default | Description |

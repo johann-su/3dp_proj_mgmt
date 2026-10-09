@@ -49,9 +49,12 @@ export type PrintFileData = {
   // The file came with the model's source-platform import (or Onshape sync)
   // rather than being uploaded by hand — badged with a cloud icon.
   imported: boolean;
-  // Signed /api/files access token for slicer deep links (null in the
-  // create-wizard preview, where the file has no id yet either).
-  downloadToken: string | null;
+  // Same-origin URL prefix a slicer can download the file from without
+  // cookies — the credential is a path segment (see file-download-menu.tsx);
+  // the menu appends `/<name>.3mf`. Built server-side: slicerFileBase for
+  // members, sharedSlicerFileBase on public share pages. Null hides the
+  // "Open in" menu (previews, trash, version history).
+  slicerPath: string | null;
   // Download URL for files without a live model_files row — the version
   // preview serves historical files via /api/files/versions/… (already
   // token-authenticated, so extra query params are appended with "&").
@@ -314,10 +317,14 @@ function PrintFileRow({
             filename={file.filename}
           />
         )}
-        {file.id && file.downloadToken && is3mf ? (
+        {file.slicerPath && (file.id || file.src) && is3mf ? (
           <FileDownloadMenu
-            fileId={file.id}
-            token={file.downloadToken}
+            slicerPath={file.slicerPath}
+            downloadHref={
+              file.id
+                ? `/api/files/${file.id}?download=1`
+                : `${file.src}&download=1`
+            }
             filename={file.filename}
             makerworldUrl={makerworldUrl ?? undefined}
           />

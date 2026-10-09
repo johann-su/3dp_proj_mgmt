@@ -3,9 +3,7 @@ import { Open_Sans, Geist_Mono } from "next/font/google";
 import { ThemeProvider } from "next-themes";
 import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import { SidebarInset, SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
-import { AppSidebar } from "@/components/app-sidebar";
-import { ImportProgressIndicator } from "@/components/import-progress";
+import { AppShell } from "@/components/app-shell";
 import { getSession } from "@/lib/auth";
 import "./globals.css";
 
@@ -40,20 +38,7 @@ export default async function RootLayout({
       <body className="min-h-full">
         <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
           <TooltipProvider>
-            <SidebarProvider>
-              <AppSidebar user={session?.user ?? null} />
-              <SidebarInset>
-                <header className="sticky top-0 z-40 flex h-14 items-center gap-2 border-b bg-background/95 px-4 backdrop-blur">
-                  <SidebarTrigger />
-                  {session && (
-                    <div className="ml-auto">
-                      <ImportProgressIndicator />
-                    </div>
-                  )}
-                </header>
-                <main className="flex-1">{children}</main>
-              </SidebarInset>
-            </SidebarProvider>
+            <AppShell user={session?.user ?? null}>{children}</AppShell>
           </TooltipProvider>
           <Toaster richColors />
         </ThemeProvider>

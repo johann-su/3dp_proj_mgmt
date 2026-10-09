@@ -12,7 +12,7 @@ import {
 import { buildSnapshot, summarizeVersionChange } from "@/lib/version-snapshot";
 import { getSession, signInRedirect } from "@/lib/auth";
 import { canActAsOwner } from "@/lib/roles";
-import { fileSrc, fileToken } from "@/lib/file-token";
+import { fileSrc, slicerFileBase } from "@/lib/file-token";
 import { resolveBedSizeMm } from "@/lib/printer-beds";
 import { get3mfSliceInfo } from "@/lib/threemf-remote";
 import { processPendingSlices } from "@/lib/slicer";
@@ -23,6 +23,8 @@ import { parseScadParameters } from "@/lib/scad-params";
 import { fileExtension } from "@/lib/file-kind";
 import { parseOnshapeUrl } from "@/lib/onshape/api";
 import { isPinned } from "@/lib/pins";
+import { getShareToken } from "@/lib/share-links";
+import { publicSharingEnabled } from "@/lib/share-token";
 import { platformFromSourceUrl } from "@/lib/platform";
 import {
   ModelView,
@@ -206,7 +208,7 @@ export default async function ModelPage({
 
   // Whether the current viewer has liked this model (Like button) and whether
   // anyone has pinned it to the shared homepage section (Pin button).
-  const [likeRow, pinned] = await Promise.all([
+  const [likeRow, pinned, shareToken] = await Promise.all([
     db.query.modelLikes.findFirst({
       where: and(
         eq(modelLikes.userId, session.user.id),
@@ -215,6 +217,7 @@ export default async function ModelPage({
       columns: { modelId: true },
     }),
     isPinned("model", model.id),
+    getShareToken("model", model.id),
   ]);
   const liked = !!likeRow;
 
@@ -257,9 +260,9 @@ export default async function ModelPage({
           id: file.id,
           filename: file.filename,
           imported: file.imported,
-          // Signed access token for the slicer deep links, which download the
+          // Signed URL prefix for the slicer deep links, which download the
           // file without the session cookie (see file-download-menu.tsx).
-          downloadToken: fileToken(file.id),
+          slicerPath: slicerFileBase(file.id),
           size: file.size,
           printTime:
             info?.printTimeSeconds ??
@@ -311,6 +314,11 @@ export default async function ModelPage({
     collectionOptions,
     slicerConfigured,
     history,
+    share: {
+      token: shareToken,
+      canEnable: canManage,
+      available: publicSharingEnabled(),
+    },
   };
 
   return (

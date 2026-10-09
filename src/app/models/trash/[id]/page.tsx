@@ -97,7 +97,7 @@ export default async function TrashPreviewPage({
     const persisted = file.sliceStatus === "ok";
     return {
       id: null,
-      downloadToken: null,
+      slicerPath: null,
       src: fileSrc(file.id),
       filename: file.filename,
       imported: file.imported,

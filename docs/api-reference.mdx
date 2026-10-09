@@ -23,8 +23,7 @@ A few conventions hold across the whole surface:
   minted by the app, not something a client requests. There is no way to
   authenticate a programmatic client other than carrying a real session cookie.
 - **JSON in and out.** Request and response bodies are JSON unless noted (file
-  uploads send raw bytes; downloads and the STL preview return binary; the BOM
-  export returns CSV). Errors are `{ "error": "<message>" }` with a matching
+  uploads send raw bytes; downloads and the STL preview return binary). Errors are `{ "error": "<message>" }` with a matching
   status code.
 - **This is not the whole surface.** Most mutations — creating and editing
   models and collections, trash and restore, user roles, connecting Bambu/
@@ -207,14 +206,6 @@ stops. Models imported so far are kept. Only the job's owner can cancel it.
   signed in.
 
 ## Models
-
-### `GET /api/models/<id>/bom`
-
-Downloads a model's [bill of materials](/features/bill-of-materials) as a **CSV**
-file (`Content-Disposition: attachment`, filename derived from the model title).
-Reached from a download link on the model page, so it requires the session
-cookie. Returns `404` for a bad UUID, an unknown model, or a model with an empty
-BOM; `401` when not signed in.
 
 ### `GET /api/models/<id>/export`
 
