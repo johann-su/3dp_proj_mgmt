@@ -1,5 +1,5 @@
 // Bill of materials helpers shared by the wizard (CSV upload), the create
-// action (validation) and the CSV download route.
+// action (validation), the model page's CSV download and the export zip.
 
 export type BomItemInput = {
   name: string;

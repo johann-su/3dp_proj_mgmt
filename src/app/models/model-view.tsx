@@ -85,7 +85,7 @@ export type ModelViewData = {
   history?: ModelHistoryEntry[];
   // The anonymous public-share view: read-only like the previews
   // (`modelId: null`), but what a visitor can act on stays live — BOM vendor
-  // links and the BOM CSV (built client-side; the CSV route needs a session).
+  // links and the BOM CSV download.
   publicShare?: boolean;
   // Share dialog state (absent in the previews and the public share view).
   share?: {
@@ -184,9 +184,10 @@ export function ModelView({ data }: { data: ModelViewData }) {
         {bom.length > 0 && (
           <BomSection
             items={bom}
-            downloadUrl={modelId ? `/api/models/${modelId}/bom` : undefined}
             csvFilename={
-              publicShare ? `${safeFileBase(title)}-bom.csv` : undefined
+              modelId || publicShare
+                ? `${safeFileBase(title)}-bom.csv`
+                : undefined
             }
             interactive={modelId !== null || !!publicShare}
           />

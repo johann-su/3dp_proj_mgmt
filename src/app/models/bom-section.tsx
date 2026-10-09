@@ -17,22 +17,20 @@ type BomItem = React.ComponentProps<typeof BomList>["items"][number];
 
 export function BomSection({
   items,
-  downloadUrl,
   csvFilename,
   interactive = true,
 }: {
   items: BomItem[];
-  // Server CSV route (member model page; session-gated).
-  downloadUrl?: string;
-  // Without a route, build the CSV in the browser from `items` and save it
-  // under this name — the public share view, which has no session for the
-  // route and needs no new public endpoint for data it already shows.
+  // Enables "Download CSV": the CSV is built in the browser from `items`
+  // (bomToCsv) and saved under this name. Client-side for members and the
+  // public share view alike — the page already holds the data, so there is
+  // no route to keep access-checked. Unset in the create/version previews.
   csvFilename?: string;
   interactive?: boolean;
 }) {
   const [open, setOpen] = useState(false);
 
-  function downloadInline() {
+  function downloadCsv() {
     const blob = new Blob([bomToCsv(items)], { type: "text/csv;charset=utf-8" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
@@ -57,15 +55,8 @@ export function BomSection({
               Bill of materials ({items.length})
             </span>
           </CollapsibleTrigger>
-          {downloadUrl ? (
-            <Button asChild size="sm" variant="outline">
-              <a href={downloadUrl}>
-                <Download className="size-4" />
-                Download CSV
-              </a>
-            </Button>
-          ) : csvFilename ? (
-            <Button size="sm" variant="outline" onClick={downloadInline}>
+          {csvFilename ? (
+            <Button size="sm" variant="outline" onClick={downloadCsv}>
               <Download className="size-4" />
               Download CSV
             </Button>
