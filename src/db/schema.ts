@@ -562,6 +562,28 @@ export const collectionModels = pgTable(
   (t) => [primaryKey({ columns: [t.collectionId, t.modelId] })],
 );
 
+// Homepage pins: shared curation, not per-user metadata — any signed-in user
+// may pin or unpin a model/collection and every user sees the same "Pinned"
+// section on the homepage (src/lib/pins.ts). One table per target so each
+// keeps a cascading FK; the target id is the primary key, so pinning is
+// idempotent. Pinning is not a model mutation and is not versioned. Trashed
+// models keep their pin row but are hidden from the pinned section.
+export const modelPins = pgTable("model_pins", {
+  modelId: uuid("model_id")
+    .primaryKey()
+    .references(() => models.id, { onDelete: "cascade" }),
+  pinnedBy: text("pinned_by").references(() => user.id, { onDelete: "set null" }),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export const collectionPins = pgTable("collection_pins", {
+  collectionId: uuid("collection_id")
+    .primaryKey()
+    .references(() => collections.id, { onDelete: "cascade" }),
+  pinnedBy: text("pinned_by").references(() => user.id, { onDelete: "set null" }),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
 // Lifecycle of a bulk import (MakerWorld collection import): the job runs in
 // the background after POST /api/import/collection responds (next/server
 // `after`), models land in `collectionId` as they finish, and the header

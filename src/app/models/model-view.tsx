@@ -35,6 +35,7 @@ import { AddToCollection, type CollectionOption } from "./[id]/add-to-collection
 import { DeleteModelButton } from "./[id]/delete-model-button";
 import { ExportButton } from "./[id]/export-button";
 import { LikeButton } from "./[id]/like-button";
+import { PinButton } from "@/components/pin-button";
 import { HistoryPanel, type ModelHistoryEntry } from "./[id]/history-panel";
 import { OnshapeSyncButton } from "./[id]/onshape-sync-button";
 import { SourceSyncButton } from "./[id]/source-sync-button";
@@ -74,6 +75,9 @@ export type ModelViewData = {
   isLoggedIn: boolean;
   // Whether the current viewer has liked this model (false in the previews).
   liked?: boolean;
+  // Whether the model is pinned to the shared homepage section (false in the
+  // previews).
+  pinned?: boolean;
   collectionOptions: CollectionOption[];
   slicerConfigured: boolean;
   // Edit history, newest first (absent in the create-wizard preview).
@@ -104,6 +108,7 @@ export function ModelView({ data }: { data: ModelViewData }) {
     canManage,
     isLoggedIn,
     liked,
+    pinned,
     collectionOptions,
     slicerConfigured,
     history,
@@ -291,6 +296,7 @@ export function ModelView({ data }: { data: ModelViewData }) {
               <Separator />
               <div className="flex flex-wrap items-center gap-2">
                 <LikeButton modelId={modelId} initialLiked={liked ?? false} />
+                <PinButton kind="model" id={modelId} initialPinned={pinned ?? false} />
                 <ShareButton />
                 <ExportButton modelId={modelId} />
                 <Button asChild variant="outline" size="sm">

@@ -56,6 +56,21 @@ id-hydration step with search via `src/lib/catalog-hydrate.ts`; its own pure
 sort/cursor parsing lives in `src/lib/feed-params.ts`. Its search box just
 submits the query to `/search`.
 
+## Homepage pins
+
+Above the feed, a "Pinned" section shows every model/collection any user has
+pinned — pins are **shared curation**, not per-user (that's what likes are
+for). Any signed-in user may pin or unpin anything, mirroring collaborative
+editing (`setHomePin` in `src/app/actions.ts`; toggle on the model and
+collection pages via `src/components/pin-button.tsx`). Storage is one table per
+target (`model_pins`, `collection_pins`, migration `0025_home_pins.sql`) so each
+keeps a cascading FK, keyed by the target id so pinning is idempotent. Pinning
+is not a model mutation and skips versioning. `listPinned` (`src/lib/pins.ts`)
+orders most-recently-pinned first, caps at `MAX_PINNED`, hides trashed models
+(their pin row survives, so a restore brings the pin back) and reuses
+`hydrateCatalogRows`. The section is hidden on a category-filtered homepage,
+and pinned items still appear in the regular feed below.
+
 ## Back/Forward restores the scroll position
 
 Both lists append pages client-side (`useInfiniteScroll`), so on Back the
