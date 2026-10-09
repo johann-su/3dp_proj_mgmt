@@ -62,6 +62,9 @@ export function ShareButton({
   }
 
   const isPublic = token !== null;
+  // Non-owners can see the option (and revoke a live link) but not create
+  // one — say so where they're looking, not in a footnote.
+  const locked = !isPublic && !canEnable;
 
   return (
     <Dialog>
@@ -92,12 +95,18 @@ export function ShareButton({
           <>
             <Separator />
             <div className="grid gap-3">
-              <label className="flex items-start gap-3">
+              <label
+                className={
+                  locked
+                    ? "flex cursor-not-allowed items-start gap-3 opacity-60"
+                    : "flex cursor-pointer items-start gap-3"
+                }
+              >
                 <input
                   type="checkbox"
-                  className="mt-0.5 size-4 accent-primary"
+                  className="mt-0.5 size-4 accent-primary disabled:cursor-not-allowed"
                   checked={isPublic}
-                  disabled={pending || (!isPublic && !canEnable)}
+                  disabled={pending || locked}
                   onChange={(e) => toggle(e.target.checked)}
                 />
                 <span className="grid gap-1">
@@ -110,10 +119,16 @@ export function ShareButton({
                       ? "No account needed. Visitors see the description, images and 3D preview, and can download its files."
                       : "No account needed. Visitors see the collection and every model in it, and can download their files."}
                   </span>
+                  {locked && (
+                    <span className="flex items-center gap-1 text-xs font-medium">
+                      <Lock className="size-3" />
+                      Only the {noun}&apos;s owner or a moderator can turn this on.
+                    </span>
+                  )}
                 </span>
               </label>
 
-              {smart && (
+              {smart && !locked && (
                 <p className="rounded-md bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-400">
                   This is a smart collection: models that start matching its
                   rules later become visible through the link too.
@@ -124,11 +139,12 @@ export function ShareButton({
                 <CopyField path={`/share/${token}`} label="public link" />
               )}
 
-              <p className="text-xs text-muted-foreground">
-                {!isPublic && !canEnable
-                  ? `Only the ${noun}'s owner or a moderator can create a public link.`
-                  : "Turning this off invalidates the link immediately; turning it on again creates a new one."}
-              </p>
+              {!locked && (
+                <p className="text-xs text-muted-foreground">
+                  Turning this off invalidates the link immediately; turning it
+                  on again creates a new one.
+                </p>
+              )}
             </div>
           </>
         ) : (
