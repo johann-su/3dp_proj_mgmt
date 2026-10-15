@@ -337,6 +337,11 @@ export const modelFiles = pgTable("model_files", {
   // printer settings of its own (its generic profile, "Bambu Lab P1S (256 ×
   // 256 × 250 mm)"); null when the estimate used the file's own printer.
   slicePrinter: text("slice_printer"),
+  // Whether the stored estimate is approximate ("~" in the UI): sliced under
+  // assumptions the file didn't make (generic printer, translated PrusaSlicer
+  // settings, repaired settings). Null on rows from before it was recorded —
+  // see isApproxEstimate.
+  sliceApprox: boolean("slice_approx"),
   printerInfo: jsonb("printer_info").$type<PrinterInfo>(),
   // Set on a .3mf rendered from a parametric .scad file (see
   // src/app/api/models/[id]/customize): the source file row, the customizer
@@ -424,6 +429,7 @@ export type VersionFileSnapshot = {
   // Optional: snapshots written before these were recorded lack them.
   sliceEngine?: string | null;
   slicePrinter?: string | null;
+  sliceApprox?: boolean | null;
   printerInfo: PrinterInfo | null;
 };
 

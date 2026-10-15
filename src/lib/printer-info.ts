@@ -1,4 +1,4 @@
-import type { FilamentChanges, PrinterInfo } from "@/db/schema";
+import type { FilamentChanges, PrinterInfo, SliceSource } from "@/db/schema";
 
 export type FilamentSlot = { type: string; color?: string };
 
@@ -69,4 +69,19 @@ export function sliceFailureMessage(error: string | null | undefined): string {
       : `Doesn't fit on the ${fit[2]}`;
   }
   return "Couldn't be sliced — the file may not be printable";
+}
+
+// Whether a file's stored estimate is shown as approximate ("~"). The slicer
+// service records it per slice (`sliceApprox`): a Bambu/Orca project sliced
+// natively is as exact as the file's own slicer, while the generic printer,
+// translated PrusaSlicer settings and repaired settings are assumptions.
+// Estimates read from the file itself are exact. Rows sliced before the flag
+// existed fall back to the old rule: anything the slicer service produced.
+export function isApproxEstimate(file: {
+  sliceStatus: string | null;
+  sliceSource: SliceSource | null;
+  sliceApprox?: boolean | null;
+}): boolean {
+  if (file.sliceStatus !== "ok") return false;
+  return file.sliceApprox ?? file.sliceSource === "slicer";
 }

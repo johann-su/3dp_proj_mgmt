@@ -111,9 +111,14 @@ check fit against another printer; plus `usesSupport`, from the config's
 `enable_support`/`support_material` — tri-state on purpose, since a *missing*
 key means "the config didn't say", not "no supports", and the model page only
 badges the positive case), which the model page
-shows per file. Slicer-derived numbers
-are still approximations (OrcaSlicer's time estimator, not the printer's
-firmware) and shown with a `~` prefix; files OrcaSlicer cannot slice are
+shows per file. The `~` prefix means **approximate**, not "the service
+sliced it": the service returns `approx` (`estimateIsApprox` in
+`slicer/lib.mjs`) — true for the generic printer, translated PrusaSlicer
+settings or repaired settings, false for a Bambu/Orca project sliced natively —
+stored as `model_files.slice_approx`; embedded estimates store false.
+`isApproxEstimate` (`src/lib/printer-info.ts`) is the one reader (model page,
+versions, trash, share page, MCP), falling back to the old "service-sliced =
+approximate" rule for rows with a null flag. Files OrcaSlicer cannot slice are
 flagged on the model page so the uploader notices a broken or unprintable file.
 Legacy `.step` files (from before Onshape imports switched to 3MF) and files
 uploaded before this feature are skipped. The service is optional: without

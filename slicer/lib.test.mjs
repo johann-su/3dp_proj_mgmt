@@ -2,6 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   describePrinter,
+  estimateIsApprox,
   flattenPreset,
   genericPresetSet,
   parseResultJson,
@@ -271,4 +272,14 @@ test("genericPresetSet makes the presets loadable together, keeping the real bed
   assert.equal(set.filament.from, "system");
   // A model too big for this printer is reported as not fitting it.
   assert.deepEqual(set.machine.printable_area, ["0x0", "256x0", "256x256", "0x256"]);
+});
+
+test("estimateIsApprox: only a native, unrepaired project slice is exact", () => {
+  assert.equal(estimateIsApprox({ profile: "file" }), false);
+  // A newer Bambu Studio project that needed repairs may miss filament-change time.
+  assert.equal(estimateIsApprox({ profile: "file", repairedCount: 2 }), true);
+  // PrusaSlicer settings mapped onto an Orca profile.
+  assert.equal(estimateIsApprox({ profile: "file", translated: true }), true);
+  // No settings in the file: the printer was assumed.
+  assert.equal(estimateIsApprox({ profile: "generic" }), true);
 });

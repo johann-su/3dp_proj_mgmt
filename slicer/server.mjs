@@ -6,7 +6,7 @@
 //   GET  /healthz    liveness probe
 //   POST /estimate   body = raw .3mf bytes
 //     -> 200 { ok: true, printTimeSeconds, filamentGrams, filamentMm, profile,
-//              engine, printer, plateFilaments, repairedSettings }
+//              engine, printer, plateFilaments, repairedSettings, approx }
 //     -> 422 { ok: false, error }   file could not be sliced (unslicable)
 //     -> 413/500 on oversize body / unexpected errors
 //
@@ -23,6 +23,10 @@
 // - Anything else is sliced with the generic profile: an Orca system preset
 //   set chosen by SLICER_GENERIC_* (see presets.mjs). `profile` = "generic".
 //
+// `approx` is false only when the file was sliced exactly as its own slicer
+// would: a Bambu/Orca project, natively, with nothing repaired. Generic-printer,
+// translated-PrusaSlicer and repaired slices rest on assumptions the file
+// didn't make, so the app marks them as approximate ("~").
 // `printer` names the printer the estimate was computed for; a model that
 // doesn't fit its bed fails with that printer named. `plateFilaments` lists
 // each sliced plate's filament types (more than one = filament changes
@@ -42,6 +46,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
   describePrinter,
+  estimateIsApprox,
   parseResultJson,
   parseSliceInfo,
   platesToSlice,
@@ -177,6 +182,7 @@ async function planSlice(inputPath, dir) {
     if (Object.keys(overrides).length > 0) {
       return {
         profile: "file",
+        translated: true, // PrusaSlicer settings mapped onto Orca's
         args: [...GENERIC_ARGS, ...toCliFlags(overrides)],
         settings: null,
         // The project's printer and bed where it names them, else the
@@ -354,7 +360,8 @@ async function estimate(body) {
     }
     console.log(
       `sliced ${body.length}B profile=${plan.profile} printer="${plan.printer}" ` +
-        `runs=${plan.runs.join(",")} skippedEmptyPlates=${plan.skippedPlates} ` +
+        `translated=${Boolean(plan.translated)} runs=${plan.runs.join(",")} ` +
+        `skippedEmptyPlates=${plan.skippedPlates} ` +
         `repaired=${[...repaired].join(",") || "-"} time=${totals.printTimeSeconds}s ` +
         `filament=${totals.filamentGrams}g`,
     );
@@ -368,6 +375,7 @@ async function estimate(body) {
         ...totals,
         plateFilaments,
         repairedSettings: [...repaired],
+        approx: estimateIsApprox({ ...plan, repairedCount: repaired.size }),
       },
     };
   } finally {

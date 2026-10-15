@@ -12,6 +12,7 @@ import {
   sharedSlicerFileBase,
 } from "@/lib/share-token";
 import type { ModelViewData, PrintFileData } from "@/app/models/model-view";
+import { isApproxEstimate } from "@/lib/printer-info";
 
 // The anonymous projection of a model for the public share pages. Built as an
 // allowlist rather than by reusing the member page's loader: anything not
@@ -82,7 +83,7 @@ export async function loadSharedModelView(
       size: file.size,
       printTime: info?.printTimeSeconds ?? (persisted ? file.printTimeSeconds : null) ?? null,
       grams: info?.filamentGrams ?? (persisted ? file.filamentGrams : null) ?? null,
-      approx: persisted && file.sliceSource === "slicer",
+      approx: isApproxEstimate(file),
       plateCount: info?.plateCount ?? null,
       printer: file.printerInfo ?? null,
       sliceStatus: file.sliceStatus ?? null,

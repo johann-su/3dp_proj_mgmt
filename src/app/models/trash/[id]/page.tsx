@@ -14,6 +14,7 @@ import { platformFromSourceUrl } from "@/lib/platform";
 import { TRASH_RETENTION_DAYS } from "@/lib/model-versions";
 import { ModelView, type ModelViewData, type PrintFileData } from "../../model-view";
 import { TrashPreviewActions } from "./trash-preview-actions";
+import { isApproxEstimate } from "@/lib/printer-info";
 
 export const dynamic = "force-dynamic";
 
@@ -108,7 +109,7 @@ export default async function TrashPreviewPage({
         null,
       grams:
         info?.filamentGrams ?? (persisted ? file.filamentGrams : null) ?? null,
-      approx: persisted && file.sliceSource === "slicer",
+      approx: isApproxEstimate(file),
       plateCount: info?.plateCount ?? null,
       printer: file.printerInfo ?? null,
       // Never show the "estimating…" pulse in a read-only preview — pending

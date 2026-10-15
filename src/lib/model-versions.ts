@@ -213,6 +213,7 @@ export async function restoreSnapshot(
         sliceError: file.sliceError,
         sliceEngine: file.sliceEngine ?? null,
         slicePrinter: file.slicePrinter ?? null,
+        sliceApprox: file.sliceApprox ?? null,
         printerInfo: file.printerInfo,
       });
     }

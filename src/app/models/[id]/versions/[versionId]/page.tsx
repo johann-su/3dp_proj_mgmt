@@ -14,6 +14,7 @@ import { platformFromSourceUrl } from "@/lib/platform";
 import { Button } from "@/components/ui/button";
 import { ModelView, type ModelViewData } from "../../../model-view";
 import { RestoreVersionButton } from "./restore-version-button";
+import { isApproxEstimate } from "@/lib/printer-info";
 
 export const dynamic = "force-dynamic";
 
@@ -148,7 +149,7 @@ export default async function ModelVersionPreviewPage({
           null,
         grams:
           info?.filamentGrams ?? (persisted ? file.filamentGrams : null) ?? null,
-        approx: persisted && file.sliceSource === "slicer",
+        approx: isApproxEstimate(file),
         plateCount: info?.plateCount ?? null,
         printer: file.printerInfo ?? null,
         // Historic rows may say "pending" forever — never show the

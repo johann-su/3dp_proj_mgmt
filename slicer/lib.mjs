@@ -201,6 +201,16 @@ export function describePrinter(settings) {
   return `${name} (${span(0)} × ${span(1)} × ${Math.round(height)} mm)`;
 }
 
+// Whether an estimate is approximate — i.e. not what the file's own slicer
+// would report. Only a Bambu/Orca project sliced natively with nothing
+// repaired is exact (within 0.1% of Bambu Studio on a real project); the
+// generic printer, translated PrusaSlicer settings and repaired settings
+// (which can drop filament-change time) are all assumptions the file didn't
+// make.
+export function estimateIsApprox({ profile, translated = false, repairedCount = 0 }) {
+  return profile === "generic" || translated || repairedCount > 0;
+}
+
 // --- PrusaSlicer projects -> OrcaSlicer CLI overrides ------------------------
 
 // OrcaSlicer ignores Metadata/Slic3r_PE.config, so PrusaSlicer projects slice

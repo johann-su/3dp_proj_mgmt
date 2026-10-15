@@ -33,6 +33,7 @@ import {
   type PrintFileData,
 } from "../model-view";
 import type { ModelHistoryEntry } from "./history-panel";
+import { isApproxEstimate } from "@/lib/printer-info";
 
 export const dynamic = "force-dynamic";
 
@@ -255,7 +256,7 @@ export default async function ModelPage({
       const toEntry = (file: (typeof printFiles)[number]): PrintFileData => {
         const info = sliceInfoByFileId.get(file.id);
         const persisted = file.sliceStatus === "ok";
-        const approx = persisted && file.sliceSource === "slicer";
+        const approx = isApproxEstimate(file);
         return {
           id: file.id,
           filename: file.filename,

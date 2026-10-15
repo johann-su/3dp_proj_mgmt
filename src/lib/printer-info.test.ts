@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   filamentChangesFromPlates,
   filamentSummary,
+  isApproxEstimate,
   sliceFailureMessage,
 } from "@/lib/printer-info";
 
@@ -79,4 +80,16 @@ test("sliceFailureMessage names the printer a model doesn't fit", () => {
   // Anything else stays the generic "may not be printable" warning.
   assert.match(sliceFailureMessage("Failed slicing the model."), /may not be printable/);
   assert.match(sliceFailureMessage(null), /may not be printable/);
+});
+
+// "~" means "assumed something the file didn't say", not "our slicer ran".
+test("isApproxEstimate follows the recorded flag, falling back for old rows", () => {
+  const ok = { sliceStatus: "ok", sliceSource: "slicer" as const };
+  assert.equal(isApproxEstimate({ ...ok, sliceApprox: false }), false); // native Bambu/Orca slice
+  assert.equal(isApproxEstimate({ ...ok, sliceApprox: true }), true); // generic/translated/repaired
+  // Rows sliced before the flag existed keep the old rule.
+  assert.equal(isApproxEstimate({ ...ok, sliceApprox: null }), true);
+  assert.equal(isApproxEstimate({ sliceStatus: "ok", sliceSource: "embedded" }), false);
+  // No estimate, nothing to mark.
+  assert.equal(isApproxEstimate({ sliceStatus: "failed", sliceSource: "slicer", sliceApprox: true }), false);
 });

@@ -78,11 +78,16 @@ Print Vault re-reads the numbers the file already carries.
 ### Things to know about estimates
 
 - **Hover the print time to see which slicer produced it.**
-- **They are approximations, and shown with a `~` prefix.** Server-side numbers
-  come from OrcaSlicer's time estimator, not your printer's firmware. For
-  Bambu/Orca projects that is the same estimator your slicer uses; files
-  without settings are estimated for the generic printer above, so treat those
-  as ballpark figures.
+- **They are slicer predictions**, not your printer's firmware — the same kind
+  of number Bambu Studio or OrcaSlicer shows. Bambu/Orca projects sliced on the
+  server use the file's own settings and land within a fraction of a percent
+  of what your slicer reports, so they're shown plainly.
+- **A `~` marks an estimate that had to assume something:** a file without
+  printer settings (estimated for the generic printer), a PrusaSlicer project
+  (its settings translated to OrcaSlicer), or a project from a newer Bambu
+  Studio whose settings needed adjusting. Treat those as ballpark figures.
+  Files estimated before this distinction existed keep their `~` until they
+  are re-sliced.
 - **Unsliceable files are flagged.** If OrcaSlicer can't slice a file, the
   model page marks it — a useful signal that the file may be broken or
   unprintable, not silently missing an estimate. A model that is too big for

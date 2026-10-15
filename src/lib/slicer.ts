@@ -47,6 +47,9 @@ type EstimateResponse = {
   // Project settings the service had to change so a newer slicer's file would
   // slice (logged by the service; the estimate may be less exact).
   repairedSettings?: string[];
+  // False when the file was sliced exactly as its own slicer would; absent
+  // from older services (then treated as approximate).
+  approx?: boolean;
   error?: string;
 };
 
@@ -59,6 +62,7 @@ async function markOk(
     printTimeSeconds: number | null;
     filamentGrams: number | null;
     engine: string | null;
+    approx: boolean;
     slicePrinter?: string | null;
     printerInfo?: PrinterInfo | null;
   },
@@ -71,6 +75,7 @@ async function markOk(
       printTimeSeconds: result.printTimeSeconds,
       filamentGrams: result.filamentGrams,
       sliceEngine: result.engine,
+      sliceApprox: result.approx,
       slicePrinter: result.slicePrinter ?? null,
       sliceError: null,
       ...(result.printerInfo !== undefined && { printerInfo: result.printerInfo }),
@@ -105,6 +110,7 @@ async function estimateFile(file: FileRow, slicerUrl: string | undefined) {
       printTimeSeconds: embedded.printTimeSeconds,
       filamentGrams: embedded.filamentGrams,
       engine: embedded.engine,
+      approx: false, // the file's own slicer's numbers
     });
     recordSliceEstimate("embedded");
     return;
@@ -148,6 +154,7 @@ async function estimateFile(file: FileRow, slicerUrl: string | undefined) {
       printTimeSeconds: result.printTimeSeconds ?? null,
       filamentGrams: result.filamentGrams ?? null,
       engine: result.engine ?? null,
+      approx: result.approx ?? true,
       slicePrinter: result.profile === "generic" ? (result.printer ?? null) : null,
       printerInfo: filamentChanges ? { ...printerInfo, filamentChanges } : undefined,
     });
