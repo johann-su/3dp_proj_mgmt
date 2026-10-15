@@ -12,12 +12,16 @@
 // - Metadata/Slic3r_PE.config         PrusaSlicer project settings (ini)
 // - Metadata/Slic3r_PE_model.config   PrusaSlicer's per-object extruders (the
 //                                     equivalent of model_settings.config)
+// - 3D/3dmodel.model                  only its head: the <metadata> naming the
+//                                     app that created the file (the geometry
+//                                     after it can be hundreds of MB)
 //
 // The caller supplies the byte source (S3 ranged GETs in production, an
 // in-memory buffer in tests) — see src/lib/threemf-remote.ts for the S3 side.
 
-import { inflateSync } from "fflate";
+import { Inflate, inflateSync } from "fflate";
 import type { PrinterInfo } from "@/db/schema";
+import { parseFileCreator, type FileCreator } from "@/lib/file-creator";
 import { filamentChangesFromPlates } from "@/lib/printer-info";
 import { bedSizeForModel } from "@/lib/printer-beds";
 
@@ -34,6 +38,8 @@ export type SliceInfo = {
 export type SliceData = {
   sliceInfo: SliceInfo | null;
   printerInfo: PrinterInfo | null;
+  // The app that created the file, when its metadata says (file-creator.ts).
+  creator: FileCreator | null;
 };
 
 // Reads bytes [start, end] — both inclusive, like an HTTP Range header.
@@ -44,7 +50,9 @@ const SLICE_INFO_PATH = "metadata/slice_info.config";
 const PROJECT_SETTINGS_PATH = "metadata/project_settings.config";
 const PRUSA_CONFIG_PATH = "metadata/slic3r_pe.config";
 const PRUSA_MODEL_PATH = "metadata/slic3r_pe_model.config";
+const MODEL_PATH = "3d/3dmodel.model";
 const WANTED_ENTRIES = new Set([
+  MODEL_PATH,
   MODEL_SETTINGS_PATH,
   SLICE_INFO_PATH,
   PROJECT_SETTINGS_PATH,
@@ -134,6 +142,42 @@ async function readEntry(readRange: RangeReader, entry: CentralEntry) {
     entry.localOffset + 30 + header.getUint16(26, true) + header.getUint16(28, true);
   const raw = await readRange(dataStart, dataStart + entry.compressedSize - 1);
   return new TextDecoder().decode(entry.method === 8 ? inflateSync(raw) : raw);
+}
+
+// The model's <metadata> elements come before any geometry, but the entry can
+// be hundreds of MB when meshes are inline (PrusaSlicer, CAD exports), so only
+// a bounded prefix is fetched and inflated — enough for the metadata.
+const MODEL_HEAD_COMPRESSED_BYTES = 64 * 1024;
+const MODEL_HEAD_BYTES = 16 * 1024;
+
+async function readEntryHead(readRange: RangeReader, entry: CentralEntry) {
+  const header = viewOf(
+    await readRange(entry.localOffset, entry.localOffset + 29),
+  );
+  if (header.getUint32(0, true) !== LOCAL_SIG) return null;
+  const dataStart =
+    entry.localOffset + 30 + header.getUint16(26, true) + header.getUint16(28, true);
+  const length = Math.min(entry.compressedSize, MODEL_HEAD_COMPRESSED_BYTES);
+  if (length <= 0) return null;
+  const raw = await readRange(dataStart, dataStart + length - 1);
+  if (entry.method !== 8) {
+    return new TextDecoder().decode(raw.subarray(0, MODEL_HEAD_BYTES));
+  }
+  // Streaming inflate of a truncated stream yields everything it can decode.
+  const chunks: Uint8Array[] = [];
+  const inflater = new Inflate((chunk) => chunks.push(chunk));
+  try {
+    inflater.push(raw, length === entry.compressedSize);
+  } catch {
+    // keep whatever decoded before the error
+  }
+  const out = new Uint8Array(chunks.reduce((n, c) => n + c.length, 0));
+  let offset = 0;
+  for (const chunk of chunks) {
+    out.set(chunk, offset);
+    offset += chunk.length;
+  }
+  return new TextDecoder().decode(out.subarray(0, MODEL_HEAD_BYTES));
 }
 
 function countPlates(xml: string) {
@@ -442,8 +486,9 @@ export async function readSliceData(
       // not JSON — ignore
     }
   }
+  const prusaIni = await entryText(PRUSA_CONFIG_PATH);
   if (!printerInfo) {
-    const ini = await entryText(PRUSA_CONFIG_PATH);
+    const ini = prusaIni;
     // PrusaSlicer keeps its per-object extruders in its own model config, not
     // in Bambu's model_settings.config.
     if (ini) {
@@ -458,6 +503,12 @@ export async function readSliceData(
   const filamentChanges = filamentChangesFromPlates(plateFilaments);
   if (filamentChanges) printerInfo = { ...printerInfo, filamentChanges };
 
-  if (!sliceInfo && !printerInfo) return null;
-  return { sliceInfo, printerInfo };
+  const modelEntry = entries.get(MODEL_PATH);
+  const creator = parseFileCreator(
+    modelEntry ? await readEntryHead(readRange, modelEntry) : null,
+    prusaIni,
+  );
+
+  if (!sliceInfo && !printerInfo && !creator) return null;
+  return { sliceInfo, printerInfo, creator };
 }

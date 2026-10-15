@@ -342,6 +342,10 @@ export const modelFiles = pgTable("model_files", {
   // settings, repaired settings). Null on rows from before it was recorded —
   // see isApproxEstimate.
   sliceApprox: boolean("slice_approx"),
+  // The app that created the file ("Bambu Studio" + "02.08.02.61",
+  // "Onshape" + null) — see src/lib/file-creator.ts. Null when unknown.
+  creatorApp: text("creator_app"),
+  creatorVersion: text("creator_version"),
   printerInfo: jsonb("printer_info").$type<PrinterInfo>(),
   // Set on a .3mf rendered from a parametric .scad file (see
   // src/app/api/models/[id]/customize): the source file row, the customizer
@@ -430,6 +434,8 @@ export type VersionFileSnapshot = {
   sliceEngine?: string | null;
   slicePrinter?: string | null;
   sliceApprox?: boolean | null;
+  creatorApp?: string | null;
+  creatorVersion?: string | null;
   printerInfo: PrinterInfo | null;
 };
 

@@ -80,6 +80,24 @@ printable". A successful response also names the `printer` and `engine`
 same way) and, for `profile: "generic"`, the printer as `slice_printer`,
 which the file card shows when the file names no printer of its own.
 
+### Which app created a file
+
+`model_files.creator_app`/`creator_version` record the application that
+**created** the `.3mf` — not the slicer behind the estimate (`slice_engine`) —
+so slicing can later be routed to a matching backend. `parseFileCreator`
+(`src/lib/file-creator.ts`) reads it from the archive: OrcaSlicer's own
+`<metadata name="OrcaSlicer">` first (Orca writes `Application =
+BambuStudio-<compat version>` for compatibility, so checking `Application`
+first would call every Orca file Bambu Studio), then `Application`, then
+PrusaSlicer's `Slic3r_PE.config` header. Only the head of `3D/3dmodel.model`
+is fetched and stream-inflated (`readEntryHead`): the metadata precedes the
+geometry, which is inline (and can be huge) for PrusaSlicer and CAD exports.
+Files that name no creator fall back to their origin (`creatorFallback`):
+Onshape exports → "Onshape", OpenSCAD variants → "OpenSCAD"; anything else
+stays null. Written with `printer_info` on upload/re-slice (independent of
+`SLICER_URL`); `npm run db:backfill-creator` fills existing rows. Not shown in
+the UI yet.
+
 ### Mid-print filament changes
 
 `printer_info.filamentChanges` answers MakerWorld's "AMS" question: does a

@@ -10,6 +10,7 @@ import {
   type SliceInfo,
 } from "@/lib/threemf-slice-info";
 import type { PrinterInfo } from "@/db/schema";
+import type { FileCreator } from "@/lib/file-creator";
 
 export type { SliceInfo } from "@/lib/threemf-slice-info";
 
@@ -53,4 +54,11 @@ export async function get3mfPrinterInfo(
   size: number,
 ): Promise<PrinterInfo | null> {
   return (await parseCached(s3Key, size))?.printerInfo ?? null;
+}
+
+export async function get3mfCreator(
+  s3Key: string,
+  size: number,
+): Promise<FileCreator | null> {
+  return (await parseCached(s3Key, size))?.creator ?? null;
 }

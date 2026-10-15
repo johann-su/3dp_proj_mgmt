@@ -22,7 +22,8 @@ import { fileExtension } from "@/lib/file-kind";
 import { filamentChangesFromPlates } from "@/lib/printer-info";
 import { blobStore } from "@/lib/storage";
 import { recordSliceEstimate, reportError } from "@/lib/telemetry";
-import { get3mfPrinterInfo, get3mfSliceInfo } from "@/lib/threemf-remote";
+import { creatorFallback } from "@/lib/file-creator";
+import { get3mfCreator, get3mfPrinterInfo, get3mfSliceInfo } from "@/lib/threemf-remote";
 
 // Keep in sync with MAX_BODY_BYTES in slicer/server.mjs.
 const MAX_SLICE_BYTES = 256 * 1024 * 1024;
@@ -95,10 +96,17 @@ async function estimateFile(file: FileRow, slicerUrl: string | undefined) {
   // filament) is worth keeping even when estimation later fails or the
   // slicer service is down.
   const printerInfo = await get3mfPrinterInfo(file.s3Key, file.size);
-  if (printerInfo) {
+  // Which app made the file (for routing to a slicer backend later): its own
+  // metadata, else where it came from (Onshape export, OpenSCAD variant).
+  const creator =
+    (await get3mfCreator(file.s3Key, file.size)) ?? creatorFallback(file);
+  if (printerInfo || creator) {
     await db
       .update(modelFiles)
-      .set({ printerInfo })
+      .set({
+        ...(printerInfo && { printerInfo }),
+        ...(creator && { creatorApp: creator.app, creatorVersion: creator.version }),
+      })
       .where(eq(modelFiles.id, file.id));
   }
 
