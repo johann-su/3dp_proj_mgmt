@@ -39,7 +39,7 @@ import {
   type McpImage,
   type McpTool,
 } from "@/lib/mcp/protocol";
-import { filamentSummary } from "@/lib/printer-info";
+import { filamentSummary, isApproxEstimate } from "@/lib/printer-info";
 import { readFileBytes } from "@/lib/storage";
 import { reportError } from "@/lib/telemetry";
 
@@ -280,6 +280,8 @@ function printerPayload(info: PrinterInfo | null) {
     // two-colour print; colors is index-parallel when the file records it.
     filamentTypes: info.filamentTypes ?? [],
     filamentColors: info.filamentColors ?? [],
+    // Whether a single plate changes filament mid-print (needs an AMS/MMU);
+    // plates that each print one different filament don't count.
     multiFilament: filamentSummary(info)?.multi ?? null,
     // Slots objects are assigned to that the project defines no filament for;
     // the printed material is then unknown, so check before printing.
@@ -320,13 +322,20 @@ async function getModelPrintFiles(args: Record<string, unknown>) {
     files: files.map((file) => ({
       filename: file.filename,
       sizeBytes: file.size,
-      // "ok" numbers are either read from the file's own slice_info (exact,
-      // sliceSource "embedded") or produced by the headless slicer
-      // (approximate); "pending" means no estimate yet, "failed" that the file
+      // "ok" numbers are either read from the file's own slice_info
+      // (sliceSource "embedded") or produced by the headless slicer
+      // ("slicer"); "pending" means no estimate yet, "failed" that the file
       // could not be sliced, null that estimates don't apply (.step/.scad).
       sliceStatus: file.sliceStatus,
       sliceSource: file.sliceSource,
       sliceError: file.sliceError,
+      // The slicer behind the numbers, and — when the file names no printer
+      // of its own — the generic printer the estimate assumed.
+      sliceEngine: file.sliceEngine,
+      estimatedForPrinter: file.slicePrinter,
+      // True when the numbers rest on assumptions the file didn't make
+      // (generic printer, translated or repaired settings).
+      approximate: isApproxEstimate(file),
       printTimeSeconds: file.printTimeSeconds,
       printTime: file.printTimeSeconds !== null ? formatDuration(file.printTimeSeconds) : null,
       filamentGrams: file.filamentGrams,
@@ -337,7 +346,7 @@ async function getModelPrintFiles(args: Record<string, unknown>) {
       printTime: printTimeSeconds !== null ? formatDuration(printTimeSeconds) : null,
       filamentGrams,
     },
-    note: "Estimates from the headless slicer are approximate; those read from a file sliced in Bambu Studio/OrcaSlicer are the slicer's own numbers.",
+    note: "Estimates are slicer predictions: read from the file's own slice data, or sliced by the server with the file's own settings. Files marked approximate were estimated for a printer or settings the file didn't specify (see estimatedForPrinter).",
   };
 }
 
@@ -764,6 +773,6 @@ export const CATALOG_INSTRUCTIONS = [
   "read_document to read a manual — do not try to fetch a document's downloadUrl, since a",
   "URL that appears only in a tool result is not always fetchable. Manuals keep their wiring",
   "diagrams and orientation guides in pictures, so use get_document_images on any page whose",
-  "text looks thin. Print estimates marked sliceSource \"slicer\" are approximations, not the",
-  "printer's own numbers.",
+  "text looks thin. Print estimates are slicer predictions, not the printer's own numbers;",
+  "those marked approximate assumed a printer or settings the file didn't specify.",
 ].join(" ");

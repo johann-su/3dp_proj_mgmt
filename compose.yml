@@ -19,13 +19,19 @@ services:
       timeout: 5s
       retries: 10
 
-  # Headless PrusaSlicer wrapped in a small HTTP service (./slicer). Slices
+  # Headless OrcaSlicer wrapped in a small HTTP service (./slicer). Slices
   # unsliced .3mf uploads to estimate print time & filament use. The port is
   # published loopback-only so `npm run dev` on the host can reach it without
   # exposing the unauthenticated service to the network.
   slicer:
     build: ./slicer
     restart: unless-stopped
+    # The printer files without slicer settings are estimated for — names of
+    # OrcaSlicer system presets; unset = Bambu Lab P1S, 0.20mm, Bambu PLA.
+    environment:
+      SLICER_GENERIC_MACHINE: ${SLICER_GENERIC_MACHINE:-}
+      SLICER_GENERIC_PROCESS: ${SLICER_GENERIC_PROCESS:-}
+      SLICER_GENERIC_FILAMENT: ${SLICER_GENERIC_FILAMENT:-}
     ports:
       - "127.0.0.1:8000:8000"
 

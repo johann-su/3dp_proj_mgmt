@@ -1,6 +1,11 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { filamentSummary } from "@/lib/printer-info";
+import {
+  filamentChangesFromPlates,
+  filamentSummary,
+  isApproxEstimate,
+  sliceFailureMessage,
+} from "@/lib/printer-info";
 
 // The whole point of storing filaments per slot: the same material in two slots
 // is a colour change (an AMS/MMU swap), two different materials mean the
@@ -37,4 +42,54 @@ test("filamentSummary handles files without colour or filament data", () => {
   ]);
   assert.equal(filamentSummary({ model: "Bambu Lab P1S" }), null);
   assert.equal(filamentSummary(null), null);
+});
+
+// MakerWorld's "AMS" tag semantics: a filament change *within one print*.
+// Several plates each printing a different filament need no AMS.
+test("filamentChangesFromPlates only counts changes within a plate", () => {
+  assert.equal(filamentChangesFromPlates([["PLA"], ["PETG"], ["PLA"]]), "none");
+  assert.equal(filamentChangesFromPlates([["PLA"], ["PLA", "PLA", "PLA"]]), "color");
+  assert.equal(filamentChangesFromPlates([["PLA", "pla"], ["PLA", "PETG"]]), "material");
+  // Nothing sliced, or plates that don't list filaments: unknown, not "none".
+  assert.equal(filamentChangesFromPlates([]), null);
+  assert.equal(filamentChangesFromPlates([[], []]), null);
+  assert.equal(filamentChangesFromPlates(undefined), null);
+});
+
+test("filamentSummary trusts the sliced result over the slot list", () => {
+  // Two colours on two plates: slots say multi, but no plate changes filament.
+  assert.equal(
+    filamentSummary({ filamentTypes: ["PLA", "PETG"], filamentChanges: "none" })?.multi,
+    null,
+  );
+  assert.equal(
+    filamentSummary({ filamentTypes: ["PLA", "PLA"], filamentChanges: "color" })?.multi,
+    "color",
+  );
+});
+
+test("sliceFailureMessage names the printer a model doesn't fit", () => {
+  assert.equal(
+    sliceFailureMessage("plate 1: doesn't fit on the Bambu Lab P1S (256 × 256 × 250 mm)"),
+    "Doesn't fit on the Bambu Lab P1S (256 × 256 × 250 mm)",
+  );
+  assert.equal(
+    sliceFailureMessage("plate 3: doesn't fit on the Prusa MK4S (250 × 210 × 220 mm)"),
+    "Plate 3 doesn't fit on the Prusa MK4S (250 × 210 × 220 mm)",
+  );
+  // Anything else stays the generic "may not be printable" warning.
+  assert.match(sliceFailureMessage("Failed slicing the model."), /may not be printable/);
+  assert.match(sliceFailureMessage(null), /may not be printable/);
+});
+
+// "~" means "assumed something the file didn't say", not "our slicer ran".
+test("isApproxEstimate follows the recorded flag, falling back for old rows", () => {
+  const ok = { sliceStatus: "ok", sliceSource: "slicer" as const };
+  assert.equal(isApproxEstimate({ ...ok, sliceApprox: false }), false); // native Bambu/Orca slice
+  assert.equal(isApproxEstimate({ ...ok, sliceApprox: true }), true); // generic/translated/repaired
+  // Rows sliced before the flag existed keep the old rule.
+  assert.equal(isApproxEstimate({ ...ok, sliceApprox: null }), true);
+  assert.equal(isApproxEstimate({ sliceStatus: "ok", sliceSource: "embedded" }), false);
+  // No estimate, nothing to mark.
+  assert.equal(isApproxEstimate({ sliceStatus: "failed", sliceSource: "slicer", sliceApprox: true }), false);
 });

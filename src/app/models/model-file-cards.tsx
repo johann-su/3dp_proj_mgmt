@@ -26,7 +26,7 @@ import {
 import type { PrinterInfo } from "@/db/schema";
 import type { ScadParameterGroup } from "@/lib/scad-params";
 import { formatBytes, formatDuration, formatGrams } from "@/lib/format";
-import { filamentSummary } from "@/lib/printer-info";
+import { filamentSummary, sliceFailureMessage } from "@/lib/printer-info";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -65,6 +65,10 @@ export type PrintFileData = {
   approx: boolean;
   plateCount: number | null;
   printer: PrinterInfo | null;
+  // Which slicer produced the estimate, and the generic printer it assumed
+  // when the file names none of its own (see model_files.slice_printer).
+  sliceEngine?: string | null;
+  slicePrinter?: string | null;
   sliceStatus: string | null;
   sliceError: string | null;
   // Parametric .scad files: customizer schema parsed from the source (set for
@@ -191,13 +195,25 @@ function PrintFileRow({
           </div>
         )}
         <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
-          {file.printTime != null && (
-            <span className="inline-flex items-center gap-1.5 text-sm font-semibold">
-              <Clock className="size-4 text-primary" />
-              {file.approx ? "~" : ""}
-              {formatDuration(file.printTime)}
-            </span>
-          )}
+          {file.printTime != null &&
+            (file.sliceEngine ? (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <span className="inline-flex items-center gap-1.5 text-sm font-semibold">
+                    <Clock className="size-4 text-primary" />
+                    {file.approx ? "~" : ""}
+                    {formatDuration(file.printTime)}
+                  </span>
+                </TooltipTrigger>
+                <TooltipContent>Estimated by {file.sliceEngine}</TooltipContent>
+              </Tooltip>
+            ) : (
+              <span className="inline-flex items-center gap-1.5 text-sm font-semibold">
+                <Clock className="size-4 text-primary" />
+                {file.approx ? "~" : ""}
+                {formatDuration(file.printTime)}
+              </span>
+            ))}
           {file.grams != null && (
             <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
               <Weight className="size-3.5 text-chart-3" />
@@ -223,7 +239,7 @@ function PrintFileRow({
             </span>
           )}
         </div>
-        {file.printer?.model && (
+        {file.printer?.model ? (
           <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
             <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
               <Printer className="size-3.5" />
@@ -232,7 +248,23 @@ function PrintFileRow({
                 ` · ${file.printer.nozzleDiameterMm} mm`}
             </span>
           </div>
-        )}
+        ) : file.slicePrinter ? (
+          // The file names no printer: say which one the estimate assumed.
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
+                  <Printer className="size-3.5" />
+                  {file.slicePrinter} · generic profile
+                </span>
+              </TooltipTrigger>
+              <TooltipContent>
+                The file has no printer settings, so it was estimated for the
+                slicer&apos;s default printer
+              </TooltipContent>
+            </Tooltip>
+          </div>
+        ) : null}
         {(filaments ||
           file.printer?.bedType ||
           file.printer?.usesSupport ||
@@ -258,12 +290,19 @@ function PrintFileRow({
             ))}
             {/* Like "supports": only the informative case is badged. */}
             {filaments?.multi && (
-              <Badge
-                variant="outline"
-                className="px-1.5 py-0 text-[10px] font-normal text-muted-foreground"
-              >
-                {filaments.multi === "material" ? "multi-material" : "multi-color"}
-              </Badge>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Badge
+                    variant="outline"
+                    className="px-1.5 py-0 text-[10px] font-normal text-muted-foreground"
+                  >
+                    {filaments.multi === "material" ? "multi-material" : "multi-color"}
+                  </Badge>
+                </TooltipTrigger>
+                <TooltipContent>
+                  Changes filament mid-print — needs an AMS/MMU or manual swaps
+                </TooltipContent>
+              </Tooltip>
             )}
             {file.printer?.requiresMultiNozzle && (
               <Tooltip>
@@ -314,7 +353,7 @@ function PrintFileRow({
                 title={file.sliceError ?? undefined}
               >
                 <TriangleAlert className="size-3.5" />
-                Couldn&apos;t be sliced — the file may not be printable
+                {sliceFailureMessage(file.sliceError)}
               </span>
             )}
           </div>

@@ -12,12 +12,17 @@
 // - Metadata/Slic3r_PE.config         PrusaSlicer project settings (ini)
 // - Metadata/Slic3r_PE_model.config   PrusaSlicer's per-object extruders (the
 //                                     equivalent of model_settings.config)
+// - 3D/3dmodel.model                  only its head: the <metadata> naming the
+//                                     app that created the file (the geometry
+//                                     after it can be hundreds of MB)
 //
 // The caller supplies the byte source (S3 ranged GETs in production, an
 // in-memory buffer in tests) — see src/lib/threemf-remote.ts for the S3 side.
 
-import { inflateSync } from "fflate";
+import { Inflate, inflateSync } from "fflate";
 import type { PrinterInfo } from "@/db/schema";
+import { parseFileCreator, type FileCreator } from "@/lib/file-creator";
+import { filamentChangesFromPlates } from "@/lib/printer-info";
 import { bedSizeForModel } from "@/lib/printer-beds";
 
 export type SliceInfo = {
@@ -25,11 +30,16 @@ export type SliceInfo = {
   // Sums over all plates; null for unsliced files (no predictions).
   printTimeSeconds: number | null;
   filamentGrams: number | null;
+  // The slicer that wrote the predictions ("Bambu Studio 02.08.02.61"); null
+  // for unsliced files.
+  engine: string | null;
 };
 
 export type SliceData = {
   sliceInfo: SliceInfo | null;
   printerInfo: PrinterInfo | null;
+  // The app that created the file, when its metadata says (file-creator.ts).
+  creator: FileCreator | null;
 };
 
 // Reads bytes [start, end] — both inclusive, like an HTTP Range header.
@@ -40,7 +50,9 @@ const SLICE_INFO_PATH = "metadata/slice_info.config";
 const PROJECT_SETTINGS_PATH = "metadata/project_settings.config";
 const PRUSA_CONFIG_PATH = "metadata/slic3r_pe.config";
 const PRUSA_MODEL_PATH = "metadata/slic3r_pe_model.config";
+const MODEL_PATH = "3d/3dmodel.model";
 const WANTED_ENTRIES = new Set([
+  MODEL_PATH,
   MODEL_SETTINGS_PATH,
   SLICE_INFO_PATH,
   PROJECT_SETTINGS_PATH,
@@ -130,6 +142,42 @@ async function readEntry(readRange: RangeReader, entry: CentralEntry) {
     entry.localOffset + 30 + header.getUint16(26, true) + header.getUint16(28, true);
   const raw = await readRange(dataStart, dataStart + entry.compressedSize - 1);
   return new TextDecoder().decode(entry.method === 8 ? inflateSync(raw) : raw);
+}
+
+// The model's <metadata> elements come before any geometry, but the entry can
+// be hundreds of MB when meshes are inline (PrusaSlicer, CAD exports), so only
+// a bounded prefix is fetched and inflated — enough for the metadata.
+const MODEL_HEAD_COMPRESSED_BYTES = 64 * 1024;
+const MODEL_HEAD_BYTES = 16 * 1024;
+
+async function readEntryHead(readRange: RangeReader, entry: CentralEntry) {
+  const header = viewOf(
+    await readRange(entry.localOffset, entry.localOffset + 29),
+  );
+  if (header.getUint32(0, true) !== LOCAL_SIG) return null;
+  const dataStart =
+    entry.localOffset + 30 + header.getUint16(26, true) + header.getUint16(28, true);
+  const length = Math.min(entry.compressedSize, MODEL_HEAD_COMPRESSED_BYTES);
+  if (length <= 0) return null;
+  const raw = await readRange(dataStart, dataStart + length - 1);
+  if (entry.method !== 8) {
+    return new TextDecoder().decode(raw.subarray(0, MODEL_HEAD_BYTES));
+  }
+  // Streaming inflate of a truncated stream yields everything it can decode.
+  const chunks: Uint8Array[] = [];
+  const inflater = new Inflate((chunk) => chunks.push(chunk));
+  try {
+    inflater.push(raw, length === entry.compressedSize);
+  } catch {
+    // keep whatever decoded before the error
+  }
+  const out = new Uint8Array(chunks.reduce((n, c) => n + c.length, 0));
+  let offset = 0;
+  for (const chunk of chunks) {
+    out.set(chunk, offset);
+    offset += chunk.length;
+  }
+  return new TextDecoder().decode(out.subarray(0, MODEL_HEAD_BYTES));
 }
 
 function countPlates(xml: string) {
@@ -350,6 +398,32 @@ function printerInfoFromPrusaIni(
   return Object.values(info).some((v) => v !== undefined) ? info : null;
 }
 
+// The slicer that wrote a slice_info.config, from its <header>: OrcaSlicer
+// adds its own version item; Bambu Studio only writes the X-BBL client version
+// (which Orca copies over from the project, so it must be checked last).
+// Mirrors sliceEngine in slicer/lib.mjs, which reads the service's output.
+function sliceEngine(xml: string): string | null {
+  const item = (key: string) =>
+    xml.match(new RegExp(`<header_item key="${key}" value="([^"]*)"`))?.[1] || null;
+  const orca = item("OrcaSlicer-Version");
+  if (orca) return `OrcaSlicer ${orca}`;
+  const bambu = item("X-BBL-Client-Version");
+  return bambu ? `Bambu Studio ${bambu}` : null;
+}
+
+// Filament types each *sliced* plate prints from — only plates that carry a
+// prediction, since an unsliced plate lists nothing (or stale data).
+function slicedPlateFilaments(xml: string): string[][] {
+  const plates: string[][] = [];
+  for (const [, plate] of xml.matchAll(/<plate>([\s\S]*?)<\/plate>/g)) {
+    if (!/key="prediction"\s+value="\d+"/.test(plate)) continue;
+    plates.push(
+      [...plate.matchAll(/<filament\b[^>]*\btype="([^"]*)"/g)].map((m) => m[1]),
+    );
+  }
+  return plates;
+}
+
 // Returns null for archives without the relevant metadata (plain core-spec
 // 3mf, non-3mf input).
 export async function readSliceData(
@@ -374,9 +448,13 @@ export async function readSliceData(
 
   let printTimeSeconds: number | null = null;
   let filamentGrams: number | null = null;
+  let engine: string | null = null;
+  let plateFilaments: string[][] = [];
   let plateCount = 0;
   const sliceXml = await entryText(SLICE_INFO_PATH);
   if (sliceXml) {
+    engine = sliceEngine(sliceXml);
+    plateFilaments = slicedPlateFilaments(sliceXml);
     plateCount = countPlates(sliceXml);
     for (const match of sliceXml.matchAll(/key="prediction"\s+value="(\d+)"/g)) {
       printTimeSeconds = (printTimeSeconds ?? 0) + Number(match[1]);
@@ -390,7 +468,14 @@ export async function readSliceData(
   if (plateCount === 0 && modelXml) plateCount = countPlates(modelXml);
   if (plateCount === 0) plateCount = platePngCount;
   const sliceInfo =
-    plateCount > 0 ? { plateCount, printTimeSeconds, filamentGrams } : null;
+    plateCount > 0
+      ? {
+          plateCount,
+          printTimeSeconds,
+          filamentGrams,
+          engine: printTimeSeconds != null ? engine : null,
+        }
+      : null;
 
   let printerInfo: PrinterInfo | null = null;
   const projectJson = await entryText(PROJECT_SETTINGS_PATH);
@@ -401,8 +486,9 @@ export async function readSliceData(
       // not JSON — ignore
     }
   }
+  const prusaIni = await entryText(PRUSA_CONFIG_PATH);
   if (!printerInfo) {
-    const ini = await entryText(PRUSA_CONFIG_PATH);
+    const ini = prusaIni;
     // PrusaSlicer keeps its per-object extruders in its own model config, not
     // in Bambu's model_settings.config.
     if (ini) {
@@ -413,6 +499,16 @@ export async function readSliceData(
     }
   }
 
-  if (!sliceInfo && !printerInfo) return null;
-  return { sliceInfo, printerInfo };
+  // A sliced file also answers "does a plate change filament mid-print?".
+  const filamentChanges = filamentChangesFromPlates(plateFilaments);
+  if (filamentChanges) printerInfo = { ...printerInfo, filamentChanges };
+
+  const modelEntry = entries.get(MODEL_PATH);
+  const creator = parseFileCreator(
+    modelEntry ? await readEntryHead(readRange, modelEntry) : null,
+    prusaIni,
+  );
+
+  if (!sliceInfo && !printerInfo && !creator) return null;
+  return { sliceInfo, printerInfo, creator };
 }

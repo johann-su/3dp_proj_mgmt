@@ -10,17 +10,112 @@ OrcaSlicer embed per-plate predictions in `Metadata/slice_info.config`, which
 are read directly from S3 via ranged GETs (`src/lib/threemf-remote.ts`).
 Unsliced `.3mf` files are sent to the **slicer service** (`slicer/`, the third
 compose container): a zero-dependency Node HTTP wrapper around the headless
-PrusaSlicer CLI (Debian's `prusa-slicer` package) that parses print time and
-filament use from the G-code footer. The service honors the settings embedded
-in the file — Bambu/Orca `project_settings.config` keys are translated to their
-PrusaSlicer equivalents (machine limits, speeds, accelerations, layer height,
-infill, and the filament of the extruder the objects actually use),
-PrusaSlicer projects load their own `Slic3r_PE.config` — falling back to a
-generic 0.4 mm/PLA profile (`slicer/config.ini`) for files without settings.
-Only whitelisted keys are copied (a crafted archive can't smuggle in
-`post_process` scripts), and the bed is a huge virtual plate so multi-plate
-Bambu projects (whose world coordinates extend far past the physical bed) still
-slice; estimates are totals across all plates.
+**OrcaSlicer CLI** (the extracted Linux AppImage, pinned by `ORCA_VERSION` in
+`slicer/Dockerfile` and bumped by Renovate). It runs
+`--slice <plate> --export-3mf` and reads the totals from the *output's*
+`slice_info.config` — the same file the embedded path parses, summed over
+plates — and failures from the `result.json` the CLI writes next to it.
+
+How a file is sliced depends on what it carries (`planSlice` in
+`slicer/server.mjs`, pure helpers in `slicer/lib.mjs`):
+
+- **Bambu/Orca projects** (`project_settings.config`) slice **natively**: the
+  project's own printer/process/filament settings and plate layout, no
+  translation. Checked against Bambu Studio on a real project: 24157 s vs
+  24180 s, 202.21 g vs 202.25 g. Two CLI quirks are handled here — an **empty
+  plate aborts a whole `--slice 0` run** (return code -50), so a project with
+  any empty plate (`model_settings.config` plate without `<model_instance>`)
+  is sliced plate by plate, skipping the empty ones; and the CLI **rejects any
+  project whose settings name a `post_process` script** (it never runs them —
+  upstream commented the call out), so those are stripped and the entry
+  rewritten in the archive with `zip` first. `--allow-newer-file=1` keeps
+  projects from a newer slicer than the CLI from being flagged unsliceable.
+  Such projects can still carry **values Orca rejects**: out-of-range "auto"
+  sentinels (return code -18, `key: -1 not in range`) and custom G-code with
+  placeholders Orca lacks (-100, `machine_start_gcode Parsing error`). The
+  service repairs and retries (`repairSettings`, up to 5 rounds — a Bambu
+  Studio 02.08 A2L project from MakerWorld needed 3): out-of-range keys are
+  dropped (Orca's default applies), unparsable G-code blanked. Orca's error
+  names can differ from the project's keys by underscores (`timelapse_gcode`
+  vs `time_lapse_gcode`). Blanking `change_filament_gcode` drops the purge and
+  swap moves, so a repaired multi-colour estimate runs low (that A2L file:
+  7.2 h vs MakerWorld's 12.7 h); the response lists `repairedSettings` and the
+  service logs them. Slicing such files exactly needs a slicer that knows
+  them — the Bambu Studio CLI is the obvious second backend.
+- **PrusaSlicer projects** (`Slic3r_PE.config`) — Orca **ignores that file**,
+  so known keys are translated to Orca names (`prusaIniToOrca`: layer height,
+  walls, infill, speeds, accelerations, machine limits, and the per-extruder
+  filament values of the extruder the objects use, per
+  `Slic3r_PE_model.config`) and passed as `--key=value` CLI flags over the
+  generic profile, including the project's `bed_shape`/`max_print_height`
+  so "doesn't fit" refers to the project's printer. Only whitelisted keys
+  with plain values carry over. Orca
+  rejects unknown flags ("setup params error"), so a mapping typo fails every
+  PrusaSlicer file — verify new mappings against the real CLI.
+- **Anything else** uses the **generic profile**: Orca system presets named
+  by `SLICER_GENERIC_MACHINE`/`_PROCESS`/`_FILAMENT` on the slicer container
+  (default `Bambu Lab P1S 0.4 nozzle` / `0.20mm Standard @BBL X1C` / `Bambu
+  PLA Basic @BBL X1C`), **flattened at startup** by `presets.mjs` — a bad
+  name fails the service at startup, naming it. Presets are found through
+  each vendor's index (`profiles/<Vendor>.json`, `{name, sub_path}` per kind
+  — files are nested and named unlike their `name`), and inheritance
+  resolves within the vendor a preset came from (base presets like
+  `fdm_filament_pla` exist per vendor with different content; shared
+  filaments come from `OrcaFilamentLibrary`). The CLI's `--load-settings`
+  does **not** resolve `inherits`, so an unflattened system preset silently
+  loses every value defined on its bases (filament density → empty weight,
+  the start G-code → "incorrect slicing parameters"). The process/filament
+  must also list the machine in `compatible_printers`, or the CLI refuses the
+  combination. The machine keeps its **real bed**, with `--arrange 1` (these
+  files have no plate layout to honor).
+
+A model that doesn't fit its printer's bed fails with return code -50 — the
+same code as an empty plate, but empty plates are skipped before slicing, so
+the service reports it as `plate N: doesn't fit on the <printer> (X × Y × Z
+mm)` (`describePrinter`); the model page shows that sentence
+(`sliceFailureMessage` in `src/lib/printer-info.ts`) instead of "may not be
+printable". A successful response also names the `printer` and `engine`
+(from the output's `slice_info.config` header); the app stores the engine as
+`model_files.slice_engine` (embedded estimates record their own slicer the
+same way) and, for `profile: "generic"`, the printer as `slice_printer`,
+which the file card shows when the file names no printer of its own.
+
+### Which app created a file
+
+`model_files.creator_app`/`creator_version` record the application that
+**created** the `.3mf` — not the slicer behind the estimate (`slice_engine`) —
+so slicing can later be routed to a matching backend. `parseFileCreator`
+(`src/lib/file-creator.ts`) reads it from the archive: OrcaSlicer's own
+`<metadata name="OrcaSlicer">` first (Orca writes `Application =
+BambuStudio-<compat version>` for compatibility, so checking `Application`
+first would call every Orca file Bambu Studio), then `Application`, then
+PrusaSlicer's `Slic3r_PE.config` header. Only the head of `3D/3dmodel.model`
+is fetched and stream-inflated (`readEntryHead`): the metadata precedes the
+geometry, which is inline (and can be huge) for PrusaSlicer and CAD exports.
+Files that name no creator fall back to their origin (`creatorFallback`):
+Onshape exports → "Onshape", OpenSCAD variants → "OpenSCAD"; anything else
+stays null. Written with `printer_info` on upload/re-slice (independent of
+`SLICER_URL`); `npm run db:backfill-creator` fills existing rows. Not shown in
+the UI yet.
+
+### Mid-print filament changes
+
+`printer_info.filamentChanges` answers MakerWorld's "AMS" question: does a
+**single plate** print from more than one filament? One plate is one print,
+so a project whose plates each use another filament needs no AMS. It comes
+from the **sliced** per-plate `<filament>` list in `slice_info.config` —
+painted multi-colour only resolves when slicing — either the file's own
+(embedded path, `readSliceData`) or the service's output (`plateFilaments`).
+`filamentChangesFromPlates` is the one rule for both: "none", "color" (same
+material) or "material"; null when no plate lists filaments (older slicers),
+which is unknown rather than "none". `filamentSummary().multi` uses it and
+falls back to the old used-slots guess only for rows sliced before it existed.
+
+The CLI is the GUI binary run headless — no X server or xvfb is needed, but
+the GTK/WebKit/GL runtime libraries must be installed. Orca writes a log into
+its working directory and unpacks models under `$TMPDIR`, so both point at
+the per-request temp dir. The output dir must exist before the run, or early
+failures can't write `result.json`.
 
 Slicing runs in the background after upload (`after()` in the model actions,
 `src/lib/slicer.ts`); results land on `model_files` (`slice_status`,
@@ -34,9 +129,14 @@ check fit against another printer; plus `usesSupport`, from the config's
 `enable_support`/`support_material` — tri-state on purpose, since a *missing*
 key means "the config didn't say", not "no supports", and the model page only
 badges the positive case), which the model page
-shows per file. Slicer-derived numbers
-are still approximations (PrusaSlicer's time estimator, not the printer's
-firmware) and shown with a `~` prefix; files PrusaSlicer cannot slice are
+shows per file. The `~` prefix means **approximate**, not "the service
+sliced it": the service returns `approx` (`estimateIsApprox` in
+`slicer/lib.mjs`) — true for the generic printer, translated PrusaSlicer
+settings or repaired settings, false for a Bambu/Orca project sliced natively —
+stored as `model_files.slice_approx`; embedded estimates store false.
+`isApproxEstimate` (`src/lib/printer-info.ts`) is the one reader (model page,
+versions, trash, share page, MCP), falling back to the old "service-sliced =
+approximate" rule for rows with a null flag. Files OrcaSlicer cannot slice are
 flagged on the model page so the uploader notices a broken or unprintable file.
 Legacy `.step` files (from before Onshape imports switched to 3MF) and files
 uploaded before this feature are skipped. The service is optional: without
@@ -85,7 +185,7 @@ would record a version for what is only a request to recompute (the slicer's
 own writes land outside versioning too, for the same reason). Old estimates
 stay visible until the new ones replace them. Re-slicing a file that carries
 embedded Bambu/Orca predictions costs only a few ranged S3 reads — it re-reads
-`printer_info` and returns before the PrusaSlicer path, which is what makes it
+`printer_info` and returns before the slicer-service path, which is what makes it
 a cheap way to backfill newly parsed fields onto older models, even on an
 instance with no `SLICER_URL`.
 
