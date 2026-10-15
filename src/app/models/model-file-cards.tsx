@@ -161,6 +161,7 @@ function PrintFileRow({
   // useless download. Other model files (.scad, .step) get a plain download.
   const is3mf = file.filename.toLowerCase().endsWith(".3mf");
   const filaments = filamentSummary(file.printer);
+  const missingSlots = file.printer?.missingFilamentSlots;
 
   return (
     <div className="flex min-w-0 items-center gap-3 border rounded-lg px-3 py-2.5">
@@ -235,6 +236,7 @@ function PrintFileRow({
         {(filaments ||
           file.printer?.bedType ||
           file.printer?.usesSupport ||
+          missingSlots?.length ||
           file.sliceStatus === "failed") && (
           <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
             {/* One badge per filament slot — the same material twice means a
@@ -297,6 +299,15 @@ function PrintFileRow({
                 supports
               </Badge>
             )}
+            {/* Deliberately not remapped to a slot that exists: the slicer's
+                fallback could be a different material altogether. */}
+            {missingSlots?.length ? (
+              <span className="inline-flex items-center gap-1 text-xs text-amber-700 dark:text-amber-400">
+                <TriangleAlert className="size-3.5" />
+                Assigned to filament slot {missingSlots.join(", ")}, which the
+                project doesn&apos;t define — check the filament before printing
+              </span>
+            ) : null}
             {file.sliceStatus === "failed" && (
               <span
                 className="inline-flex items-center gap-1 text-xs text-destructive"

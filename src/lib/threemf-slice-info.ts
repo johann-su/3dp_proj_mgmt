@@ -169,26 +169,34 @@ type UsedFilaments = {
   slots: number[]; // 1-based indices into the config's per-slot arrays
   types: string[]; // parallel to slots
   colors?: string[]; // parallel to slots, or absent when any slot lacks one
+  missing: number[]; // assigned slots the config defines no filament for
 };
 
 // The filaments the print actually uses, one entry per slot. Types are *not*
 // deduped: two slots of the same material in different colours is a two-colour
 // print, and collapsing it to ["PLA"] loses exactly the distinction the badges
 // exist to show. Colours are all-or-nothing so the arrays always zip 1:1.
+// An assigned slot with no filament behind it (objects still on AMS slot 5
+// after the project was cut down to one filament) is reported as `missing`
+// rather than guessed at: the slicer would print it with whatever it falls back
+// to, which may be a different material entirely.
 function usedFilaments(
   slots: number[],
   types: unknown,
   colors: unknown,
 ): UsedFilaments | null {
   if (!Array.isArray(types)) return null;
-  const used: UsedFilaments = { slots: [], types: [] };
+  const used: UsedFilaments = { slots: [], types: [], missing: [] };
   for (const slot of slots) {
     const type = cleanLabel(types[slot - 1]);
-    if (type === undefined) continue;
+    if (type === undefined) {
+      used.missing.push(slot);
+      continue;
+    }
     used.slots.push(slot);
     used.types.push(type);
   }
-  if (used.types.length === 0) return null;
+  if (used.types.length === 0) return used.missing.length > 0 ? used : null;
   const hexes = used.slots
     .map((slot) => hexColor(Array.isArray(colors) ? colors[slot - 1] : undefined))
     .filter((c): c is string => c !== undefined);
@@ -268,7 +276,7 @@ function printerInfoFromBambu(
   // single slot needs a single nozzle either way, and a lone nozzle_diameter
   // entry proves the machine only has one — anything else is unknowable.
   const map = numberList(settings.filament_map);
-  const usedExtruders = !filaments
+  const usedExtruders = !filaments?.slots.length
     ? undefined
     : map.length > 0
       ? [...new Set(filaments.slots.map((slot) => map[slot - 1] ?? 1))].sort(
@@ -283,8 +291,10 @@ function printerInfoFromBambu(
     // objects actually print from, not just the first one on the machine.
     nozzleDiameterMm: nozzles[(usedExtruders?.[0] ?? 1) - 1] ?? nozzles[0],
     bedType: cleanLabel(settings.curr_bed_type),
-    filamentTypes: filaments?.types,
+    filamentTypes: filaments?.types.length ? filaments.types : undefined,
     filamentColors: filaments?.colors,
+    // Only present when there is something to warn about.
+    ...(filaments?.missing.length && { missingFilamentSlots: filaments.missing }),
     requiresMultiNozzle: usedExtruders && usedExtruders.length > 1,
     usesSupport: boolSetting(settings.enable_support),
     bedSizeMm: bedSizeFromPoints(settings.printable_area) ?? bedSizeForModel(model),
@@ -314,7 +324,7 @@ function printerInfoFromPrusaIni(
   // multiplexer feeding one nozzle, so only a multi-slot print *without* that
   // flag needs a real toolchanger (Prusa XL, IDEX).
   const semm = boolSetting(values.get("single_extruder_multi_material"));
-  const usedExtruders = !filaments
+  const usedExtruders = !filaments?.slots.length
     ? undefined
     : filaments.slots.length === 1 || nozzles.length === 1 || semm === true
       ? [1]
@@ -324,8 +334,10 @@ function printerInfoFromPrusaIni(
   const info: PrinterInfo = {
     model,
     nozzleDiameterMm: nozzles[(usedExtruders?.[0] ?? 1) - 1] ?? nozzles[0],
-    filamentTypes: filaments?.types,
+    filamentTypes: filaments?.types.length ? filaments.types : undefined,
     filamentColors: filaments?.colors,
+    // Only present when there is something to warn about.
+    ...(filaments?.missing.length && { missingFilamentSlots: filaments.missing }),
     requiresMultiNozzle: usedExtruders && usedExtruders.length > 1,
     // support_material is the master switch; support_material_auto only picks
     // "everywhere" vs "painted enforcers only" — either way the print has

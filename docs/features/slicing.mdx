@@ -74,6 +74,12 @@ Print Vault re-reads the numbers the file already carries.
   by an AMS or MMU don't get it, since those are a filament swap rather than
   hardware you either have or don't. Files sliced before this shipped show the
   older plain filament badges until they are re-uploaded or re-synced.
+- **Stale filament assignments are flagged.** If a file's objects point at a
+  filament slot the project no longer defines (say, everything still on AMS
+  slot 5 after the project was cut down to one filament), the model page shows
+  a warning instead of a material badge. Open the file in your slicer and check
+  which filament each object uses before printing; it isn't guessed, because the
+  fallback could be a different material entirely.
 - **The build plate is drawn at real size.** Alongside the estimate, the file's
   hardware context is recorded (printer model, nozzle, build plate, filaments,
   whether the project prints support material — shown as a `supports` badge —

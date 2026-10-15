@@ -281,6 +281,9 @@ function printerPayload(info: PrinterInfo | null) {
     filamentTypes: info.filamentTypes ?? [],
     filamentColors: info.filamentColors ?? [],
     multiFilament: filamentSummary(info)?.multi ?? null,
+    // Slots objects are assigned to that the project defines no filament for;
+    // the printed material is then unknown, so check before printing.
+    missingFilamentSlots: info.missingFilamentSlots ?? [],
     // undefined = the embedded config didn't say, which is not the same as "no
     // supports" — keep the distinction instead of defaulting it to false.
     usesSupport: info.usesSupport ?? null,

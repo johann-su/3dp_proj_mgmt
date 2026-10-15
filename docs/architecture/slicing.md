@@ -108,6 +108,13 @@ Bambu/Orca's `model_settings.config`, PrusaSlicer's own
 physical extruder whether or not it's used; a `value="0"` on a part means
 "inherit the object's extruder", not slot 0). No such entry → assume slot 1.
 
+An assigned slot the config defines no filament for (objects left on AMS slot 5
+after the project's filament list was cut down to one) lands in
+`missingFilamentSlots` and the model page shows a warning. It is **deliberately
+not remapped** to slot 1 or any other existing slot: whatever the slicer falls
+back to could be a different material entirely (ASA → nylon), so guessing a
+badge would state something the file doesn't.
+
 `requiresMultiNozzle` answers a *hardware* question, not a colour count: an
 AMS/MMU multiplexes many filaments through one nozzle, while an H2D, Prusa XL or
 IDEX genuinely needs a second nozzle the visitor may not own. It is true only

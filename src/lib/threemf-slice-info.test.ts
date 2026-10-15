@@ -141,6 +141,47 @@ test("readSliceData omits filament colours unless every used slot has one", asyn
   assert.equal(info?.filamentColors, undefined);
 });
 
+// Objects can keep a stale assignment to a slot the project no longer has
+// (assigned to AMS slot 5, then the filament list cut down to one). That is
+// reported, never remapped: the slicer's fallback could be another material.
+test("readSliceData reports a filament slot the project doesn't define", async () => {
+  const zip = zipSync({
+    "Metadata/model_settings.config": strToU8(
+      `<config><object><metadata key="extruder" value="5"/></object></config>`,
+    ),
+    "Metadata/project_settings.config": strToU8(
+      JSON.stringify({
+        printer_model: "Bambu Lab P1S",
+        nozzle_diameter: ["0.4"],
+        filament_type: ["ASA"],
+        filament_colour: ["#8A949E"],
+      }),
+    ),
+  });
+  const { readRange, size } = readerFor(zip);
+  const info = (await readSliceData(readRange, size))?.printerInfo;
+  assert.deepEqual(info?.missingFilamentSlots, [5]);
+  assert.equal(info?.filamentTypes, undefined); // not guessed as "ASA"
+  assert.equal(info?.model, "Bambu Lab P1S"); // the rest still parses
+});
+
+// Only the dangling slot is flagged; slots that resolve keep their badges.
+test("readSliceData keeps resolvable slots alongside a missing one", async () => {
+  const zip = zipSync({
+    "Metadata/model_settings.config": strToU8(
+      `<config><object><metadata key="extruder" value="1"/>` +
+        `<part><metadata key="extruder" value="3"/></part></object></config>`,
+    ),
+    "Metadata/project_settings.config": strToU8(
+      JSON.stringify({ filament_type: ["PLA", "PETG"] }),
+    ),
+  });
+  const { readRange, size } = readerFor(zip);
+  const info = (await readSliceData(readRange, size))?.printerInfo;
+  assert.deepEqual(info?.filamentTypes, ["PLA"]);
+  assert.deepEqual(info?.missingFilamentSlots, [3]);
+});
+
 // Multi-*colour* and multi-*nozzle* are different questions: an AMS feeds many
 // slots through one nozzle. Only slots mapped to different physical extruders
 // (filament_map, written by dual-nozzle machines like the H2D) need the

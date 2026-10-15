@@ -249,6 +249,11 @@ export type PrinterInfo = {
   // `filament_colour`). Absent — rather than padded — when the config doesn't
   // give every used slot a colour, so the two arrays always zip 1:1.
   filamentColors?: string[]; // ["#e02020", "#000000"]
+  // Slots (1-based) the objects are assigned to that the project defines no
+  // filament for — e.g. everything left on AMS slot 5 after the filament list
+  // was cut down to one. Surfaced as a warning, never remapped: the slicer's
+  // fallback may be a different material entirely (ASA → nylon).
+  missingFilamentSlots?: number[]; // [5]
   // Whether the used slots sit on more than one *physical* extruder, i.e. the
   // print needs a dual-nozzle/toolchanger machine (H2D, Prusa XL, IDEX) rather
   // than many filaments multiplexed through one nozzle by an AMS/MMU — a
