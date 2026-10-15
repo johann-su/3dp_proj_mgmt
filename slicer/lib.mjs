@@ -1,93 +1,172 @@
-// Pure helpers for the slicer service: G-code stats parsing and translation
-// of settings embedded in a .3mf into whitelisted PrusaSlicer config keys.
-// Kept free of I/O so `npm test` (in the repo root) can cover them; server.mjs
-// wires them to HTTP + the PrusaSlicer CLI.
+// Pure helpers for the slicer service: reading OrcaSlicer's results, planning
+// a slice from what the uploaded .3mf carries, translating PrusaSlicer project
+// settings into OrcaSlicer CLI overrides, and flattening Orca's system presets
+// into the generic profile. Kept free of I/O so `npm test` (in the repo root)
+// can cover them; server.mjs wires them to HTTP + the OrcaSlicer CLI, and
+// build-presets.mjs runs the flattening at image build time.
 
-// --- gcode stats parsing ---------------------------------------------------
+// --- OrcaSlicer CLI results --------------------------------------------------
 
-const UNIT_SECONDS = { d: 86400, h: 3600, m: 60, s: 1 };
-
-// "2d 1h 5m 30s" -> seconds
-function parseDuration(text) {
-  let seconds = null;
-  for (const m of text.matchAll(/(\d+)\s*([dhms])/g)) {
-    seconds = (seconds ?? 0) + Number(m[1]) * UNIT_SECONDS[m[2]];
+// The CLI writes result.json into --outputdir on success *and* failure:
+// { return_code, error_string, plate_index (1-based, 0 = not plate-specific) }
+// — codes and messages are `cli_errors` in OrcaSlicer's src/OrcaSlicer.cpp.
+export function parseResultJson(text) {
+  let result;
+  try {
+    result = JSON.parse(text);
+  } catch {
+    return null;
   }
-  return seconds;
-}
-
-// Multi-extruder values are comma-separated lists -> sum them.
-function sumList(raw) {
-  let total = null;
-  for (const part of raw.split(",")) {
-    const value = Number.parseFloat(part);
-    if (Number.isFinite(value)) total = (total ?? 0) + value;
-  }
-  return total;
-}
-
-export function parseGcodeStats(tail) {
-  // First match is normal mode; a second line may exist for stealth mode.
-  const time = tail.match(/^; estimated printing time.*?=\s*(.+)$/m);
-  const grams =
-    tail.match(/^; total filament used \[g\]\s*=\s*(.+)$/m) ??
-    tail.match(/^; filament used \[g\]\s*=\s*(.+)$/m);
-  const mm = tail.match(/^; filament used \[mm\]\s*=\s*(.+)$/m);
+  if (typeof result?.return_code !== "number") return null;
   return {
-    printTimeSeconds: time ? parseDuration(time[1]) : null,
-    filamentGrams: grams ? sumList(grams[1]) : null,
-    filamentMm: mm ? sumList(mm[1]) : null,
+    returnCode: result.return_code,
+    error: typeof result.error_string === "string" ? result.error_string : "",
+    plateIndex: Number.isInteger(result.plate_index) ? result.plate_index : 0,
   };
 }
 
-// --- embedded settings -> derived PrusaSlicer config -----------------------
+// Metadata/slice_info.config of the sliced output: one <plate> per sliced
+// plate with <metadata key="prediction"> (seconds) and key="weight" (grams),
+// plus a <filament used_m used_g> per filament. Totals are summed over plates.
+// `weight` can be empty when the filament preset has no density; fall back to
+// the per-filament grams then.
+export function parseSliceInfo(xml) {
+  let printTimeSeconds = null;
+  let filamentGrams = null;
+  let filamentMm = null;
+  let plates = 0;
+  for (const [, plate] of xml.matchAll(/<plate>([\s\S]*?)<\/plate>/g)) {
+    plates++;
+    const prediction = Number.parseFloat(metadataValue(plate, "prediction"));
+    if (Number.isFinite(prediction)) {
+      printTimeSeconds = (printTimeSeconds ?? 0) + prediction;
+    }
+    let grams = Number.parseFloat(metadataValue(plate, "weight"));
+    let metres = null;
+    let filamentGramsSum = null;
+    for (const [tag] of plate.matchAll(/<filament\b[^>]*>/g)) {
+      const m = Number.parseFloat(attribute(tag, "used_m"));
+      const g = Number.parseFloat(attribute(tag, "used_g"));
+      if (Number.isFinite(m)) metres = (metres ?? 0) + m;
+      if (Number.isFinite(g)) filamentGramsSum = (filamentGramsSum ?? 0) + g;
+    }
+    if (!(grams > 0)) grams = filamentGramsSum > 0 ? filamentGramsSum : NaN;
+    if (Number.isFinite(grams)) filamentGrams = (filamentGrams ?? 0) + grams;
+    if (metres != null) filamentMm = (filamentMm ?? 0) + metres * 1000;
+  }
+  return {
+    plates,
+    printTimeSeconds:
+      printTimeSeconds == null ? null : Math.round(printTimeSeconds),
+    filamentGrams: filamentGrams == null ? null : round2(filamentGrams),
+    filamentMm: filamentMm == null ? null : round2(filamentMm),
+  };
+}
 
-// Bambu Studio / OrcaSlicer keys (Metadata/project_settings.config) mapped to
-// their PrusaSlicer equivalents. Scalar process settings:
-const BAMBU_SCALAR_MAP = {
+function metadataValue(xml, key) {
+  const m = xml.match(new RegExp(`<metadata key="${key}" value="([^"]*)"`));
+  return m ? m[1] : "";
+}
+
+function attribute(tag, name) {
+  const m = tag.match(new RegExp(`\\b${name}="([^"]*)"`));
+  return m ? m[1] : "";
+}
+
+function round2(n) {
+  return Math.round(n * 100) / 100;
+}
+
+// --- Bambu/Orca projects ----------------------------------------------------
+
+// The plates of a Bambu/Orca project (Metadata/model_settings.config) with
+// how many object instances sit on each. Empty plates are common (a plate
+// added and never filled) and make `--slice 0` fail outright (CLI return
+// code -50, "One of the plate is empty").
+export function projectPlates(modelSettingsXml) {
+  const plates = [];
+  for (const [, block] of modelSettingsXml.matchAll(
+    /<plate>([\s\S]*?)<\/plate>/g,
+  )) {
+    const index = Number.parseInt(metadataValue(block, "plater_id"), 10);
+    if (!Number.isInteger(index) || index < 1) continue;
+    const instances = block.match(/<model_instance>/g)?.length ?? 0;
+    plates.push({ index, instances });
+  }
+  return plates;
+}
+
+// Which `--slice` runs a project needs: one run over all plates (0), or —
+// when some plates are empty — one run per non-empty plate.
+export function platesToSlice(plates) {
+  if (!plates.some((p) => p.instances === 0)) return [0];
+  return plates.filter((p) => p.instances > 0).map((p) => p.index);
+}
+
+// The CLI refuses a project whose settings carry post-processing scripts
+// ("post_process is not supported under CLI") — it never runs them, but the
+// file would be flagged unsliceable for a setting that doesn't affect the
+// estimate. Returns the settings with the scripts removed, or null when
+// there is nothing to strip.
+export function stripPostProcess(settings) {
+  const scripts = settings?.post_process;
+  const hasScripts = Array.isArray(scripts)
+    ? scripts.some((s) => String(s).trim() !== "")
+    : typeof scripts === "string" && scripts.trim() !== "";
+  if (!hasScripts) return null;
+  return { ...settings, post_process: [] };
+}
+
+// --- PrusaSlicer projects -> OrcaSlicer CLI overrides ------------------------
+
+// OrcaSlicer ignores Metadata/Slic3r_PE.config, so PrusaSlicer projects slice
+// with the generic profile plus these settings translated to Orca's keys and
+// passed as CLI flags (which take priority over the loaded presets).
+// Scalar print settings, PrusaSlicer key -> Orca key:
+const PRUSA_SCALAR_MAP = {
   layer_height: "layer_height",
-  initial_layer_print_height: "first_layer_height",
-  wall_loops: "perimeters",
-  top_shell_layers: "top_solid_layers",
-  bottom_shell_layers: "bottom_solid_layers",
-  sparse_infill_density: "fill_density",
-  enable_support: "support_material",
+  first_layer_height: "initial_layer_print_height",
+  perimeters: "wall_loops",
+  top_solid_layers: "top_shell_layers",
+  bottom_solid_layers: "bottom_shell_layers",
+  fill_density: "sparse_infill_density",
+  support_material: "enable_support",
   brim_width: "brim_width",
-  skirt_loops: "skirts",
+  skirts: "skirt_loops",
   travel_speed: "travel_speed",
-  outer_wall_speed: "external_perimeter_speed",
-  inner_wall_speed: "perimeter_speed",
-  sparse_infill_speed: "infill_speed",
-  internal_solid_infill_speed: "solid_infill_speed",
-  top_surface_speed: "top_solid_infill_speed",
-  initial_layer_speed: "first_layer_speed",
-  gap_infill_speed: "gap_fill_speed",
+  external_perimeter_speed: "outer_wall_speed",
+  perimeter_speed: "inner_wall_speed",
+  infill_speed: "sparse_infill_speed",
+  solid_infill_speed: "internal_solid_infill_speed",
+  top_solid_infill_speed: "top_surface_speed",
+  first_layer_speed: "initial_layer_speed",
+  gap_fill_speed: "gap_infill_speed",
   bridge_speed: "bridge_speed",
   default_acceleration: "default_acceleration",
-  initial_layer_acceleration: "first_layer_acceleration",
-  outer_wall_acceleration: "external_perimeter_acceleration",
-  inner_wall_acceleration: "perimeter_acceleration",
-  sparse_infill_acceleration: "infill_acceleration",
-  internal_solid_infill_acceleration: "solid_infill_acceleration",
-  top_surface_acceleration: "top_solid_infill_acceleration",
+  first_layer_acceleration: "initial_layer_acceleration",
+  external_perimeter_acceleration: "outer_wall_acceleration",
+  perimeter_acceleration: "inner_wall_acceleration",
+  infill_acceleration: "sparse_infill_acceleration",
+  solid_infill_acceleration: "internal_solid_infill_acceleration",
+  top_solid_infill_acceleration: "top_surface_acceleration",
   travel_acceleration: "travel_acceleration",
 };
 
-// Per-filament arrays, indexed by the extruder the objects actually use
-// (model_settings.config) — an AMS project may park 5 filaments while the
-// plate prints with one.
-const BAMBU_FILAMENT_MAP = {
+// Per-extruder lists in PrusaSlicer; the generic profile has one extruder and
+// one filament, so these take the entry of the extruder the objects use.
+const PRUSA_PER_EXTRUDER_MAP = {
   filament_diameter: "filament_diameter",
   filament_density: "filament_density",
   filament_type: "filament_type",
-  nozzle_temperature: "temperature",
-  nozzle_temperature_initial_layer: "first_layer_temperature",
+  temperature: "nozzle_temperature",
+  first_layer_temperature: "nozzle_temperature_initial_layer",
+  filament_max_volumetric_speed: "filament_max_volumetric_speed",
+  nozzle_diameter: "nozzle_diameter",
 };
 
-// Machine kinematics: arrays of [normal, silent] values, joined for
-// PrusaSlicer's vector syntax. These dominate the time estimate on fast
-// printers, so they matter more than the speed settings themselves.
-const BAMBU_MACHINE_KEYS = [
+// Machine kinematics: [normal, silent] lists with the same key names in both
+// slicers. These dominate the time estimate on fast printers.
+const MACHINE_LIMIT_KEYS = [
   "machine_max_speed_x",
   "machine_max_speed_y",
   "machine_max_speed_z",
@@ -105,51 +184,86 @@ const BAMBU_MACHINE_KEYS = [
   "machine_max_jerk_e",
 ];
 
-// nozzle_diameter is per-extruder in Bambu configs; joined like machine keys.
-const BAMBU_VECTOR_MAP = Object.fromEntries([
-  ...BAMBU_MACHINE_KEYS.map((k) => [k, k]),
-  ["nozzle_diameter", "nozzle_diameter"],
-]);
+// PrusaSlicer fill pattern -> Orca sparse_infill_pattern. Orca calls
+// rectilinear "zig-zag" and stars "tri-hexagon"; the rest share names.
+const FILL_PATTERNS = {
+  rectilinear: "zig-zag",
+  stars: "tri-hexagon",
+  ...Object.fromEntries(
+    [
+      "alignedrectilinear", "grid", "triangles", "cubic", "line",
+      "concentric", "honeycomb", "3dhoneycomb", "gyroid", "hilbertcurve",
+      "archimedeanchords", "octagramspiral", "adaptivecubic", "supportcubic",
+      "lightning",
+    ].map((p) => [p, p]),
+  ),
+};
 
-const FILL_PATTERNS = new Set([
-  "rectilinear", "alignedrectilinear", "grid", "triangles", "stars", "cubic",
-  "line", "concentric", "honeycomb", "3dhoneycomb", "gyroid", "hilbertcurve",
-  "archimedeanchords", "octagramspiral", "adaptivecubic", "supportcubic",
-  "lightning",
-]);
-const BAMBU_FILL_ALIASES = { "zig-zag": "rectilinear" };
+// Only plain numbers/words/lists survive — values become CLI arguments, and
+// a crafted archive should not be able to smuggle anything else in.
+const SAFE_VALUE = /^[A-Za-z0-9.,+-]{1,200}$/;
 
-// Every PrusaSlicer key a derived config may set; doubles as the whitelist
-// for embedded PrusaSlicer inis. Intentionally excludes anything that could
-// touch the system (post_process, print_host, …), output paths, and the bed
-// (see ESTIMATION-BED note in config.ini).
-const PRUSA_KEY_WHITELIST = new Set([
-  ...Object.values(BAMBU_SCALAR_MAP),
-  ...Object.values(BAMBU_FILAMENT_MAP),
-  ...Object.values(BAMBU_VECTOR_MAP),
-  "fill_pattern",
-]);
-
-// Percent values are only universally accepted here; elsewhere they can make
-// prusa-slicer reject the whole config, which would fail the slice.
-const PERCENT_OK = new Set([
-  "fill_density", "external_perimeter_speed", "solid_infill_speed",
-  "top_solid_infill_speed", "first_layer_speed",
-]);
-
-function cleanValue(prusaKey, raw) {
+function cleanValue(raw) {
   const value = String(raw).trim();
-  if (!/^[A-Za-z0-9. ,%+-]{1,200}$/.test(value)) return null;
-  if (value.includes("%") && !PERCENT_OK.has(prusaKey)) return null;
-  return value;
+  return SAFE_VALUE.test(value) ? value : null;
+}
+
+function parseIni(ini) {
+  const values = {};
+  for (const line of ini.split("\n")) {
+    const m = line.match(/^\s*([a-z_0-9]+)\s*=\s*(.*?)\s*$/);
+    if (m) values[m[1]] = m[2];
+  }
+  return values;
+}
+
+// Returns Orca setting key -> value for the settings a PrusaSlicer project
+// defines. Unknown keys (post_process, print_host, …) are never copied.
+export function prusaIniToOrca(ini, extruder = 1) {
+  const prusa = parseIni(ini);
+  const orca = {};
+  const set = (key, raw) => {
+    if (raw == null) return;
+    const value = cleanValue(raw);
+    if (value !== null) orca[key] = value;
+  };
+
+  for (const [prusaKey, orcaKey] of Object.entries(PRUSA_SCALAR_MAP)) {
+    const raw = prusa[prusaKey];
+    if (raw == null) continue;
+    // PrusaSlicer allows "50%" for many speeds (relative to another speed);
+    // Orca accepts a percentage only for the infill density.
+    if (raw.includes("%")) {
+      if (orcaKey === "sparse_infill_density") {
+        const pct = raw.replace(/\s/g, "");
+        if (/^\d+(\.\d+)?%$/.test(pct)) orca[orcaKey] = pct;
+      }
+      continue;
+    }
+    set(orcaKey, raw);
+  }
+  for (const [prusaKey, orcaKey] of Object.entries(PRUSA_PER_EXTRUDER_MAP)) {
+    const raw = prusa[prusaKey];
+    if (raw == null) continue;
+    const entries = raw.split(/[,;]/).map((s) => s.trim());
+    set(orcaKey, entries[extruder - 1] ?? entries[0]);
+  }
+  for (const key of MACHINE_LIMIT_KEYS) set(key, prusa[key]);
+
+  const pattern = FILL_PATTERNS[prusa.fill_pattern?.trim()];
+  if (pattern) orca.sparse_infill_pattern = pattern;
+  return orca;
 }
 
 // The extruder most objects are assigned to (1-based; 1 when unspecified).
-export function usedExtruder(modelSettingsXml) {
+// Works on PrusaSlicer's Slic3r_PE_model.config, where `value="0"` on a part
+// means "inherit the object's extruder" and is therefore not counted.
+export function usedExtruder(modelConfigXml) {
   const counts = new Map();
-  for (const m of modelSettingsXml.matchAll(
+  for (const m of modelConfigXml.matchAll(
     /key="extruder"\s+value="(\d+)"/g,
   )) {
+    if (m[1] === "0") continue;
     counts.set(m[1], (counts.get(m[1]) ?? 0) + 1);
   }
   let best = 1;
@@ -160,36 +274,65 @@ export function usedExtruder(modelSettingsXml) {
   return best;
 }
 
-export function fromBambuJson(settings, extruder) {
-  const derived = {};
-  const set = (prusaKey, raw) => {
-    if (raw == null) return;
-    const value = cleanValue(prusaKey, raw);
-    if (value !== null) derived[prusaKey] = value;
-  };
-  for (const [key, prusaKey] of Object.entries(BAMBU_SCALAR_MAP)) {
-    set(prusaKey, settings[key]);
-  }
-  for (const [key, prusaKey] of Object.entries(BAMBU_VECTOR_MAP)) {
-    if (Array.isArray(settings[key])) set(prusaKey, settings[key].join(","));
-  }
-  const index = extruder - 1;
-  for (const [key, prusaKey] of Object.entries(BAMBU_FILAMENT_MAP)) {
-    if (Array.isArray(settings[key])) set(prusaKey, settings[key][index]);
-  }
-  const pattern = BAMBU_FILL_ALIASES[settings.sparse_infill_pattern] ??
-    settings.sparse_infill_pattern;
-  if (FILL_PATTERNS.has(pattern)) derived.fill_pattern = pattern;
-  return derived;
+// Orca setting map -> CLI flags. Orca's CLI spells every setting with dashes
+// (`layer_height` -> `--layer-height`) and accepts `--flag=value`.
+export function toCliFlags(settings) {
+  return Object.entries(settings).map(
+    ([key, value]) => `--${key.replaceAll("_", "-")}=${value}`,
+  );
 }
 
-export function fromPrusaIni(ini) {
-  const derived = {};
-  for (const line of ini.split("\n")) {
-    const m = line.match(/^\s*([a-z_0-9]+)\s*=\s*(.*)$/);
-    if (!m || !PRUSA_KEY_WHITELIST.has(m[1])) continue;
-    const value = cleanValue(m[1], m[2]);
-    if (value !== null) derived[m[1]] = value;
+// --- generic profile (flattened system presets) ------------------------------
+
+// OrcaSlicer's system presets inherit from base presets (`inherits`), but the
+// CLI's --load-settings reads a preset file as-is and never resolves that
+// chain — values only defined on a base (filament density, speeds, the start
+// G-code, …) would silently fall back to the engine's defaults. So presets
+// are flattened at build time. `lookup(name)` returns the parsed preset JSON.
+export function flattenPreset(name, lookup) {
+  const chain = [];
+  const seen = new Set();
+  for (let current = name; current; ) {
+    if (seen.has(current)) throw new Error(`inherits cycle at "${current}"`);
+    seen.add(current);
+    const preset = lookup(current);
+    if (!preset) throw new Error(`preset "${current}" not found`);
+    chain.unshift(preset);
+    current = preset.inherits;
   }
-  return derived;
+  const flat = Object.assign({}, ...chain);
+  delete flat.inherits;
+  flat.name = name;
+  return flat;
+}
+
+// Bed size of the generic machine. Files without settings carry no plate
+// layout to honor, and the estimate barely depends on the bed — a real-size
+// bed would just fail large but perfectly printable models.
+const GENERIC_BED_MM = 1000;
+
+// Turns flattened presets into a set the CLI accepts together: loaded as
+// "system" presets, the process (and filament) must list the machine in
+// compatible_printers or the CLI refuses the combination ("The selected
+// printer is not compatible with the process preset").
+export function genericPresetSet({ machine, process, filament }) {
+  const compat = (preset) => {
+    const out = { ...preset, from: "system", compatible_printers: [machine.name] };
+    delete out.compatible_printers_condition;
+    delete out.compatible_prints;
+    delete out.compatible_prints_condition;
+    return out;
+  };
+  const big = String(GENERIC_BED_MM);
+  return {
+    machine: {
+      ...machine,
+      from: "system",
+      printable_area: ["0x0", `${big}x0`, `${big}x${big}`, `0x${big}`],
+      printable_height: big,
+      bed_exclude_area: [],
+    },
+    process: compat(process),
+    filament: compat(filament),
+  };
 }

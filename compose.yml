@@ -19,7 +19,7 @@ services:
       timeout: 5s
       retries: 10
 
-  # Headless PrusaSlicer wrapped in a small HTTP service (./slicer). Slices
+  # Headless OrcaSlicer wrapped in a small HTTP service (./slicer). Slices
   # unsliced .3mf uploads to estimate print time & filament use. The port is
   # published loopback-only so `npm run dev` on the host can reach it without
   # exposing the unauthenticated service to the network.

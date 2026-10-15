@@ -1,11 +1,12 @@
 // Client for the headless slicer service (./slicer), which wraps the
-// PrusaSlicer CLI behind POST /estimate. Uploaded .3mf model files are marked
+// OrcaSlicer CLI behind POST /estimate. Uploaded .3mf model files are marked
 // sliceStatus="pending" on insert; processPendingSlices runs after the
 // response (via next/server `after`) and resolves each file to:
 //
 // - "ok" / "embedded"  the file was already sliced in Bambu Studio/OrcaSlicer
 //                      and carries predictions in Metadata/slice_info.config
-// - "ok" / "slicer"    the slicer service sliced it with a generic profile —
+// - "ok" / "slicer"    the slicer service sliced it — with the project's own
+//                      settings where it has them, else a generic profile;
 //                      estimates, not gospel (the UI prefixes them with "~")
 // - "failed"           the file cannot be sliced; surfaced to the user so
 //                      they notice a broken/unprintable upload

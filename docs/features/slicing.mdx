@@ -21,21 +21,32 @@ sliced:
   pull only the bytes it needs.
 - **Unsliced files are sliced on the server.** A `.3mf` with no embedded
   predictions is sent to the optional **slicer service** — a thin wrapper around
-  the headless PrusaSlicer CLI — which slices it and parses the print time and
-  filament use out of the resulting G-code.
+  the headless OrcaSlicer CLI — which slices it and reads the print time and
+  filament use from the result, exactly as if you had pressed "Slice all" in
+  OrcaSlicer.
 
 The estimate shown is the **total across all plates** in a multi-plate project.
 
 ### How server-side slicing picks settings
 
 The slicer service honors the settings **embedded in the file** rather than
-guessing: Bambu/Orca project settings are translated to their PrusaSlicer
-equivalents (machine limits, speeds, accelerations, layer height, infill, and
-the filament of the extruder the objects actually use). A file with no settings
-falls back to a generic **0.4 mm nozzle / PLA** profile. For safety, only a
-whitelist of settings keys is copied across, so a crafted archive can't smuggle
-in post-processing scripts, and the virtual bed is made huge so that multi-plate
-Bambu projects (whose coordinates extend well past a physical bed) still slice.
+guessing:
+
+- **Bambu Studio and OrcaSlicer projects** are sliced as they are — with the
+  project's own printer, process and filament settings and its own plates.
+  OrcaSlicer is a fork of Bambu Studio and reads these projects natively, so
+  the estimate lands very close to what Bambu Studio itself shows. Empty plates
+  are skipped.
+- **PrusaSlicer projects** are sliced with the generic profile below, overlaid
+  with the project's layer height, walls, infill, speeds, accelerations,
+  machine limits and the filament of the extruder the objects use. Only a
+  whitelist of settings carries over, so a crafted archive can't smuggle
+  anything else in.
+- **Files with no settings** (a plain `.3mf` from CAD, Onshape, OpenSCAD, …)
+  use a generic profile: a **Bambu Lab P1S, 0.4 mm nozzle, 0.20 mm Standard,
+  Bambu PLA Basic**, on an oversized bed so large models still get an estimate.
+
+Post-processing scripts in a project are never run.
 
 ### Re-running slicing on a file
 
@@ -61,9 +72,12 @@ Print Vault re-reads the numbers the file already carries.
 ### Things to know about estimates
 
 - **They are approximations, and shown with a `~` prefix.** Server-side numbers
-  come from PrusaSlicer's time estimator, not your printer's firmware, so treat
-  them as ballpark figures.
-- **Unsliceable files are flagged.** If PrusaSlicer can't slice a file, the
+  come from OrcaSlicer's time estimator, not your printer's firmware. For
+  Bambu/Orca projects that is the same estimator your slicer uses; files
+  without settings are estimated for the generic printer above, so treat those
+  as ballpark figures.
+- **Unsliceable files are flagged.** If OrcaSlicer can't slice a file (say, an
+  object hangs over the edge of its plate), the
   model page marks it — a useful signal that the file may be broken or
   unprintable, not silently missing an estimate.
 - **Multi-colour prints are called out.** The filament badges show one swatch
