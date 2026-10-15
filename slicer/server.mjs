@@ -375,7 +375,7 @@ async function estimate(body) {
         ...totals,
         plateFilaments,
         repairedSettings: [...repaired],
-        approx: estimateIsApprox({ ...plan, repairedCount: repaired.size }),
+        approx: estimateIsApprox({ ...plan, repairedKeys: [...repaired] }),
       },
     };
   } finally {

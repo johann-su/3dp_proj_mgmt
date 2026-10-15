@@ -133,7 +133,10 @@ shows per file. The `~` prefix means **approximate**, not "the service
 sliced it": the service returns `approx` (`estimateIsApprox` in
 `slicer/lib.mjs`) — true for the generic printer, translated PrusaSlicer
 settings or repaired settings, false for a Bambu/Orca project sliced natively —
-stored as `model_files.slice_approx`; embedded estimates store false.
+stored as `model_files.slice_approx`; embedded estimates store false. Of the
+repairs only blanked G-code counts — a dropped out-of-range value falls back
+to Orca's default, typically the same "auto" (Orca-saved files derived from
+Bambu projects carry Bambu's `tree_support_wall_count = -1`; Orca's 0 = auto).
 `isApproxEstimate` (`src/lib/printer-info.ts`) is the one reader (model page,
 versions, trash, share page, MCP), falling back to the old "service-sliced =
 approximate" rule for rows with a null flag. Files OrcaSlicer cannot slice are

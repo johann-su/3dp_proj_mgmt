@@ -202,13 +202,20 @@ export function describePrinter(settings) {
 }
 
 // Whether an estimate is approximate — i.e. not what the file's own slicer
-// would report. Only a Bambu/Orca project sliced natively with nothing
-// repaired is exact (within 0.1% of Bambu Studio on a real project); the
-// generic printer, translated PrusaSlicer settings and repaired settings
-// (which can drop filament-change time) are all assumptions the file didn't
-// make.
-export function estimateIsApprox({ profile, translated = false, repairedCount = 0 }) {
-  return profile === "generic" || translated || repairedCount > 0;
+// would report. A Bambu/Orca project sliced natively is exact (within 0.1% of
+// Bambu Studio on a real project). The generic printer and translated
+// PrusaSlicer settings are assumptions the file didn't make. Of the repairs,
+// only blanked custom G-code counts: it drops real moves (a multi-colour
+// print's filament-change sequence). A dropped out-of-range value just falls
+// back to Orca's default — typically the same "auto" the file meant (Bambu's
+// `tree_support_wall_count = -1` vs Orca's 0), so it doesn't make the
+// estimate approximate.
+export function estimateIsApprox({ profile, translated = false, repairedKeys = [] }) {
+  return (
+    profile === "generic" ||
+    translated ||
+    repairedKeys.some((key) => key.endsWith("_gcode"))
+  );
 }
 
 // --- PrusaSlicer projects -> OrcaSlicer CLI overrides ------------------------
