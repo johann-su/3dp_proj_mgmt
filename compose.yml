@@ -26,6 +26,12 @@ services:
   slicer:
     build: ./slicer
     restart: unless-stopped
+    # The printer files without slicer settings are estimated for — names of
+    # OrcaSlicer system presets; unset = Bambu Lab P1S, 0.20mm, Bambu PLA.
+    environment:
+      SLICER_GENERIC_MACHINE: ${SLICER_GENERIC_MACHINE:-}
+      SLICER_GENERIC_PROCESS: ${SLICER_GENERIC_PROCESS:-}
+      SLICER_GENERIC_FILAMENT: ${SLICER_GENERIC_FILAMENT:-}
     ports:
       - "127.0.0.1:8000:8000"
 

@@ -87,6 +87,8 @@ export async function loadSharedModelView(
       printer: file.printerInfo ?? null,
       sliceStatus: file.sliceStatus ?? null,
       sliceError: null,
+      sliceEngine: file.sliceEngine ?? null,
+      slicePrinter: file.slicePrinter ?? null,
       paramsSummary: file.generatedParams
         ? Object.entries(file.generatedParams)
             .map(([key, value]) => `${key} = ${value}`)

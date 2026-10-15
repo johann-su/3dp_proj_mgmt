@@ -280,6 +280,8 @@ function printerPayload(info: PrinterInfo | null) {
     // two-colour print; colors is index-parallel when the file records it.
     filamentTypes: info.filamentTypes ?? [],
     filamentColors: info.filamentColors ?? [],
+    // Whether a single plate changes filament mid-print (needs an AMS/MMU);
+    // plates that each print one different filament don't count.
     multiFilament: filamentSummary(info)?.multi ?? null,
     // Slots objects are assigned to that the project defines no filament for;
     // the printed material is then unknown, so check before printing.
@@ -327,6 +329,10 @@ async function getModelPrintFiles(args: Record<string, unknown>) {
       sliceStatus: file.sliceStatus,
       sliceSource: file.sliceSource,
       sliceError: file.sliceError,
+      // The slicer behind the numbers, and — when the file names no printer
+      // of its own — the generic printer the estimate assumed.
+      sliceEngine: file.sliceEngine,
+      estimatedForPrinter: file.slicePrinter,
       printTimeSeconds: file.printTimeSeconds,
       printTime: file.printTimeSeconds !== null ? formatDuration(file.printTimeSeconds) : null,
       filamentGrams: file.filamentGrams,

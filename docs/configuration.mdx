@@ -88,6 +88,27 @@ disappears from the UI.
 | `SLICER_URL` | `http://slicer:8000` | Headless OrcaSlicer service (`slicer` in `compose.yml`). Estimates print time & filament use for unsliced `.3mf` uploads; without it, such files show no estimates. |
 | `OPENSCAD_URL` | `http://openscad:8000` | Headless OpenSCAD service (`openscad` in `compose.yml`). Renders customized `.3mf` files from parametric `.scad` models; without it, the customizer UI is hidden and `.scad` files are plain downloads. |
 
+### Slicer service printer
+
+Set on the **`slicer`** container (`compose.yml` passes them through from your
+`.env`). They choose the printer that files **without slicer settings of their
+own** — a plain `.3mf` from CAD, Onshape or OpenSCAD — are estimated for; files
+saved in Bambu Studio, OrcaSlicer or PrusaSlicer always use their own printer.
+Values are the names of OrcaSlicer's bundled system presets (as shown in
+OrcaSlicer's printer/process/filament dropdowns, or the `name` fields under
+`resources/profiles/<vendor>/` in the OrcaSlicer install). Set all three
+together; a name that doesn't exist stops the service at startup with an error
+naming it.
+
+| Variable | Default | Description |
+|---|---|---|
+| `SLICER_GENERIC_MACHINE` | `Bambu Lab P1S 0.4 nozzle` | Printer preset. Its bed is what "doesn't fit" is measured against. |
+| `SLICER_GENERIC_PROCESS` | `0.20mm Standard @BBL X1C` | Process (print settings) preset. |
+| `SLICER_GENERIC_FILAMENT` | `Bambu PLA Basic @BBL X1C` | Filament preset, e.g. `Generic PLA @System` for a non-Bambu printer. |
+
+For a Prusa MK4S, for example: `Prusa MK4S 0.4 nozzle`, `0.20mm SPEED @MK4S
+0.4`, `Generic PLA @System`.
+
 ## Public sharing
 
 | Variable | Default | Description |

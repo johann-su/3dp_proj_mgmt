@@ -3,7 +3,7 @@
 // settings into OrcaSlicer CLI overrides, and flattening Orca's system presets
 // into the generic profile. Kept free of I/O so `npm test` (in the repo root)
 // can cover them; server.mjs wires them to HTTP + the OrcaSlicer CLI, and
-// build-presets.mjs runs the flattening at image build time.
+// presets.mjs runs the flattening at startup.
 
 // --- OrcaSlicer CLI results --------------------------------------------------
 
@@ -27,7 +27,10 @@ export function parseResultJson(text) {
 
 // Metadata/slice_info.config of the sliced output: one <plate> per sliced
 // plate with <metadata key="prediction"> (seconds) and key="weight" (grams),
-// plus a <filament used_m used_g> per filament. Totals are summed over plates.
+// plus a <filament type used_m used_g> per filament the plate prints from.
+// Totals are summed over plates; `plateFilaments` keeps each plate's filament
+// types, since one plate is one print — more than one there means filament
+// changes mid-print (an AMS/MMU), unlike plates that each use another filament.
 // `weight` can be empty when the filament preset has no density; fall back to
 // the per-filament grams then.
 export function parseSliceInfo(xml) {
@@ -35,8 +38,12 @@ export function parseSliceInfo(xml) {
   let filamentGrams = null;
   let filamentMm = null;
   let plates = 0;
+  const plateFilaments = [];
   for (const [, plate] of xml.matchAll(/<plate>([\s\S]*?)<\/plate>/g)) {
     plates++;
+    plateFilaments.push(
+      [...plate.matchAll(/<filament\b[^>]*>/g)].map(([tag]) => attribute(tag, "type")),
+    );
     const prediction = Number.parseFloat(metadataValue(plate, "prediction"));
     if (Number.isFinite(prediction)) {
       printTimeSeconds = (printTimeSeconds ?? 0) + prediction;
@@ -56,11 +63,28 @@ export function parseSliceInfo(xml) {
   }
   return {
     plates,
+    plateFilaments,
+    engine: sliceEngine(xml),
     printTimeSeconds:
       printTimeSeconds == null ? null : Math.round(printTimeSeconds),
     filamentGrams: filamentGrams == null ? null : round2(filamentGrams),
     filamentMm: filamentMm == null ? null : round2(filamentMm),
   };
+}
+
+// The slicer that wrote a slice_info.config, from its <header>: OrcaSlicer adds
+// its own version item; Bambu Studio only writes the X-BBL client version
+// (which Orca also copies over from the project, so it must be checked last).
+export function sliceEngine(xml) {
+  const orca = headerItem(xml, "OrcaSlicer-Version");
+  if (orca) return `OrcaSlicer ${orca}`;
+  const bambu = headerItem(xml, "X-BBL-Client-Version");
+  return bambu ? `Bambu Studio ${bambu}` : null;
+}
+
+function headerItem(xml, key) {
+  const m = xml.match(new RegExp(`<header_item key="${key}" value="([^"]*)"`));
+  return m?.[1] || null;
 }
 
 function metadataValue(xml, key) {
@@ -115,6 +139,66 @@ export function stripPostProcess(settings) {
     : typeof scripts === "string" && scripts.trim() !== "";
   if (!hasScripts) return null;
   return { ...settings, post_process: [] };
+}
+
+// Projects saved by a newer Bambu Studio than the bundled Orca knows can carry
+// values Orca rejects. The CLI reports each problem on its own line, and two
+// kinds are safe to repair because they barely touch the estimate:
+//
+// - `raft_first_layer_expansion: -1 not in range [0,…]` (return code -18):
+//   newer "auto" sentinels — dropping the key lets Orca use its default.
+// - `machine_start_gcode Parsing error at line 57: …` (return code -100):
+//   custom G-code using placeholders Orca doesn't have — blanked. Note this
+//   also drops the moves that G-code would add; for change_filament_gcode on
+//   multi-colour prints that means the purge/swap time is missing, which is
+//   why the service reports what it repaired.
+//
+// Error keys are Orca's names, which can differ from the project's only by
+// underscores (Orca `timelapse_gcode`, Bambu `time_lapse_gcode`). Returns the
+// repaired settings and the keys touched, or null when nothing applies.
+export function repairSettings(settings, cliOutput) {
+  const outOfRange = [...cliOutput.matchAll(/^\s*(\w+): .* not in range/gm)].map((m) => m[1]);
+  const badGcode = [...cliOutput.matchAll(/^\s*(\w+_gcode) Parsing error/gm)].map((m) => m[1]);
+  const squash = (key) => key.replaceAll("_", "");
+  const repaired = { ...settings };
+  const touched = [];
+  for (const errorKey of [...outOfRange, ...badGcode]) {
+    const isGcode = badGcode.includes(errorKey);
+    for (const key of Object.keys(repaired)) {
+      if (squash(key) !== squash(errorKey)) continue;
+      if (isGcode) {
+        const value = repaired[key];
+        if (Array.isArray(value) ? value.every((v) => v === "") : value === "") continue;
+        repaired[key] = Array.isArray(value) ? value.map(() => "") : "";
+      } else {
+        delete repaired[key];
+      }
+      touched.push(key);
+    }
+  }
+  return touched.length ? { settings: repaired, keys: touched } : null;
+}
+
+// "Bambu Lab P1S (256 × 256 × 256 mm)" from Orca machine settings, for
+// telling the user which printer a model doesn't fit on.
+export function describePrinter(settings) {
+  const name =
+    settings.printer_model ||
+    String(settings.printer_settings_id || settings.name || "printer").replace(
+      / \d+(\.\d+)? nozzle$/,
+      "",
+    );
+  const points = (Array.isArray(settings.printable_area)
+    ? settings.printable_area
+    : String(settings.printable_area ?? "").split(",")
+  )
+    .map((p) => String(p).split("x").map(Number))
+    .filter(([x, y]) => Number.isFinite(x) && Number.isFinite(y));
+  const height = Number.parseFloat(settings.printable_height);
+  if (points.length < 3 || !(height > 0)) return name;
+  const span = (i) =>
+    Math.round(Math.max(...points.map((p) => p[i])) - Math.min(...points.map((p) => p[i])));
+  return `${name} (${span(0)} × ${span(1)} × ${Math.round(height)} mm)`;
 }
 
 // --- PrusaSlicer projects -> OrcaSlicer CLI overrides ------------------------
@@ -217,6 +301,13 @@ function parseIni(ini) {
   return values;
 }
 
+// The printer a PrusaSlicer project was set up for ("Original Prusa MK4S 0.4
+// nozzle"), or null.
+export function prusaPrinterName(ini) {
+  const name = parseIni(ini).printer_settings_id?.replace(/^"|"$/g, "").trim();
+  return name || null;
+}
+
 // Returns Orca setting key -> value for the settings a PrusaSlicer project
 // defines. Unknown keys (post_process, print_host, …) are never copied.
 export function prusaIniToOrca(ini, extruder = 1) {
@@ -249,6 +340,12 @@ export function prusaIniToOrca(ini, extruder = 1) {
     set(orcaKey, entries[extruder - 1] ?? entries[0]);
   }
   for (const key of MACHINE_LIMIT_KEYS) set(key, prusa[key]);
+  // The project's own bed, so "doesn't fit" refers to the printer the project
+  // was set up for. Same "0x0,250x0,…" point list in both slicers.
+  if (/^(-?\d+(\.\d+)?x-?\d+(\.\d+)?,){2,}-?\d+(\.\d+)?x-?\d+(\.\d+)?$/.test(prusa.bed_shape?.replace(/\s/g, "") ?? "")) {
+    orca.printable_area = prusa.bed_shape.replace(/\s/g, "");
+  }
+  set("printable_height", prusa.max_print_height);
 
   const pattern = FILL_PATTERNS[prusa.fill_pattern?.trim()];
   if (pattern) orca.sparse_infill_pattern = pattern;
@@ -306,15 +403,12 @@ export function flattenPreset(name, lookup) {
   return flat;
 }
 
-// Bed size of the generic machine. Files without settings carry no plate
-// layout to honor, and the estimate barely depends on the bed — a real-size
-// bed would just fail large but perfectly printable models.
-const GENERIC_BED_MM = 1000;
-
 // Turns flattened presets into a set the CLI accepts together: loaded as
 // "system" presets, the process (and filament) must list the machine in
 // compatible_printers or the CLI refuses the combination ("The selected
-// printer is not compatible with the process preset").
+// printer is not compatible with the process preset"). The machine keeps its
+// real bed: a model too big for it is reported as not fitting that printer,
+// which the model page names.
 export function genericPresetSet({ machine, process, filament }) {
   const compat = (preset) => {
     const out = { ...preset, from: "system", compatible_printers: [machine.name] };
@@ -323,15 +417,8 @@ export function genericPresetSet({ machine, process, filament }) {
     delete out.compatible_prints_condition;
     return out;
   };
-  const big = String(GENERIC_BED_MM);
   return {
-    machine: {
-      ...machine,
-      from: "system",
-      printable_area: ["0x0", `${big}x0`, `${big}x${big}`, `0x${big}`],
-      printable_height: big,
-      bed_exclude_area: [],
-    },
+    machine: { ...machine, from: "system" },
     process: compat(process),
     filament: compat(filament),
   };

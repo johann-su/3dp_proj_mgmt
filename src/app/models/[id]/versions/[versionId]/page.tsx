@@ -155,6 +155,8 @@ export default async function ModelVersionPreviewPage({
         // "estimating…" pulse in a preview.
         sliceStatus: file.sliceStatus === "failed" ? "failed" : null,
         sliceError: file.sliceError ?? null,
+        sliceEngine: file.sliceEngine ?? null,
+        slicePrinter: file.slicePrinter ?? null,
       };
     }),
     pdfFiles: pdfFiles.map((file) => ({

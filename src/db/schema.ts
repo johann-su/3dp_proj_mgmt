@@ -230,6 +230,7 @@ export type FileKind = "model" | "image" | "pdf" | "video";
 //          the slicer feature)
 export type SliceStatus = "pending" | "ok" | "failed";
 export type SliceSource = "embedded" | "slicer";
+export type FilamentChanges = "none" | "color" | "material";
 
 // The hardware a .3mf project was set up for, extracted from its embedded
 // slicer config (Bambu/Orca project_settings.config or PrusaSlicer
@@ -265,6 +266,15 @@ export type PrinterInfo = {
   // config doesn't say — "does this need supports?" is one of the first
   // questions about a print, and the answer is already in the file.
   usesSupport?: boolean;
+  // Whether printing one plate means changing filament mid-print — i.e. needs
+  // an AMS/MMU (or manual swaps): "color" for the same material in several
+  // colours, "material" when a plate mixes materials, "none" when every plate
+  // prints from a single filament (plates that each use another filament are
+  // separate prints, so they don't count). Unlike the fields above this comes
+  // from the *sliced* result (slice_info.config's per-plate filament list),
+  // since painted multi-colour is only resolved by slicing. Undefined until
+  // the file was sliced with this parsed (see filamentChangesFromPlates).
+  filamentChanges?: FilamentChanges;
   // Physical build-plate size in mm (bounding box of the bed shape), so the 3D
   // preview can draw a real bed the geometry is measured against (issue #80).
   // Parsed from the embedded config's printable area (Bambu `printable_area` /
@@ -320,6 +330,13 @@ export const modelFiles = pgTable("model_files", {
   printTimeSeconds: integer("print_time_seconds"),
   filamentGrams: real("filament_grams"),
   sliceError: text("slice_error"),
+  // The slicer that produced the estimate ("OrcaSlicer 2.4.2", "Bambu Studio
+  // 02.08.02.61"), from the sliced slice_info.config header.
+  sliceEngine: text("slice_engine"),
+  // The printer the slicer service estimated for when the file carries no
+  // printer settings of its own (its generic profile, "Bambu Lab P1S (256 ×
+  // 256 × 250 mm)"); null when the estimate used the file's own printer.
+  slicePrinter: text("slice_printer"),
   printerInfo: jsonb("printer_info").$type<PrinterInfo>(),
   // Set on a .3mf rendered from a parametric .scad file (see
   // src/app/api/models/[id]/customize): the source file row, the customizer
@@ -404,6 +421,9 @@ export type VersionFileSnapshot = {
   printTimeSeconds: number | null;
   filamentGrams: number | null;
   sliceError: string | null;
+  // Optional: snapshots written before these were recorded lack them.
+  sliceEngine?: string | null;
+  slicePrinter?: string | null;
   printerInfo: PrinterInfo | null;
 };
 

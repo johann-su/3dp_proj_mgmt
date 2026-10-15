@@ -52,6 +52,7 @@ test("readSliceData sums predictions and weights across plates (sliced Bambu fil
     plateCount: 2,
     printTimeSeconds: 5400,
     filamentGrams: 20,
+    engine: null, // no <header> in this fixture
   });
   assert.deepEqual(data?.printerInfo, {
     model: "Bambu Lab P1S",
@@ -64,6 +65,43 @@ test("readSliceData sums predictions and weights across plates (sliced Bambu fil
     usesSupport: true,
     bedSizeMm: { x: 256, y: 256 },
   });
+});
+
+// One plate is one print: the AMS is only needed when a single plate prints
+// from several filaments — here plate 1 (painted two-colour PLA). Plate 2
+// using PETG on its own is a separate print, not a mid-print change.
+test("readSliceData derives mid-print filament changes and the engine from slice_info", async () => {
+  const plate = (prediction: number, types: string[]) => `
+    <plate>
+      <metadata key="prediction" value="${prediction}"/>
+      <metadata key="weight" value="10"/>
+      ${types.map((t) => `<filament id="1" type="${t}" used_g="5"/>`).join("")}
+    </plate>`;
+  const sliceInfo = (plates: string) => `<config>
+    <header>
+      <header_item key="X-BBL-Client-Type" value="slicer"/>
+      <header_item key="X-BBL-Client-Version" value="02.08.02.61"/>
+    </header>${plates}</config>`;
+  const read = async (plates: string) => {
+    const zip = zipSync({
+      "3D/3dmodel.model": strToU8("<model/>"),
+      "Metadata/slice_info.config": strToU8(sliceInfo(plates)),
+    });
+    const { readRange, size } = readerFor(zip);
+    return readSliceData(readRange, size);
+  };
+
+  const painted = await read(plate(3600, ["PLA", "PLA"]) + plate(600, ["PETG"]));
+  assert.equal(painted?.sliceInfo?.engine, "Bambu Studio 02.08.02.61");
+  assert.equal(painted?.printerInfo?.filamentChanges, "color");
+
+  const platePerColour = await read(plate(3600, ["PLA"]) + plate(600, ["PETG"]));
+  assert.equal(platePerColour?.printerInfo?.filamentChanges, "none");
+
+  // An unsliced plate lists no predictions; its filaments don't count.
+  const unsliced = await read(`<plate><filament id="1" type="PLA"/><filament id="2" type="PLA"/></plate>`);
+  assert.equal(unsliced?.printerInfo?.filamentChanges, undefined);
+  assert.equal(unsliced?.sliceInfo?.engine, null);
 });
 
 // "Does it need supports?" is answerable from the embedded config, but only
@@ -269,6 +307,7 @@ test("readSliceData counts plates from model_settings for unsliced projects", as
     plateCount: 1,
     printTimeSeconds: null,
     filamentGrams: null,
+    engine: null, // unsliced: no slicer produced an estimate
   });
 });
 

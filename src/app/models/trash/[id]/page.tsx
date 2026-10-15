@@ -115,6 +115,8 @@ export default async function TrashPreviewPage({
       // rows never advance here (nothing re-runs the slicer for trash).
       sliceStatus: file.sliceStatus === "failed" ? "failed" : null,
       sliceError: file.sliceError ?? null,
+      sliceEngine: file.sliceEngine ?? null,
+      slicePrinter: file.slicePrinter ?? null,
       paramsSummary: file.generatedParams
         ? Object.entries(file.generatedParams)
             .map(([key, value]) => `${key} = ${value}`)

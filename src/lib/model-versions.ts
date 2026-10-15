@@ -211,6 +211,8 @@ export async function restoreSnapshot(
         printTimeSeconds: file.printTimeSeconds,
         filamentGrams: file.filamentGrams,
         sliceError: file.sliceError,
+        sliceEngine: file.sliceEngine ?? null,
+        slicePrinter: file.slicePrinter ?? null,
         printerInfo: file.printerInfo,
       });
     }

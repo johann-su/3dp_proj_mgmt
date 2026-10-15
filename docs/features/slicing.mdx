@@ -43,10 +43,16 @@ guessing:
   whitelist of settings carries over, so a crafted archive can't smuggle
   anything else in.
 - **Files with no settings** (a plain `.3mf` from CAD, Onshape, OpenSCAD, …)
-  use a generic profile: a **Bambu Lab P1S, 0.4 mm nozzle, 0.20 mm Standard,
-  Bambu PLA Basic**, on an oversized bed so large models still get an estimate.
+  use a generic profile — by default a **Bambu Lab P1S, 0.4 mm nozzle, 0.20 mm
+  Standard, Bambu PLA Basic**; your instance can pick another printer (see
+  [configuration](/configuration#slicer-service-printer)). The file card says
+  which printer such an estimate assumed ("Bambu Lab P1S … · generic profile").
 
-Post-processing scripts in a project are never run.
+Post-processing scripts in a project are never run. Projects from a newer Bambu
+Studio than the bundled OrcaSlicer can contain settings it doesn't understand
+(new "auto" values, start G-code using newer placeholders); those few settings
+are reset to OrcaSlicer's defaults so the file still gets an estimate. For
+multi-colour prints that can leave out filament-change time.
 
 ### Re-running slicing on a file
 
@@ -71,19 +77,26 @@ Print Vault re-reads the numbers the file already carries.
 
 ### Things to know about estimates
 
+- **Hover the print time to see which slicer produced it.**
 - **They are approximations, and shown with a `~` prefix.** Server-side numbers
   come from OrcaSlicer's time estimator, not your printer's firmware. For
   Bambu/Orca projects that is the same estimator your slicer uses; files
   without settings are estimated for the generic printer above, so treat those
   as ballpark figures.
-- **Unsliceable files are flagged.** If OrcaSlicer can't slice a file (say, an
-  object hangs over the edge of its plate), the
+- **Unsliceable files are flagged.** If OrcaSlicer can't slice a file, the
   model page marks it — a useful signal that the file may be broken or
-  unprintable, not silently missing an estimate.
+  unprintable, not silently missing an estimate. A model that is too big for
+  its printer says so instead, naming the printer and its build volume
+  ("Doesn't fit on the Bambu Lab P1S (256 × 256 × 250 mm)") — it may well fit
+  a larger one.
 - **Multi-colour prints are called out.** The filament badges show one swatch
   per slot the file actually prints from, in the colours the project was sliced
-  with, plus a `multi-color` or `multi-material` badge when it uses more than
-  one. A `multi-nozzle` badge means the print needs a printer with two nozzles
+  with, plus a `multi-color` or `multi-material` badge when **a single plate
+  changes filament mid-print** — the case that needs an AMS/MMU (or manual
+  swaps). A project whose plates each print one different colour doesn't get
+  it: each plate is its own print. This comes from the sliced result, so files
+  estimated before it shipped fall back to "uses more than one filament" until
+  they are re-sliced. A `multi-nozzle` badge means the print needs a printer with two nozzles
   (an H2D, Prusa XL or other toolchanger) — colours fed through a single nozzle
   by an AMS or MMU don't get it, since those are a filament swap rather than
   hardware you either have or don't. Files sliced before this shipped show the

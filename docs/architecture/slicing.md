@@ -30,24 +30,68 @@ How a file is sliced depends on what it carries (`planSlice` in
   upstream commented the call out), so those are stripped and the entry
   rewritten in the archive with `zip` first. `--allow-newer-file=1` keeps
   projects from a newer slicer than the CLI from being flagged unsliceable.
+  Such projects can still carry **values Orca rejects**: out-of-range "auto"
+  sentinels (return code -18, `key: -1 not in range`) and custom G-code with
+  placeholders Orca lacks (-100, `machine_start_gcode Parsing error`). The
+  service repairs and retries (`repairSettings`, up to 5 rounds — a Bambu
+  Studio 02.08 A2L project from MakerWorld needed 3): out-of-range keys are
+  dropped (Orca's default applies), unparsable G-code blanked. Orca's error
+  names can differ from the project's keys by underscores (`timelapse_gcode`
+  vs `time_lapse_gcode`). Blanking `change_filament_gcode` drops the purge and
+  swap moves, so a repaired multi-colour estimate runs low (that A2L file:
+  7.2 h vs MakerWorld's 12.7 h); the response lists `repairedSettings` and the
+  service logs them. Slicing such files exactly needs a slicer that knows
+  them — the Bambu Studio CLI is the obvious second backend.
 - **PrusaSlicer projects** (`Slic3r_PE.config`) — Orca **ignores that file**,
   so known keys are translated to Orca names (`prusaIniToOrca`: layer height,
   walls, infill, speeds, accelerations, machine limits, and the per-extruder
   filament values of the extruder the objects use, per
   `Slic3r_PE_model.config`) and passed as `--key=value` CLI flags over the
-  generic profile. Only whitelisted keys with plain values carry over. Orca
+  generic profile, including the project's `bed_shape`/`max_print_height`
+  so "doesn't fit" refers to the project's printer. Only whitelisted keys
+  with plain values carry over. Orca
   rejects unknown flags ("setup params error"), so a mapping typo fails every
   PrusaSlicer file — verify new mappings against the real CLI.
-- **Anything else** uses the **generic profile**: Orca system presets
-  (`Bambu Lab P1S 0.4 nozzle` / `0.20mm Standard @BBL X1C` / `Bambu PLA Basic
-  @BBL X1C`, build args in the Dockerfile) **flattened at image build time**
-  by `build-presets.mjs`. The CLI's `--load-settings` does **not** resolve
-  `inherits`, so an unflattened system preset silently loses every value
-  defined on its bases (filament density → empty weight, the start G-code →
-  "incorrect slicing parameters"). The process/filament must also list the
-  machine in `compatible_printers`, or the CLI refuses the combination. The
-  generic bed is 1000 mm with `--arrange 1`: these files have no plate layout
-  to honor, and a real-size bed would fail large but printable models.
+- **Anything else** uses the **generic profile**: Orca system presets named
+  by `SLICER_GENERIC_MACHINE`/`_PROCESS`/`_FILAMENT` on the slicer container
+  (default `Bambu Lab P1S 0.4 nozzle` / `0.20mm Standard @BBL X1C` / `Bambu
+  PLA Basic @BBL X1C`), **flattened at startup** by `presets.mjs` — a bad
+  name fails the service at startup, naming it. Presets are found through
+  each vendor's index (`profiles/<Vendor>.json`, `{name, sub_path}` per kind
+  — files are nested and named unlike their `name`), and inheritance
+  resolves within the vendor a preset came from (base presets like
+  `fdm_filament_pla` exist per vendor with different content; shared
+  filaments come from `OrcaFilamentLibrary`). The CLI's `--load-settings`
+  does **not** resolve `inherits`, so an unflattened system preset silently
+  loses every value defined on its bases (filament density → empty weight,
+  the start G-code → "incorrect slicing parameters"). The process/filament
+  must also list the machine in `compatible_printers`, or the CLI refuses the
+  combination. The machine keeps its **real bed**, with `--arrange 1` (these
+  files have no plate layout to honor).
+
+A model that doesn't fit its printer's bed fails with return code -50 — the
+same code as an empty plate, but empty plates are skipped before slicing, so
+the service reports it as `plate N: doesn't fit on the <printer> (X × Y × Z
+mm)` (`describePrinter`); the model page shows that sentence
+(`sliceFailureMessage` in `src/lib/printer-info.ts`) instead of "may not be
+printable". A successful response also names the `printer` and `engine`
+(from the output's `slice_info.config` header); the app stores the engine as
+`model_files.slice_engine` (embedded estimates record their own slicer the
+same way) and, for `profile: "generic"`, the printer as `slice_printer`,
+which the file card shows when the file names no printer of its own.
+
+### Mid-print filament changes
+
+`printer_info.filamentChanges` answers MakerWorld's "AMS" question: does a
+**single plate** print from more than one filament? One plate is one print,
+so a project whose plates each use another filament needs no AMS. It comes
+from the **sliced** per-plate `<filament>` list in `slice_info.config` —
+painted multi-colour only resolves when slicing — either the file's own
+(embedded path, `readSliceData`) or the service's output (`plateFilaments`).
+`filamentChangesFromPlates` is the one rule for both: "none", "color" (same
+material) or "material"; null when no plate lists filaments (older slicers),
+which is unknown rather than "none". `filamentSummary().multi` uses it and
+falls back to the old used-slots guess only for rows sliced before it existed.
 
 The CLI is the GUI binary run headless — no X server or xvfb is needed, but
 the GTK/WebKit/GL runtime libraries must be installed. Orca writes a log into

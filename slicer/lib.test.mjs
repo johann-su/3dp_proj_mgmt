@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
+  describePrinter,
   flattenPreset,
   genericPresetSet,
   parseResultJson,
@@ -8,13 +9,15 @@ import {
   platesToSlice,
   projectPlates,
   prusaIniToOrca,
+  repairSettings,
+  sliceEngine,
   stripPostProcess,
   toCliFlags,
   usedExtruder,
 } from "./lib.mjs";
 
 // Shape of the slice_info.config OrcaSlicer 2.4 writes into a sliced 3mf.
-const plate = ({ prediction, weight, filaments }) => `
+const plate = ({ prediction, weight, filaments, types = [] }) => `
   <plate>
     <metadata key="index" value="1"/>
     <metadata key="prediction" value="${prediction}"/>
@@ -23,15 +26,26 @@ const plate = ({ prediction, weight, filaments }) => `
     ${filaments
       .map(
         ([m, g]) =>
-          `<filament id="1" type="PLA" color="#000000" used_m="${m}" used_g="${g}" used_for_object="true"/>`,
+          `<filament id="1" type="${types.shift() ?? "PLA"}" color="#000000" used_m="${m}" used_g="${g}" used_for_object="true"/>`,
       )
       .join("\n")}
   </plate>`;
 
 test("parseSliceInfo sums prediction, weight and filament length over plates", () => {
-  const xml = `<config>${plate({ prediction: 24157, weight: "202.21", filaments: [["67.80", "202.21"]] })}${plate({ prediction: 6226, weight: "58.06", filaments: [["15", "40"], ["5.5", "18.06"]] })}</config>`;
+  const xml = `<config>
+    <header>
+      <header_item key="X-BBL-Client-Version" value="02.06.00.51"/>
+      <header_item key="OrcaSlicer-Version" value="2.4.2"/>
+    </header>
+    ${plate({ prediction: 24157, weight: "202.21", filaments: [["67.80", "202.21"]] })}
+    ${plate({ prediction: 6226, weight: "58.06", filaments: [["15", "40"], ["5.5", "18.06"]], types: ["PLA", "PETG"] })}
+  </config>`;
   assert.deepEqual(parseSliceInfo(xml), {
     plates: 2,
+    // Per plate, since one plate is one print: plate 2 changes filament
+    // mid-print, plate 1 doesn't.
+    plateFilaments: [["PLA"], ["PLA", "PETG"]],
+    engine: "OrcaSlicer 2.4.2",
     printTimeSeconds: 30383,
     filamentGrams: 260.27,
     filamentMm: 88300, // metres -> mm, summed over every filament
@@ -47,10 +61,83 @@ test("parseSliceInfo falls back to per-filament grams when weight is empty", () 
 test("parseSliceInfo reports no print time when nothing was sliced", () => {
   assert.deepEqual(parseSliceInfo("<config></config>"), {
     plates: 0,
+    plateFilaments: [],
+    engine: null,
     printTimeSeconds: null,
     filamentGrams: null,
     filamentMm: null,
   });
+});
+
+test("sliceEngine prefers Orca's own version over the copied Bambu one", () => {
+  // Orca carries the project's X-BBL-Client-Version over into its output.
+  const orca = `<header><header_item key="X-BBL-Client-Version" value="02.06.00.51"/><header_item key="OrcaSlicer-Version" value="2.4.2"/></header>`;
+  assert.equal(sliceEngine(orca), "OrcaSlicer 2.4.2");
+  const bambu = `<header><header_item key="X-BBL-Client-Version" value="02.08.02.61"/></header>`;
+  assert.equal(sliceEngine(bambu), "Bambu Studio 02.08.02.61");
+  assert.equal(sliceEngine("<config/>"), null);
+});
+
+test("repairSettings drops out-of-range values and blanks unparsable G-code", () => {
+  // What Orca 2.4.2 prints for a Bambu Studio 02.08 (A2L) project, over two runs.
+  const settings = {
+    raft_first_layer_expansion: "-1",
+    tree_support_wall_count: "-1",
+    layer_height: "0.2",
+    machine_start_gcode: "{if (temperature_vitrification[0] <= 50)}M106{endif}",
+    time_lapse_gcode: "; clear_to_x0 = [clear_to_x0]",
+    filament_start_gcode: ["; a", "; b"],
+  };
+  const first = repairSettings(
+    settings,
+    [
+      "Param values in 3mf/config error: ",
+      "raft_first_layer_expansion: -1 not in range [0.000000,3.4e38]",
+      "tree_support_wall_count: -1 not in range [0.000000,2.000000]",
+      "run found error, return -18, exit...",
+    ].join("\n"),
+  );
+  assert.deepEqual(first.keys, ["raft_first_layer_expansion", "tree_support_wall_count"]);
+  assert.equal("raft_first_layer_expansion" in first.settings, false); // Orca's default applies
+  assert.equal(first.settings.layer_height, "0.2");
+
+  const second = repairSettings(
+    first.settings,
+    [
+      "machine_start_gcode Parsing error at line 57: Not a variable name",
+      // Orca's key name; the project spells it time_lapse_gcode.
+      "timelapse_gcode Parsing error at line 21: Variable does not exist",
+      "filament_start_gcode Parsing error at line 1: Variable does not exist",
+    ].join("\n"),
+  );
+  assert.deepEqual(second.keys, ["machine_start_gcode", "time_lapse_gcode", "filament_start_gcode"]);
+  assert.equal(second.settings.machine_start_gcode, "");
+  assert.deepEqual(second.settings.filament_start_gcode, ["", ""]); // per-filament list kept
+  // Already blank, nothing else reported: no repair, so the caller stops retrying.
+  assert.equal(repairSettings(second.settings, "machine_start_gcode Parsing error at line 1"), null);
+  assert.equal(repairSettings(settings, "Failed slicing the model."), null);
+});
+
+test("describePrinter names the printer and its build volume", () => {
+  assert.equal(
+    describePrinter({
+      printer_model: "Bambu Lab P1S",
+      printable_area: ["0x0", "256x0", "256x256", "0x256"],
+      printable_height: "250",
+    }),
+    "Bambu Lab P1S (256 × 256 × 250 mm)",
+  );
+  // PrusaSlicer-style point list string; no printer_model -> preset name sans nozzle.
+  assert.equal(
+    describePrinter({
+      printer_model: "",
+      printer_settings_id: "Original Prusa MK4S 0.4 nozzle",
+      printable_area: "0x0,250x0,250x210,0x210",
+      printable_height: "220",
+    }),
+    "Original Prusa MK4S (250 × 210 × 220 mm)",
+  );
+  assert.equal(describePrinter({ printer_model: "Voron 2.4" }), "Voron 2.4"); // no bed known
 });
 
 test("parseResultJson reads the CLI's status, tolerating junk", () => {
@@ -114,6 +201,8 @@ test("prusaIniToOrca translates PrusaSlicer settings to Orca keys", () => {
       "post_process = /bin/evil.sh", // unknown key: never copied
       "print_host = 10.0.0.5",
       "travel_speed = 350 --post-process=x", // known key, hostile value: rejected
+      "bed_shape = 0x0,250x0,250x210,0x210", // the project's bed, for "doesn't fit"
+      "max_print_height = 220",
     ].join("\n"),
     2,
   );
@@ -126,6 +215,8 @@ test("prusaIniToOrca translates PrusaSlicer settings to Orca keys", () => {
     machine_max_speed_x: "200,100",
     nozzle_temperature: "240",
     filament_type: "PETG",
+    printable_area: "0x0,250x0,250x210,0x210",
+    printable_height: "220",
   });
 });
 
@@ -168,7 +259,7 @@ test("flattenPreset resolves the inherits chain, children overriding parents", (
   );
 });
 
-test("genericPresetSet makes the presets loadable together on a large bed", () => {
+test("genericPresetSet makes the presets loadable together, keeping the real bed", () => {
   const set = genericPresetSet({
     machine: { name: "Bambu Lab P1S 0.4 nozzle", from: "system", printable_area: ["0x0", "256x0", "256x256", "0x256"], bed_exclude_area: ["0x0", "18x0", "18x28", "0x28"] },
     process: { name: "0.20mm Standard @BBL X1C", compatible_printers: ["Bambu Lab X1 Carbon 0.4 nozzle"], compatible_printers_condition: "" },
@@ -178,7 +269,6 @@ test("genericPresetSet makes the presets loadable together on a large bed", () =
   assert.deepEqual(set.process.compatible_printers, ["Bambu Lab P1S 0.4 nozzle"]);
   assert.equal("compatible_printers_condition" in set.process, false);
   assert.equal(set.filament.from, "system");
-  // Large models must not fail just for exceeding a real printer's bed.
-  assert.deepEqual(set.machine.printable_area, ["0x0", "1000x0", "1000x1000", "0x1000"]);
-  assert.deepEqual(set.machine.bed_exclude_area, []);
+  // A model too big for this printer is reported as not fitting it.
+  assert.deepEqual(set.machine.printable_area, ["0x0", "256x0", "256x256", "0x256"]);
 });

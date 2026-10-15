@@ -6,8 +6,9 @@
 // - "ok" / "embedded"  the file was already sliced in Bambu Studio/OrcaSlicer
 //                      and carries predictions in Metadata/slice_info.config
 // - "ok" / "slicer"    the slicer service sliced it — with the project's own
-//                      settings where it has them, else a generic profile;
-//                      estimates, not gospel (the UI prefixes them with "~")
+//                      settings where it has them, else its generic printer
+//                      (stored as slicePrinter); estimates, not gospel (the
+//                      UI prefixes them with "~")
 // - "failed"           the file cannot be sliced; surfaced to the user so
 //                      they notice a broken/unprintable upload
 //
@@ -16,8 +17,9 @@
 
 import { and, eq } from "drizzle-orm";
 import { db } from "@/db";
-import { modelFiles } from "@/db/schema";
+import { modelFiles, type PrinterInfo } from "@/db/schema";
 import { fileExtension } from "@/lib/file-kind";
+import { filamentChangesFromPlates } from "@/lib/printer-info";
 import { blobStore } from "@/lib/storage";
 import { recordSliceEstimate, reportError } from "@/lib/telemetry";
 import { get3mfPrinterInfo, get3mfSliceInfo } from "@/lib/threemf-remote";
@@ -35,6 +37,16 @@ type EstimateResponse = {
   ok: boolean;
   printTimeSeconds?: number | null;
   filamentGrams?: number | null;
+  // "file" = sliced with the file's own settings, "generic" = the service's
+  // generic printer, named in `printer`.
+  profile?: "file" | "generic";
+  engine?: string | null;
+  printer?: string | null;
+  // Filament types per sliced plate.
+  plateFilaments?: string[][];
+  // Project settings the service had to change so a newer slicer's file would
+  // slice (logged by the service; the estimate may be less exact).
+  repairedSettings?: string[];
   error?: string;
 };
 
@@ -43,17 +55,25 @@ type FileRow = typeof modelFiles.$inferSelect;
 async function markOk(
   file: FileRow,
   source: "embedded" | "slicer",
-  printTimeSeconds: number | null,
-  filamentGrams: number | null,
+  result: {
+    printTimeSeconds: number | null;
+    filamentGrams: number | null;
+    engine: string | null;
+    slicePrinter?: string | null;
+    printerInfo?: PrinterInfo | null;
+  },
 ) {
   await db
     .update(modelFiles)
     .set({
       sliceStatus: "ok",
       sliceSource: source,
-      printTimeSeconds,
-      filamentGrams,
+      printTimeSeconds: result.printTimeSeconds,
+      filamentGrams: result.filamentGrams,
+      sliceEngine: result.engine,
+      slicePrinter: result.slicePrinter ?? null,
       sliceError: null,
+      ...(result.printerInfo !== undefined && { printerInfo: result.printerInfo }),
     })
     .where(eq(modelFiles.id, file.id));
 }
@@ -81,7 +101,11 @@ async function estimateFile(file: FileRow, slicerUrl: string | undefined) {
   // with a generic profile.
   const embedded = await get3mfSliceInfo(file.s3Key, file.size);
   if (embedded?.printTimeSeconds != null) {
-    await markOk(file, "embedded", embedded.printTimeSeconds, embedded.filamentGrams);
+    await markOk(file, "embedded", {
+      printTimeSeconds: embedded.printTimeSeconds,
+      filamentGrams: embedded.filamentGrams,
+      engine: embedded.engine,
+    });
     recordSliceEstimate("embedded");
     return;
   }
@@ -116,12 +140,17 @@ async function estimateFile(file: FileRow, slicerUrl: string | undefined) {
 
   const result = (await res.json().catch(() => null)) as EstimateResponse | null;
   if (res.ok && result?.ok) {
-    await markOk(
-      file,
-      "slicer",
-      result.printTimeSeconds ?? null,
-      result.filamentGrams ?? null,
-    );
+    // Only the sliced result knows whether a plate changes filament mid-print
+    // (painted multi-colour, per-part filaments); it joins the hardware facts
+    // read from the file's own config.
+    const filamentChanges = filamentChangesFromPlates(result.plateFilaments);
+    await markOk(file, "slicer", {
+      printTimeSeconds: result.printTimeSeconds ?? null,
+      filamentGrams: result.filamentGrams ?? null,
+      engine: result.engine ?? null,
+      slicePrinter: result.profile === "generic" ? (result.printer ?? null) : null,
+      printerInfo: filamentChanges ? { ...printerInfo, filamentChanges } : undefined,
+    });
     recordSliceEstimate("sliced", elapsedSeconds());
   } else if (res.status >= 400 && res.status < 500) {
     await markFailed(file, result?.error ?? `slicer rejected the file (${res.status})`);

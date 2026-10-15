@@ -39,20 +39,16 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 
 COPY --from=orca /opt/orca /opt/orca
-COPY server.mjs lib.mjs build-presets.mjs /opt/slicer/
-
-# Generic profile for files without slicer settings, flattened from Orca's
-# bundled system presets (the CLI doesn't resolve preset inheritance).
-ARG GENERIC_MACHINE="Bambu Lab P1S 0.4 nozzle"
-ARG GENERIC_PROCESS="0.20mm Standard @BBL X1C"
-ARG GENERIC_FILAMENT="Bambu PLA Basic @BBL X1C"
-RUN node /opt/slicer/build-presets.mjs /opt/orca/resources/profiles/BBL \
-      /opt/slicer/presets "$GENERIC_MACHINE" "$GENERIC_PROCESS" "$GENERIC_FILAMENT"
+COPY server.mjs lib.mjs presets.mjs /opt/slicer/
 
 RUN useradd --system --create-home slicer
 
 USER slicer
-ENV HOME=/home/slicer PORT=8000
+# The printer files without slicer settings are estimated for: names of Orca
+# system presets (resources/profiles/<vendor>/{machine,process,filament}),
+# flattened at startup. Unset = Bambu Lab P1S / 0.20mm Standard / Bambu PLA.
+ENV HOME=/home/slicer PORT=8000 \
+    SLICER_GENERIC_MACHINE="" SLICER_GENERIC_PROCESS="" SLICER_GENERIC_FILAMENT=""
 EXPOSE 8000
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s \

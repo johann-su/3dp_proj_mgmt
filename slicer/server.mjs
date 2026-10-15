@@ -5,7 +5,8 @@
 //
 //   GET  /healthz    liveness probe
 //   POST /estimate   body = raw .3mf bytes
-//     -> 200 { ok: true, printTimeSeconds, filamentGrams, filamentMm, profile }
+//     -> 200 { ok: true, printTimeSeconds, filamentGrams, filamentMm, profile,
+//              engine, printer, plateFilaments, repairedSettings }
 //     -> 422 { ok: false, error }   file could not be sliced (unslicable)
 //     -> 413/500 on oversize body / unexpected errors
 //
@@ -16,10 +17,17 @@
 //   their own plate layout — the same engine that produced them, so the
 //   estimate matches what the slicer would show. `profile` = "file".
 // - PrusaSlicer projects (Metadata/Slic3r_PE.config, which Orca ignores) are
-//   sliced with the generic profile plus the known settings translated into
-//   Orca CLI overrides. `profile` = "file" when any setting carried over.
-// - Anything else is sliced with the generic profile (a flattened Orca system
-//   preset set, see build-presets.mjs). `profile` = "generic".
+//   sliced with the generic profile plus the known settings — including the
+//   project's bed — translated into Orca CLI overrides. `profile` = "file"
+//   when any setting carried over.
+// - Anything else is sliced with the generic profile: an Orca system preset
+//   set chosen by SLICER_GENERIC_* (see presets.mjs). `profile` = "generic".
+//
+// `printer` names the printer the estimate was computed for; a model that
+// doesn't fit its bed fails with that printer named. `plateFilaments` lists
+// each sliced plate's filament types (more than one = filament changes
+// mid-print). `repairedSettings` lists project settings changed so a project
+// from a newer Bambu Studio would slice (see repairSettings in lib.mjs).
 //
 // The CLI never runs post-processing scripts (upstream has the call commented
 // out); project settings that name one are stripped only because the CLI
@@ -33,29 +41,50 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
+  describePrinter,
   parseResultJson,
   parseSliceInfo,
   platesToSlice,
   projectPlates,
   prusaIniToOrca,
+  prusaPrinterName,
+  repairSettings,
   stripPostProcess,
   toCliFlags,
   usedExtruder,
 } from "./lib.mjs";
+import { buildGenericPresets } from "./presets.mjs";
 
 const PORT = Number(process.env.PORT ?? 8000);
 const ORCA_BIN = process.env.ORCA_SLICER_BIN ?? "/opt/orca/AppRun";
-const PRESETS_DIR = process.env.SLICER_PRESETS ?? "/opt/slicer/presets";
+const PROFILES_DIR = process.env.ORCA_PROFILES ?? "/opt/orca/resources/profiles";
 const TIMEOUT_MS = Number(process.env.SLICE_TIMEOUT_MS ?? 300_000);
 const MAX_BODY_BYTES = Number(process.env.MAX_BODY_BYTES ?? 256 * 1024 * 1024);
 const MAX_ENTRY_BYTES = 8 * 1024 * 1024;
+// Each repair round fixes what one CLI run reports; a newer Bambu Studio
+// project has needed three (out-of-range values, then two G-code rounds).
+const MAX_REPAIR_ROUNDS = 5;
+
+// CLI return codes (`cli_errors` in OrcaSlicer's src/OrcaSlicer.cpp).
+const CLI_INVALID_VALUES_IN_3MF = -18;
+const CLI_NO_SUITABLE_OBJECTS = -50; // a plate with no object fully inside it
+const CLI_SLICING_ERROR = -100; // includes custom G-code that doesn't parse
+
+const PRESETS_DIR = await mkdtemp(join(tmpdir(), "presets-"));
+const GENERIC_MACHINE = buildGenericPresets({
+  profilesDir: PROFILES_DIR,
+  outDir: PRESETS_DIR,
+  machine: process.env.SLICER_GENERIC_MACHINE || "Bambu Lab P1S 0.4 nozzle",
+  process: process.env.SLICER_GENERIC_PROCESS || "0.20mm Standard @BBL X1C",
+  filament: process.env.SLICER_GENERIC_FILAMENT || "Bambu PLA Basic @BBL X1C",
+});
 
 const GENERIC_ARGS = [
   "--load-settings",
   `${join(PRESETS_DIR, "machine.json")};${join(PRESETS_DIR, "process.json")}`,
   "--load-filaments",
   join(PRESETS_DIR, "filament.json"),
-  // No plate layout to honor: place the objects on the (oversized) bed.
+  // No plate layout to honor: place the objects on the bed.
   "--arrange",
   "1",
 ];
@@ -91,6 +120,22 @@ async function unzipEntry(archivePath, entryName) {
   return code === 0 ? stdout : null;
 }
 
+// Replaces Metadata/project_settings.config inside the archive.
+async function writeProjectSettings(inputPath, dir, settings) {
+  await mkdir(join(dir, "Metadata"), { recursive: true });
+  await writeFile(
+    join(dir, "Metadata", "project_settings.config"),
+    JSON.stringify(settings, null, 4),
+  );
+  // zip replaces the entry in place; run from `dir` so it keeps its path.
+  const { code, stderr } = await run(
+    "zip",
+    ["-q", inputPath, "Metadata/project_settings.config"],
+    { cwd: dir },
+  );
+  if (code !== 0) throw new Error(`could not rewrite project settings: ${stderr}`);
+}
+
 // --- planning ------------------------------------------------------------------
 
 // Decides how to slice the archive. May rewrite the archive in place (to
@@ -109,24 +154,16 @@ async function planSlice(inputPath, dir) {
   if (settings) {
     const stripped = stripPostProcess(settings);
     if (stripped) {
-      await mkdir(join(dir, "Metadata"), { recursive: true });
-      await writeFile(
-        join(dir, "Metadata", "project_settings.config"),
-        JSON.stringify(stripped, null, 4),
-      );
-      // zip replaces the entry in place; run from `dir` so it keeps its path.
-      const { code, stderr } = await run(
-        "zip",
-        ["-q", inputPath, "Metadata/project_settings.config"],
-        { cwd: dir },
-      );
-      if (code !== 0) throw new Error(`could not rewrite project settings: ${stderr}`);
+      settings = stripped;
+      await writeProjectSettings(inputPath, dir, settings);
     }
     const modelSettings = await unzipEntry(inputPath, "Metadata/model_settings.config");
     const plates = projectPlates(modelSettings?.toString("utf8") ?? "");
     return {
       profile: "file",
       args: [],
+      settings, // repairable: the archive's own settings
+      printer: describePrinter(settings),
       runs: plates.length ? platesToSlice(plates) : [0],
       skippedPlates: plates.filter((p) => p.instances === 0).length,
     };
@@ -134,21 +171,36 @@ async function planSlice(inputPath, dir) {
 
   const prusaIni = await unzipEntry(inputPath, "Metadata/Slic3r_PE.config");
   if (prusaIni) {
+    const ini = prusaIni.toString("utf8");
     const modelConfig = await unzipEntry(inputPath, "Metadata/Slic3r_PE_model.config");
-    const overrides = prusaIniToOrca(
-      prusaIni.toString("utf8"),
-      usedExtruder(modelConfig?.toString("utf8") ?? ""),
-    );
+    const overrides = prusaIniToOrca(ini, usedExtruder(modelConfig?.toString("utf8") ?? ""));
     if (Object.keys(overrides).length > 0) {
       return {
         profile: "file",
         args: [...GENERIC_ARGS, ...toCliFlags(overrides)],
+        settings: null,
+        // The project's printer and bed where it names them, else the
+        // generic machine's.
+        printer: describePrinter({
+          ...GENERIC_MACHINE,
+          ...overrides,
+          ...(prusaPrinterName(ini) && {
+            printer_model: prusaPrinterName(ini).replace(/ \d+(\.\d+)? nozzle$/, ""),
+          }),
+        }),
         runs: [0],
         skippedPlates: 0,
       };
     }
   }
-  return { profile: "generic", args: GENERIC_ARGS, runs: [0], skippedPlates: 0 };
+  return {
+    profile: "generic",
+    args: GENERIC_ARGS,
+    settings: null,
+    printer: describePrinter(GENERIC_MACHINE),
+    runs: [0],
+    skippedPlates: 0,
+  };
 }
 
 // --- slicing -------------------------------------------------------------------
@@ -163,9 +215,10 @@ function runOrca(args, cwd) {
       env: { ...process.env, TMPDIR: cwd },
       stdio: ["ignore", "pipe", "pipe"],
     });
+    // Keep the tail: the lines that explain a failure come last.
     let output = "";
     const collect = (chunk) => {
-      if (output.length < 64 * 1024) output += chunk;
+      output = (output + chunk).slice(-64 * 1024);
     };
     child.stdout.on("data", collect);
     child.stderr.on("data", collect);
@@ -196,8 +249,8 @@ function errorLine(output) {
   return lines.at(-1) ?? "slicing produced no output";
 }
 
-// Slices `plate` (0 = all) and returns the totals from the sliced output, or
-// the CLI's error.
+// Slices `plate` (0 = all) and returns the parsed slice_info of the output,
+// or the CLI's failure.
 async function slicePlate(plan, inputPath, dir, plate) {
   const outDir = join(dir, `out-${plate}`);
   // Must exist up front: on early failures the CLI writes result.json
@@ -226,10 +279,17 @@ async function slicePlate(plan, inputPath, dir, plate) {
     await readFile(join(outDir, "result.json"), "utf8").catch(() => ""),
   );
   if (result.code !== 0 || (status && status.returnCode !== 0)) {
-    const error = status?.error || errorLine(result.output);
     const plateIndex = status?.plateIndex || plate;
+    let error = status?.error || errorLine(result.output);
+    // Empty plates were skipped up front, so this means objects that don't
+    // fit the bed — name the printer instead of the CLI's upload advice.
+    if (status?.returnCode === CLI_NO_SUITABLE_OBJECTS) {
+      error = `doesn't fit on the ${plan.printer}`;
+    }
     return {
       ok: false,
+      returnCode: status?.returnCode ?? null,
+      output: result.output,
       error: plateIndex > 0 ? `plate ${plateIndex}: ${error}` : error,
     };
   }
@@ -238,7 +298,26 @@ async function slicePlate(plan, inputPath, dir, plate) {
     "Metadata/slice_info.config",
   );
   if (!sliceInfo) return { ok: false, error: errorLine(result.output) };
-  return { ok: true, stats: parseSliceInfo(sliceInfo.toString("utf8")) };
+  return { ok: true, info: parseSliceInfo(sliceInfo.toString("utf8")) };
+}
+
+// slicePlate, plus repairs of a project's settings when the CLI rejects
+// values a newer Bambu Studio wrote (see repairSettings).
+async function slicePlateRepairing(plan, inputPath, dir, plate, repaired) {
+  for (let round = 0; ; round++) {
+    const sliced = await slicePlate(plan, inputPath, dir, plate);
+    const repairable =
+      sliced.returnCode === CLI_INVALID_VALUES_IN_3MF ||
+      sliced.returnCode === CLI_SLICING_ERROR;
+    if (sliced.ok || !plan.settings || !repairable || round >= MAX_REPAIR_ROUNDS) {
+      return sliced;
+    }
+    const repair = repairSettings(plan.settings, sliced.output);
+    if (!repair) return sliced;
+    plan.settings = repair.settings;
+    for (const key of repair.keys) repaired.add(key);
+    await writeProjectSettings(inputPath, dir, plan.settings);
+  }
 }
 
 async function estimate(body) {
@@ -252,12 +331,17 @@ async function estimate(body) {
     }
 
     const totals = { printTimeSeconds: null, filamentGrams: null, filamentMm: null };
+    const plateFilaments = [];
+    const repaired = new Set();
+    let engine = null;
     for (const plate of plan.runs) {
-      const sliced = await slicePlate(plan, inputPath, dir, plate);
+      const sliced = await slicePlateRepairing(plan, inputPath, dir, plate, repaired);
       if (!sliced.ok) return { status: 422, body: { ok: false, error: sliced.error } };
       for (const key of Object.keys(totals)) {
-        if (sliced.stats[key] != null) totals[key] = (totals[key] ?? 0) + sliced.stats[key];
+        if (sliced.info[key] != null) totals[key] = (totals[key] ?? 0) + sliced.info[key];
       }
+      plateFilaments.push(...sliced.info.plateFilaments);
+      engine ??= sliced.info.engine;
     }
     if (totals.printTimeSeconds == null) {
       return {
@@ -269,11 +353,23 @@ async function estimate(body) {
       if (totals[key] != null) totals[key] = Math.round(totals[key] * 100) / 100;
     }
     console.log(
-      `sliced ${body.length}B profile=${plan.profile} runs=${plan.runs.join(",")} ` +
-        `skippedEmptyPlates=${plan.skippedPlates} time=${totals.printTimeSeconds}s ` +
+      `sliced ${body.length}B profile=${plan.profile} printer="${plan.printer}" ` +
+        `runs=${plan.runs.join(",")} skippedEmptyPlates=${plan.skippedPlates} ` +
+        `repaired=${[...repaired].join(",") || "-"} time=${totals.printTimeSeconds}s ` +
         `filament=${totals.filamentGrams}g`,
     );
-    return { status: 200, body: { ok: true, profile: plan.profile, ...totals } };
+    return {
+      status: 200,
+      body: {
+        ok: true,
+        profile: plan.profile,
+        engine,
+        printer: plan.printer,
+        ...totals,
+        plateFilaments,
+        repairedSettings: [...repaired],
+      },
+    };
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
@@ -334,5 +430,7 @@ const server = createServer(async (req, res) => {
 });
 
 server.listen(PORT, () => {
-  console.log(`slicer service listening on :${PORT}`);
+  console.log(
+    `slicer service listening on :${PORT} (generic printer: ${describePrinter(GENERIC_MACHINE)})`,
+  );
 });

@@ -18,6 +18,7 @@
 
 import { inflateSync } from "fflate";
 import type { PrinterInfo } from "@/db/schema";
+import { filamentChangesFromPlates } from "@/lib/printer-info";
 import { bedSizeForModel } from "@/lib/printer-beds";
 
 export type SliceInfo = {
@@ -25,6 +26,9 @@ export type SliceInfo = {
   // Sums over all plates; null for unsliced files (no predictions).
   printTimeSeconds: number | null;
   filamentGrams: number | null;
+  // The slicer that wrote the predictions ("Bambu Studio 02.08.02.61"); null
+  // for unsliced files.
+  engine: string | null;
 };
 
 export type SliceData = {
@@ -350,6 +354,32 @@ function printerInfoFromPrusaIni(
   return Object.values(info).some((v) => v !== undefined) ? info : null;
 }
 
+// The slicer that wrote a slice_info.config, from its <header>: OrcaSlicer
+// adds its own version item; Bambu Studio only writes the X-BBL client version
+// (which Orca copies over from the project, so it must be checked last).
+// Mirrors sliceEngine in slicer/lib.mjs, which reads the service's output.
+function sliceEngine(xml: string): string | null {
+  const item = (key: string) =>
+    xml.match(new RegExp(`<header_item key="${key}" value="([^"]*)"`))?.[1] || null;
+  const orca = item("OrcaSlicer-Version");
+  if (orca) return `OrcaSlicer ${orca}`;
+  const bambu = item("X-BBL-Client-Version");
+  return bambu ? `Bambu Studio ${bambu}` : null;
+}
+
+// Filament types each *sliced* plate prints from — only plates that carry a
+// prediction, since an unsliced plate lists nothing (or stale data).
+function slicedPlateFilaments(xml: string): string[][] {
+  const plates: string[][] = [];
+  for (const [, plate] of xml.matchAll(/<plate>([\s\S]*?)<\/plate>/g)) {
+    if (!/key="prediction"\s+value="\d+"/.test(plate)) continue;
+    plates.push(
+      [...plate.matchAll(/<filament\b[^>]*\btype="([^"]*)"/g)].map((m) => m[1]),
+    );
+  }
+  return plates;
+}
+
 // Returns null for archives without the relevant metadata (plain core-spec
 // 3mf, non-3mf input).
 export async function readSliceData(
@@ -374,9 +404,13 @@ export async function readSliceData(
 
   let printTimeSeconds: number | null = null;
   let filamentGrams: number | null = null;
+  let engine: string | null = null;
+  let plateFilaments: string[][] = [];
   let plateCount = 0;
   const sliceXml = await entryText(SLICE_INFO_PATH);
   if (sliceXml) {
+    engine = sliceEngine(sliceXml);
+    plateFilaments = slicedPlateFilaments(sliceXml);
     plateCount = countPlates(sliceXml);
     for (const match of sliceXml.matchAll(/key="prediction"\s+value="(\d+)"/g)) {
       printTimeSeconds = (printTimeSeconds ?? 0) + Number(match[1]);
@@ -390,7 +424,14 @@ export async function readSliceData(
   if (plateCount === 0 && modelXml) plateCount = countPlates(modelXml);
   if (plateCount === 0) plateCount = platePngCount;
   const sliceInfo =
-    plateCount > 0 ? { plateCount, printTimeSeconds, filamentGrams } : null;
+    plateCount > 0
+      ? {
+          plateCount,
+          printTimeSeconds,
+          filamentGrams,
+          engine: printTimeSeconds != null ? engine : null,
+        }
+      : null;
 
   let printerInfo: PrinterInfo | null = null;
   const projectJson = await entryText(PROJECT_SETTINGS_PATH);
@@ -412,6 +453,10 @@ export async function readSliceData(
       );
     }
   }
+
+  // A sliced file also answers "does a plate change filament mid-print?".
+  const filamentChanges = filamentChangesFromPlates(plateFilaments);
+  if (filamentChanges) printerInfo = { ...printerInfo, filamentChanges };
 
   if (!sliceInfo && !printerInfo) return null;
   return { sliceInfo, printerInfo };
