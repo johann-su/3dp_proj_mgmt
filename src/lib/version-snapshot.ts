@@ -62,6 +62,11 @@ export function buildSnapshot(model: SnapshotSource): ModelVersionSnapshot {
         printTimeSeconds: f.printTimeSeconds,
         filamentGrams: f.filamentGrams,
         sliceError: f.sliceError,
+        sliceEngine: f.sliceEngine,
+        slicePrinter: f.slicePrinter,
+        sliceApprox: f.sliceApprox,
+        creatorApp: f.creatorApp,
+        creatorVersion: f.creatorVersion,
         printerInfo: f.printerInfo,
       })),
   };
