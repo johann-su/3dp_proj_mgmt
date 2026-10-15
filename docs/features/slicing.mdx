@@ -85,7 +85,8 @@ Print Vault re-reads the numbers the file already carries.
 - **A `~` marks an estimate that had to assume something:** a file without
   printer settings (estimated for the generic printer), a PrusaSlicer project
   (its settings translated to OrcaSlicer), or a project from a newer Bambu
-  Studio whose settings needed adjusting. Treat those as ballpark figures.
+  Studio whose custom G-code OrcaSlicer couldn't read (so it was left out).
+  Treat those as ballpark figures.
   Files estimated before this distinction existed keep their `~` until they
   are re-sliced.
 - **Unsliceable files are flagged.** If OrcaSlicer can't slice a file, the

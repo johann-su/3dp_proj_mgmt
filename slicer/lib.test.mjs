@@ -274,10 +274,21 @@ test("genericPresetSet makes the presets loadable together, keeping the real bed
   assert.deepEqual(set.machine.printable_area, ["0x0", "256x0", "256x256", "0x256"]);
 });
 
-test("estimateIsApprox: only a native, unrepaired project slice is exact", () => {
+test("estimateIsApprox: native project slices are exact unless G-code was blanked", () => {
   assert.equal(estimateIsApprox({ profile: "file" }), false);
-  // A newer Bambu Studio project that needed repairs may miss filament-change time.
-  assert.equal(estimateIsApprox({ profile: "file", repairedCount: 2 }), true);
+  // Bambu's "auto" -1 dropped for Orca's default (0 = auto): same print.
+  assert.equal(
+    estimateIsApprox({ profile: "file", repairedKeys: ["tree_support_wall_count"] }),
+    false,
+  );
+  // Blanked G-code drops real moves, e.g. a multi-colour print's filament changes.
+  assert.equal(
+    estimateIsApprox({
+      profile: "file",
+      repairedKeys: ["raft_first_layer_expansion", "change_filament_gcode"],
+    }),
+    true,
+  );
   // PrusaSlicer settings mapped onto an Orca profile.
   assert.equal(estimateIsApprox({ profile: "file", translated: true }), true);
   // No settings in the file: the printer was assumed.

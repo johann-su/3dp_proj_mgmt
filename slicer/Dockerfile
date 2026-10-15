@@ -8,12 +8,17 @@ FROM ubuntu:24.04 AS orca
 # renovate: datasource=github-releases depName=OrcaSlicer/OrcaSlicer extractVersion=^v(?<version>.*)$
 ARG ORCA_VERSION=2.4.2
 ARG TARGETARCH
+# A stalled mirror connection otherwise hangs the build indefinitely (seen on
+# the Dokploy host: apt sat on "Ign: … noble InRelease" for 15+ minutes):
+# time out each request and retry instead. Repeated in the runtime stage.
+RUN printf 'Acquire::Retries "5";\nAcquire::http::Timeout "30";\nAcquire::https::Timeout "30";\n' \
+      > /etc/apt/apt.conf.d/80-retries
 RUN apt-get update \
     && apt-get install -y --no-install-recommends ca-certificates curl squashfs-tools \
     && rm -rf /var/lib/apt/lists/*
 RUN set -eux; \
     case "$TARGETARCH" in arm64) arch=_aarch64 ;; *) arch= ;; esac; \
-    curl -fsSL -o /tmp/orca.AppImage \
+    curl -fsSL --retry 5 --retry-delay 5 --connect-timeout 30 -o /tmp/orca.AppImage \
       "https://github.com/OrcaSlicer/OrcaSlicer/releases/download/v${ORCA_VERSION}/OrcaSlicer_Linux_AppImage_Ubuntu2404${arch}_V${ORCA_VERSION}.AppImage"; \
     # The squashfs starts where the runtime's ELF ends: after its section \
     # header table (e_shoff + e_shentsize * e_shnum, 64-bit little-endian). \
@@ -30,6 +35,7 @@ FROM ubuntu:24.04
 # GUI build and links GTK/WebKit/GL, so those runtime libraries must exist.
 # nodejs runs the thin HTTP wrapper in server.mjs; unzip/zip read and patch
 # the .3mf archives.
+COPY --from=orca /etc/apt/apt.conf.d/80-retries /etc/apt/apt.conf.d/80-retries
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
        libgtk-3-0t64 libwebkit2gtk-4.1-0 libgl1 libegl1 libglu1-mesa \
