@@ -12,7 +12,7 @@ import {
 import { buildSnapshot, summarizeVersionChange } from "@/lib/version-snapshot";
 import { getSession, signInRedirect } from "@/lib/auth";
 import { canActAsOwner } from "@/lib/roles";
-import { fileSrc, fileToken } from "@/lib/file-token";
+import { fileSrc, slicerFileBase } from "@/lib/file-token";
 import { resolveBedSizeMm } from "@/lib/printer-beds";
 import { get3mfSliceInfo } from "@/lib/threemf-remote";
 import { processPendingSlices } from "@/lib/slicer";
@@ -22,6 +22,9 @@ import { MAX_SCAD_SOURCE_BYTES, openscadConfigured } from "@/lib/openscad";
 import { parseScadParameters } from "@/lib/scad-params";
 import { fileExtension } from "@/lib/file-kind";
 import { parseOnshapeUrl } from "@/lib/onshape/api";
+import { isPinned } from "@/lib/pins";
+import { getShareToken } from "@/lib/share-links";
+import { publicSharingEnabled } from "@/lib/share-token";
 import { platformFromSourceUrl } from "@/lib/platform";
 import {
   ModelView,
@@ -30,6 +33,7 @@ import {
   type PrintFileData,
 } from "../model-view";
 import type { ModelHistoryEntry } from "./history-panel";
+import { isApproxEstimate } from "@/lib/printer-info";
 
 export const dynamic = "force-dynamic";
 
@@ -203,14 +207,20 @@ export default async function ModelPage({
     }));
   }
 
-  // Whether the current viewer has liked this model, for the Like button.
-  const liked = !!(await db.query.modelLikes.findFirst({
-    where: and(
-      eq(modelLikes.userId, session.user.id),
-      eq(modelLikes.modelId, model.id),
-    ),
-    columns: { modelId: true },
-  }));
+  // Whether the current viewer has liked this model (Like button) and whether
+  // anyone has pinned it to the shared homepage section (Pin button).
+  const [likeRow, pinned, shareToken] = await Promise.all([
+    db.query.modelLikes.findFirst({
+      where: and(
+        eq(modelLikes.userId, session.user.id),
+        eq(modelLikes.modelId, model.id),
+      ),
+      columns: { modelId: true },
+    }),
+    isPinned("model", model.id),
+    getShareToken("model", model.id),
+  ]);
+  const liked = !!likeRow;
 
   const data: ModelViewData = {
     title: model.title,
@@ -246,14 +256,14 @@ export default async function ModelPage({
       const toEntry = (file: (typeof printFiles)[number]): PrintFileData => {
         const info = sliceInfoByFileId.get(file.id);
         const persisted = file.sliceStatus === "ok";
-        const approx = persisted && file.sliceSource === "slicer";
+        const approx = isApproxEstimate(file);
         return {
           id: file.id,
           filename: file.filename,
           imported: file.imported,
-          // Signed access token for the slicer deep links, which download the
+          // Signed URL prefix for the slicer deep links, which download the
           // file without the session cookie (see file-download-menu.tsx).
-          downloadToken: fileToken(file.id),
+          slicerPath: slicerFileBase(file.id),
           size: file.size,
           printTime:
             info?.printTimeSeconds ??
@@ -269,6 +279,8 @@ export default async function ModelPage({
           printer: file.printerInfo ?? null,
           sliceStatus: file.sliceStatus ?? null,
           sliceError: file.sliceError ?? null,
+          sliceEngine: file.sliceEngine ?? null,
+          slicePrinter: file.slicePrinter ?? null,
           paramsSummary: file.generatedParams
             ? Object.entries(file.generatedParams)
                 .map(([key, value]) => `${key} = ${value}`)
@@ -302,9 +314,15 @@ export default async function ModelPage({
     canManage,
     isLoggedIn: !!session,
     liked,
+    pinned,
     collectionOptions,
     slicerConfigured,
     history,
+    share: {
+      token: shareToken,
+      canEnable: canManage,
+      available: publicSharingEnabled(),
+    },
   };
 
   return (

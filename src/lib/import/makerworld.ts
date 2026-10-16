@@ -9,8 +9,8 @@
 
 import { htmlishToMarkdown } from "@/lib/html";
 import type { BomItemInput } from "@/lib/bom";
-// From file-kind, not s3: this module is unit-tested, and @/lib/s3 builds an
-// S3 client from env at load time.
+// From file-kind directly: this module is unit-tested and must not pull in
+// server-only modules such as @/lib/storage.
 import { fileExtension, VIDEO_EXTENSIONS } from "@/lib/file-kind";
 import {
   apiBase,

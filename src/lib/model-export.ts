@@ -199,7 +199,8 @@ export function buildModelExportZip(model: ModelExportInput): Uint8Array {
     ),
   };
   // No BOM → no bom.csv at all, rather than a header-only file (same "nothing
-  // to include, include nothing" rule as the CSV download route's 404). The
+  // to include, include nothing" rule as the model page, which hides the BOM
+  // section — and its CSV download — when the list is empty). The
   // manifest always carries the BOM, sections included — bom.csv is the flat
   // human/spreadsheet copy.
   if (model.bomItems.length > 0) {

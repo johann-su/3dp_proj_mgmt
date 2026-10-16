@@ -26,7 +26,7 @@ import {
 import type { PrinterInfo } from "@/db/schema";
 import type { ScadParameterGroup } from "@/lib/scad-params";
 import { formatBytes, formatDuration, formatGrams } from "@/lib/format";
-import { filamentSummary } from "@/lib/printer-info";
+import { filamentSummary, sliceFailureMessage } from "@/lib/printer-info";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -49,9 +49,12 @@ export type PrintFileData = {
   // The file came with the model's source-platform import (or Onshape sync)
   // rather than being uploaded by hand — badged with a cloud icon.
   imported: boolean;
-  // Signed /api/files access token for slicer deep links (null in the
-  // create-wizard preview, where the file has no id yet either).
-  downloadToken: string | null;
+  // Same-origin URL prefix a slicer can download the file from without
+  // cookies — the credential is a path segment (see file-download-menu.tsx);
+  // the menu appends `/<name>.3mf`. Built server-side: slicerFileBase for
+  // members, sharedSlicerFileBase on public share pages. Null hides the
+  // "Open in" menu (previews, trash, version history).
+  slicerPath: string | null;
   // Download URL for files without a live model_files row — the version
   // preview serves historical files via /api/files/versions/… (already
   // token-authenticated, so extra query params are appended with "&").
@@ -66,6 +69,10 @@ export type PrintFileData = {
   // to "18 plates" would read as the whole project.
   slicedPlateCount?: number | null;
   printer: PrinterInfo | null;
+  // Which slicer produced the estimate, and the generic printer it assumed
+  // when the file names none of its own (see model_files.slice_printer).
+  sliceEngine?: string | null;
+  slicePrinter?: string | null;
   sliceStatus: string | null;
   sliceError: string | null;
   // Parametric .scad files: customizer schema parsed from the source (set for
@@ -162,6 +169,7 @@ function PrintFileRow({
   // useless download. Other model files (.scad, .step) get a plain download.
   const is3mf = file.filename.toLowerCase().endsWith(".3mf");
   const filaments = filamentSummary(file.printer);
+  const missingSlots = file.printer?.missingFilamentSlots;
 
   return (
     <div className="flex min-w-0 items-center gap-3 border rounded-lg px-3 py-2.5">
@@ -191,13 +199,25 @@ function PrintFileRow({
           </div>
         )}
         <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
-          {file.printTime != null && (
-            <span className="inline-flex items-center gap-1.5 text-sm font-semibold">
-              <Clock className="size-4 text-primary" />
-              {file.approx ? "~" : ""}
-              {formatDuration(file.printTime)}
-            </span>
-          )}
+          {file.printTime != null &&
+            (file.sliceEngine ? (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <span className="inline-flex items-center gap-1.5 text-sm font-semibold">
+                    <Clock className="size-4 text-primary" />
+                    {file.approx ? "~" : ""}
+                    {formatDuration(file.printTime)}
+                  </span>
+                </TooltipTrigger>
+                <TooltipContent>Estimated by {file.sliceEngine}</TooltipContent>
+              </Tooltip>
+            ) : (
+              <span className="inline-flex items-center gap-1.5 text-sm font-semibold">
+                <Clock className="size-4 text-primary" />
+                {file.approx ? "~" : ""}
+                {formatDuration(file.printTime)}
+              </span>
+            ))}
           {file.grams != null && (
             <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
               <Weight className="size-3.5 text-chart-3" />
@@ -230,7 +250,7 @@ function PrintFileRow({
             </span>
           )}
         </div>
-        {file.printer?.model && (
+        {file.printer?.model ? (
           <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
             <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
               <Printer className="size-3.5" />
@@ -239,10 +259,27 @@ function PrintFileRow({
                 ` · ${file.printer.nozzleDiameterMm} mm`}
             </span>
           </div>
-        )}
+        ) : file.slicePrinter ? (
+          // The file names no printer: say which one the estimate assumed.
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
+                  <Printer className="size-3.5" />
+                  {file.slicePrinter} · generic profile
+                </span>
+              </TooltipTrigger>
+              <TooltipContent>
+                The file has no printer settings, so it was estimated for the
+                slicer&apos;s default printer
+              </TooltipContent>
+            </Tooltip>
+          </div>
+        ) : null}
         {(filaments ||
           file.printer?.bedType ||
           file.printer?.usesSupport ||
+          missingSlots?.length ||
           file.sliceStatus === "failed") && (
           <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
             {/* One badge per filament slot — the same material twice means a
@@ -264,12 +301,19 @@ function PrintFileRow({
             ))}
             {/* Like "supports": only the informative case is badged. */}
             {filaments?.multi && (
-              <Badge
-                variant="outline"
-                className="px-1.5 py-0 text-[10px] font-normal text-muted-foreground"
-              >
-                {filaments.multi === "material" ? "multi-material" : "multi-color"}
-              </Badge>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Badge
+                    variant="outline"
+                    className="px-1.5 py-0 text-[10px] font-normal text-muted-foreground"
+                  >
+                    {filaments.multi === "material" ? "multi-material" : "multi-color"}
+                  </Badge>
+                </TooltipTrigger>
+                <TooltipContent>
+                  Changes filament mid-print — needs an AMS/MMU or manual swaps
+                </TooltipContent>
+              </Tooltip>
             )}
             {file.printer?.requiresMultiNozzle && (
               <Tooltip>
@@ -305,13 +349,22 @@ function PrintFileRow({
                 supports
               </Badge>
             )}
+            {/* Deliberately not remapped to a slot that exists: the slicer's
+                fallback could be a different material altogether. */}
+            {missingSlots?.length ? (
+              <span className="inline-flex items-center gap-1 text-xs text-amber-700 dark:text-amber-400">
+                <TriangleAlert className="size-3.5" />
+                Assigned to filament slot {missingSlots.join(", ")}, which the
+                project doesn&apos;t define — check the filament before printing
+              </span>
+            ) : null}
             {file.sliceStatus === "failed" && (
               <span
                 className="inline-flex items-center gap-1 text-xs text-destructive"
                 title={file.sliceError ?? undefined}
               >
                 <TriangleAlert className="size-3.5" />
-                Couldn&apos;t be sliced — the file may not be printable
+                {sliceFailureMessage(file.sliceError)}
               </span>
             )}
           </div>
@@ -325,10 +378,14 @@ function PrintFileRow({
             filename={file.filename}
           />
         )}
-        {file.id && file.downloadToken && is3mf ? (
+        {file.slicerPath && (file.id || file.src) && is3mf ? (
           <FileDownloadMenu
-            fileId={file.id}
-            token={file.downloadToken}
+            slicerPath={file.slicerPath}
+            downloadHref={
+              file.id
+                ? `/api/files/${file.id}?download=1`
+                : `${file.src}&download=1`
+            }
             filename={file.filename}
             makerworldUrl={makerworldUrl ?? undefined}
           />

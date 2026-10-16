@@ -1,15 +1,16 @@
-// Slicer metadata for .3mf files already stored in S3. The ZIP/config parsing
+// Slicer metadata for .3mf files already in storage. The ZIP/config parsing
 // lives in src/lib/threemf-slice-info.ts (pure, unit-tested); this module only
-// wires it to S3 ranged GETs and caches the result per object key.
+// wires it to ranged storage reads and caches the result per object key.
 
-import { GetObjectCommand } from "@aws-sdk/client-s3";
-import { s3, S3_BUCKET } from "@/lib/s3";
+import { readBlobBytes } from "@/lib/blob-store";
+import { blobStore } from "@/lib/storage";
 import {
   readSliceData,
   type SliceData,
   type SliceInfo,
 } from "@/lib/threemf-slice-info";
 import type { PrinterInfo } from "@/db/schema";
+import type { FileCreator } from "@/lib/file-creator";
 
 export type { SliceInfo } from "@/lib/threemf-slice-info";
 
@@ -17,15 +18,9 @@ export type { SliceInfo } from "@/lib/threemf-slice-info";
 const cache = new Map<string, SliceData | null>();
 
 async function getRange(key: string, start: number, end: number) {
-  const object = await s3.send(
-    new GetObjectCommand({
-      Bucket: S3_BUCKET,
-      Key: key,
-      Range: `bytes=${start}-${end}`,
-    }),
-  );
-  if (!object.Body) throw new Error("empty range response");
-  return object.Body.transformToByteArray();
+  const bytes = await readBlobBytes(blobStore(), key, { start, end });
+  if (!bytes) throw new Error("stored object missing");
+  return bytes;
 }
 
 // Both getters return null for archives without the relevant metadata (plain
@@ -59,4 +54,11 @@ export async function get3mfPrinterInfo(
   size: number,
 ): Promise<PrinterInfo | null> {
   return (await parseCached(s3Key, size))?.printerInfo ?? null;
+}
+
+export async function get3mfCreator(
+  s3Key: string,
+  size: number,
+): Promise<FileCreator | null> {
+  return (await parseCached(s3Key, size))?.creator ?? null;
 }

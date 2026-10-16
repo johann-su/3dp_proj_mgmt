@@ -4,7 +4,7 @@ Self-hostable project management platform for `.3mf` files. Its structure
 mirrors [MakerWorld](https://makerworld.com) or
 [Printables](https://www.printables.com) — just completely self hostable:
 models, print profiles, images and documents live in your own Postgres
-database and S3-compatible storage.
+database and S3-compatible storage (or a plain directory/Docker volume).
 
 Model management with metadata auto-fill from `.3mf` files, fuzzy search,
 collections, bills of materials and PDF manuals; imports from MakerWorld,
@@ -37,18 +37,20 @@ docker compose --profile app up -d --build
 - Nextjs
 - shadcn
 - BetterAuth
-- s3 block storage backend
+- S3-compatible or local-filesystem file storage
 - postgres db (through drizzle orm)
 
 ## Development
 
-Requirements: Node 22+, Docker, and an S3-compatible storage (AWS S3, MinIO,
-Garage, …) with a bucket whose credentials have read/write access.
+Requirements: Node 22+, Docker, and either an S3-compatible storage (AWS S3,
+MinIO, Garage, …) with a bucket whose credentials have read/write access, or
+`STORAGE_BACKEND=filesystem` with `STORAGE_PATH` pointing at a local directory
+(e.g. `./data/files`).
 
 ### First-time setup
 
 ```sh
-cp .env.example .env       # then fill in BETTER_AUTH_SECRET and your S3 settings
+cp .env.example .env       # then fill in BETTER_AUTH_SECRET and your storage settings
 docker compose up -d       # starts Postgres on :5432, the slicer service on :8000 and the openscad service on :8001
 npm install
 npm run db:migrate         # apply SQL migrations from ./drizzle + seed categories

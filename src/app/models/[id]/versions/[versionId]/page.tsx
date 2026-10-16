@@ -14,6 +14,7 @@ import { platformFromSourceUrl } from "@/lib/platform";
 import { Button } from "@/components/ui/button";
 import { ModelView, type ModelViewData } from "../../../model-view";
 import { RestoreVersionButton } from "./restore-version-button";
+import { isApproxEstimate } from "@/lib/printer-info";
 
 export const dynamic = "force-dynamic";
 
@@ -137,7 +138,7 @@ export default async function ModelVersionPreviewPage({
       const persisted = file.sliceStatus === "ok";
       return {
         id: null,
-        downloadToken: null,
+        slicerPath: null,
         src: file.src,
         filename: file.filename,
         imported: file.imported ?? false,
@@ -148,7 +149,7 @@ export default async function ModelVersionPreviewPage({
           null,
         grams:
           info?.filamentGrams ?? (persisted ? file.filamentGrams : null) ?? null,
-        approx: persisted && file.sliceSource === "slicer",
+        approx: isApproxEstimate(file),
         plateCount: info?.plateCount ?? null,
         slicedPlateCount: info?.slicedPlateCount ?? null,
         printer: file.printerInfo ?? null,
@@ -156,6 +157,8 @@ export default async function ModelVersionPreviewPage({
         // "estimating…" pulse in a preview.
         sliceStatus: file.sliceStatus === "failed" ? "failed" : null,
         sliceError: file.sliceError ?? null,
+        sliceEngine: file.sliceEngine ?? null,
+        slicePrinter: file.slicePrinter ?? null,
       };
     }),
     pdfFiles: pdfFiles.map((file) => ({

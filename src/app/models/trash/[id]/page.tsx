@@ -14,6 +14,7 @@ import { platformFromSourceUrl } from "@/lib/platform";
 import { TRASH_RETENTION_DAYS } from "@/lib/model-versions";
 import { ModelView, type ModelViewData, type PrintFileData } from "../../model-view";
 import { TrashPreviewActions } from "./trash-preview-actions";
+import { isApproxEstimate } from "@/lib/printer-info";
 
 export const dynamic = "force-dynamic";
 
@@ -97,7 +98,7 @@ export default async function TrashPreviewPage({
     const persisted = file.sliceStatus === "ok";
     return {
       id: null,
-      downloadToken: null,
+      slicerPath: null,
       src: fileSrc(file.id),
       filename: file.filename,
       imported: file.imported,
@@ -108,13 +109,15 @@ export default async function TrashPreviewPage({
         null,
       grams:
         info?.filamentGrams ?? (persisted ? file.filamentGrams : null) ?? null,
-      approx: persisted && file.sliceSource === "slicer",
+      approx: isApproxEstimate(file),
       plateCount: info?.plateCount ?? null,
       printer: file.printerInfo ?? null,
       // Never show the "estimating…" pulse in a read-only preview — pending
       // rows never advance here (nothing re-runs the slicer for trash).
       sliceStatus: file.sliceStatus === "failed" ? "failed" : null,
       sliceError: file.sliceError ?? null,
+      sliceEngine: file.sliceEngine ?? null,
+      slicePrinter: file.slicePrinter ?? null,
       paramsSummary: file.generatedParams
         ? Object.entries(file.generatedParams)
             .map(([key, value]) => `${key} = ${value}`)

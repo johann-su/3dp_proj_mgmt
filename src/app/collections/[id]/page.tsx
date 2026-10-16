@@ -12,10 +12,14 @@ import { GALLERY_KINDS } from "@/lib/file-kind";
 import { formatDate } from "@/lib/format";
 import { incrementCollectionViewCount } from "@/lib/metrics";
 import { platformFromSourceUrl, platformLabels } from "@/lib/platform";
+import { isPinned } from "@/lib/pins";
+import { getShareToken } from "@/lib/share-links";
+import { publicSharingEnabled } from "@/lib/share-token";
 import { smartCollectionModelCards } from "@/lib/smart-collections";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ModelCard, type ModelCardData } from "@/components/model-card";
+import { PinButton } from "@/components/pin-button";
 import { ShareButton } from "@/components/share-button";
 import { Markdown } from "@/components/markdown";
 import { CollectionSyncButton } from "./collection-sync-button";
@@ -70,6 +74,10 @@ export default async function CollectionPage({
   const canManage = canActAsOwner(session.user, collection.userId);
   const sourcePlatform = platformFromSourceUrl(collection.sourceUrl);
   const isSmart = collection.smart && collection.rules != null;
+  const [pinned, shareToken] = await Promise.all([
+    isPinned("collection", collection.id),
+    getShareToken("collection", collection.id),
+  ]);
 
   // Smart collections evaluate their rule tree live (nothing is stored in
   // collection_models); manual ones render their hand-picked rows. Trashed
@@ -132,7 +140,15 @@ export default async function CollectionPage({
             stays with the owner and moderators/admins. The page already
             redirects signed-out visitors. */}
         <div className="flex items-center gap-2">
-          <ShareButton />
+          <PinButton kind="collection" id={collection.id} initialPinned={pinned} />
+          <ShareButton
+            kind="collection"
+            id={collection.id}
+            initialToken={shareToken}
+            canEnable={canManage}
+            publicSharingAvailable={publicSharingEnabled()}
+            smart={isSmart}
+          />
           <Button asChild variant="outline" size="sm">
             <Link href={`/collections/${collection.id}/edit`}>
               <SquarePen className="size-4" />

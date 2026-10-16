@@ -10,8 +10,11 @@ import { CALLBACK_PATH_HEADER, signInPath } from "@/lib/callback-url";
 // Note: in this Next.js version the middleware convention was renamed to
 // `proxy` (see node_modules/next/dist/docs/.../proxy.md).
 
-// Routes that must stay reachable while signed out.
-const PUBLIC_PATHS = ["/sign-in", "/sign-up"];
+// Routes that must stay reachable while signed out. /share is the public
+// share-link view: its pages authorize by the link token alone (see
+// src/lib/share-links.ts) and 404 on anything else, never falling back to
+// catalog access.
+const PUBLIC_PATHS = ["/sign-in", "/sign-up", "/share"];
 
 export function proxy(request: NextRequest) {
   const { pathname, search } = request.nextUrl;
@@ -41,8 +44,11 @@ export const config = {
   // internals, and static/metadata files. `.well-known` holds the OAuth
   // discovery documents for the MCP server (issue #96), which a client must be
   // able to read *before* it has any credential — the routes themselves serve
-  // nothing but public metadata.
+  // nothing but public metadata. Image files are `public/` assets (platform
+  // logos, the customizer badge) that the public share pages render for
+  // signed-out visitors; no page route ends in an image extension, and
+  // uploaded files are served from /api/files, never from here.
   matcher: [
-    "/((?!api|_next/static|_next/image|favicon.ico|sitemap.xml|robots.txt|\\.well-known).*)",
+    "/((?!api|_next/static|_next/image|favicon.ico|sitemap.xml|robots.txt|\\.well-known|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico)$).*)",
   ],
 };

@@ -30,8 +30,11 @@ ENV PORT=3000 HOSTNAME=0.0.0.0
 HEALTHCHECK --interval=30s --timeout=5s --start-period=15s \
     CMD node -e "fetch('http://127.0.0.1:'+(process.env.PORT||3000)+'/api/health').then(r=>process.exit(r.ok?0:1),()=>process.exit(1))"
 
-# Stay root at boot: .next/cache is often a mounted volume, which Docker
-# creates owned by root regardless of the --chown above (that only applies
-# to files baked into the image). Fix the mount's ownership, then drop to
-# the unprivileged nextjs user via su-exec before running the app.
-CMD ["sh", "-c", "mkdir -p .next/cache && chown nextjs:nodejs .next/cache && exec su-exec nextjs sh -c 'node scripts/migrate.mjs && node server.js'"]
+# Stay root at boot: .next/cache and the filesystem storage directory
+# (STORAGE_PATH) are often mounted volumes, which Docker creates owned by root
+# regardless of the --chown above (that only applies to files baked into the
+# image). Fix the mounts' ownership, then drop to the unprivileged nextjs user
+# via su-exec before running the app. Only the top directory is chowned:
+# everything below it is written by nextjs, and a recursive chown would walk
+# every stored file on each boot.
+CMD ["sh", "-c", "mkdir -p .next/cache && chown nextjs:nodejs .next/cache && if [ -n \"$STORAGE_PATH\" ]; then mkdir -p \"$STORAGE_PATH\" && chown nextjs:nodejs \"$STORAGE_PATH\"; fi && exec su-exec nextjs sh -c 'node scripts/migrate.mjs && node server.js'"]

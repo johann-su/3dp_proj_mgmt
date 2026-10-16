@@ -3,12 +3,11 @@ import { revalidatePath } from "next/cache";
 import { after } from "next/server";
 import { createHash } from "node:crypto";
 import { and, eq } from "drizzle-orm";
-import { DeleteObjectsCommand } from "@aws-sdk/client-s3";
 import { db } from "@/db";
 import { modelFiles, models } from "@/db/schema";
 import { getSession } from "@/lib/auth";
 import { canActAsOwner } from "@/lib/roles";
-import { s3, S3_BUCKET } from "@/lib/s3";
+import { blobStore } from "@/lib/storage";
 import { stageBuffer } from "@/lib/storage";
 import { normalizeThreeMf } from "@/lib/threemf-normalize";
 import { sliceEligible, processPendingSlices } from "@/lib/slicer";
@@ -171,12 +170,7 @@ export async function DELETE(
   }
 
   await db.delete(modelFiles).where(eq(modelFiles.id, file.id));
-  await s3.send(
-    new DeleteObjectsCommand({
-      Bucket: S3_BUCKET,
-      Delete: { Objects: [{ Key: file.s3Key }] },
-    }),
-  );
+  await blobStore().delete([file.s3Key]);
 
   revalidatePath(`/models/${model.id}`);
   return NextResponse.json({ status: "deleted" });

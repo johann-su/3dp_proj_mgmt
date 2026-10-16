@@ -90,7 +90,8 @@ test("version numbering matches the History panel, including pre-versioning mode
 });
 
 test("bom.csv is written only when the model has BOM items", () => {
-  // "Nothing to include → include nothing", matching the CSV download route,
+  // "Nothing to include → include nothing", matching the model page's BOM
+  // section (hidden, CSV download included, when empty),
   // rather than shipping a header-only file that looks like a real BOM.
   assert.ok(!("bom.csv" in exportZip({})));
   const entries = exportZip({

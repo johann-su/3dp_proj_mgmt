@@ -33,7 +33,7 @@ import {
   fileExtension,
   sanitizeRename,
   GALLERY_KINDS,
-} from "@/lib/s3";
+} from "@/lib/file-kind";
 import { processPendingSlices, sliceEligible } from "@/lib/slicer";
 import { animatedImageKeys } from "@/lib/storage";
 import { isContentHash, type DuplicateVia } from "@/lib/duplicate-key";

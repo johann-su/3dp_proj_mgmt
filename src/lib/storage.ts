@@ -1,10 +1,29 @@
-import { Readable } from "node:stream";
 import { createHash, randomUUID } from "node:crypto";
-import { Upload } from "@aws-sdk/lib-storage";
-import { GetObjectCommand } from "@aws-sdk/client-s3";
-import { s3, S3_BUCKET } from "@/lib/s3";
+import {
+  readBlobBytes,
+  resolveStorageConfig,
+  type BlobStore,
+} from "@/lib/blob-store";
+import { FsBlobStore } from "@/lib/blob-store-fs";
+import { S3BlobStore } from "@/lib/blob-store-s3";
 import { isAnimatedImage } from "@/lib/image-animated";
 import { reportError } from "@/lib/telemetry";
+
+let store: BlobStore | undefined;
+
+// The configured storage backend (see resolveStorageConfig), built on first
+// use rather than at import so that merely importing this module has no side
+// effects and a misconfiguration surfaces as an error where files are touched.
+export function blobStore(): BlobStore {
+  if (!store) {
+    const config = resolveStorageConfig();
+    store =
+      config.backend === "filesystem"
+        ? new FsBlobStore(config.root)
+        : new S3BlobStore(config);
+  }
+  return store;
+}
 
 export type StagedFile = {
   key: string;
@@ -12,13 +31,13 @@ export type StagedFile = {
   size: number;
   contentType: string;
   // Lowercase hex SHA-256 of the bytes, digested as they stream past on their
-  // way to S3 rather than by reading the object back. Stored on model files
+  // way to storage rather than by reading the object back. Stored on model files
   // (model_files.content_hash) to flag re-uploads of the same file as
   // duplicates — see @/lib/duplicates.
   contentHash: string;
 };
 
-// Streams a file into the staging area of the bucket ("uploads/…") and
+// Streams a file into the staging area of storage ("uploads/…") and
 // returns the descriptor used by createModel. Size is counted while
 // streaming so it works without a Content-Length.
 // Stages an in-memory file the same way; used when the bytes had to be
@@ -30,16 +49,7 @@ export async function stageBuffer(
 ): Promise<StagedFile> {
   const safeName = filename.replace(/[^a-zA-Z0-9._-]/g, "_");
   const key = `uploads/${randomUUID()}/${safeName}`;
-  const upload = new Upload({
-    client: s3,
-    params: {
-      Bucket: S3_BUCKET,
-      Key: key,
-      Body: Buffer.from(data),
-      ContentType: contentType,
-    },
-  });
-  await upload.done();
+  await blobStore().put(key, data, contentType);
   return {
     key,
     filename,
@@ -69,23 +79,12 @@ export async function stageStream(
     },
   });
 
-  const upload = new Upload({
-    client: s3,
-    params: {
-      Bucket: S3_BUCKET,
-      Key: key,
-      Body: Readable.fromWeb(
-        body.pipeThrough(counter) as unknown as import("node:stream/web").ReadableStream,
-      ),
-      ContentType: contentType,
-    },
-  });
-  await upload.done();
+  await blobStore().put(key, body.pipeThrough(counter), contentType);
 
   return { key, filename, size, contentType, contentHash: digest.digest("hex") };
 }
 
-// Reads a small text file (e.g. a parametric .scad source) from S3. Returns
+// Reads a small text file (e.g. a parametric .scad source) from storage. Returns
 // null when the object is missing or larger than maxBytes — callers treat
 // that as "no parseable content", never as an error.
 export async function readTextFile(
@@ -95,11 +94,8 @@ export async function readTextFile(
 ): Promise<string | null> {
   if (size > maxBytes) return null;
   try {
-    const object = await s3.send(
-      new GetObjectCommand({ Bucket: S3_BUCKET, Key: s3Key }),
-    );
-    if (!object.Body) return null;
-    return Buffer.from(await object.Body.transformToByteArray()).toString("utf8");
+    const bytes = await readBlobBytes(blobStore(), s3Key);
+    return bytes && Buffer.from(bytes).toString("utf8");
   } catch {
     return null;
   }
@@ -108,36 +104,27 @@ export async function readTextFile(
 // Reads a stored object in full (the export zip needs the bytes in memory to
 // hand them to zipSync). Returns null when the object is missing or
 // unreadable, so an export skips that one file instead of failing the whole
-// download — a model whose S3 object vanished should still export the rest.
+// download — a model whose stored object vanished should still export the rest.
 export async function readFileBytes(s3Key: string): Promise<Uint8Array | null> {
   try {
-    const object = await s3.send(
-      new GetObjectCommand({ Bucket: S3_BUCKET, Key: s3Key }),
-    );
-    if (!object.Body) return null;
-    return await object.Body.transformToByteArray();
+    const bytes = await readBlobBytes(blobStore(), s3Key);
+    if (!bytes) reportError(`Stored file ${s3Key} is missing`, new Error("not found"));
+    return bytes;
   } catch (err) {
-    reportError(`Failed to read ${s3Key} from S3`, err);
+    reportError(`Failed to read ${s3Key} from storage`, err);
     return null;
   }
 }
 
-// Reads a staged image's header from S3 and reports whether it's animated, so
+// Reads a staged image's header from storage and reports whether it's animated, so
 // browse cards can freeze animated covers to a poster frame (see CoverImage).
 // Detected server-side from the actual bytes — like contentTypeForFilename, we
 // never trust a client-claimed value. Best-effort: a read failure means "not
 // animated" (worst case a card animates, matching the old behaviour).
 export async function detectAnimated(s3Key: string): Promise<boolean> {
   try {
-    const object = await s3.send(
-      new GetObjectCommand({
-        Bucket: S3_BUCKET,
-        Key: s3Key,
-        Range: "bytes=0-255",
-      }),
-    );
-    if (!object.Body) return false;
-    return isAnimatedImage(await object.Body.transformToByteArray());
+    const header = await readBlobBytes(blobStore(), s3Key, { start: 0, end: 255 });
+    return !!header && isAnimatedImage(header);
   } catch {
     return false;
   }

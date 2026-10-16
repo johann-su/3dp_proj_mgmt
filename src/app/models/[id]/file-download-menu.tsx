@@ -58,21 +58,23 @@ const SLICERS = [
 ] as const;
 
 export function FileDownloadMenu({
-  fileId,
-  token,
+  slicerPath,
+  downloadHref,
   filename,
   makerworldUrl,
 }: {
-  fileId: string;
-  // Signed /api/files access token (minted server-side, see @/lib/file-token)
-  // — it, not a cookie, is what authenticates the slicer's download.
-  token: string;
+  // Cookie-less file URL prefix with the credential as a path segment —
+  // `/api/files/<id>/<file token>` for members, or
+  // `/api/files/shared/<id>/<share token>` on public share pages. Minted
+  // server-side; it, not a cookie, authenticates the slicer's download.
+  slicerPath: string;
+  downloadHref: string;
   filename: string;
   makerworldUrl?: string;
 }) {
   function openInSlicer(buildUrl: (fileUrl: string, name: string) => string) {
     const name = /\.3mf$/i.test(filename) ? filename : `${filename}.3mf`;
-    const fileUrl = `${window.location.origin}/api/files/${fileId}/${token}/${encodeURIComponent(name)}`;
+    const fileUrl = `${window.location.origin}${slicerPath}/${encodeURIComponent(name)}`;
     window.location.assign(buildUrl(fileUrl, name));
   }
 
@@ -95,7 +97,7 @@ export function FileDownloadMenu({
       </Tooltip>
       <DropdownMenuContent align="end" className="min-w-40">
         <DropdownMenuItem asChild>
-          <a href={`/api/files/${fileId}?download=1`}>
+          <a href={downloadHref}>
             <Download className="size-4" />
             Download
           </a>

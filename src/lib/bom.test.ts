@@ -1,6 +1,12 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { bomToCsv, groupBySection, parseBomCsv, sanitizeBomItems } from "@/lib/bom";
+import {
+  allowedBomImageType,
+  bomToCsv,
+  groupBySection,
+  parseBomCsv,
+  sanitizeBomItems,
+} from "@/lib/bom";
 
 test("parseBomCsv maps header aliases onto the BOM columns", () => {
   const result = parseBomCsv(
@@ -113,4 +119,17 @@ test("groupBySection puts ungrouped items first and keeps first-appearance order
 test("groupBySection omits the ungrouped bucket when every item has a section", () => {
   const grouped = groupBySection([{ name: "ESC", section: "Electronics" }]);
   assert.deepEqual(grouped, [{ section: "Electronics", items: [{ name: "ESC", section: "Electronics" }] }]);
+});
+
+// The proxy serves vendor images on our origin: raster types only. SVG is an
+// image/* type that can run script when the proxy URL is opened directly.
+test("allowedBomImageType passes raster images and rejects SVG and non-images", () => {
+  assert.equal(allowedBomImageType("image/png"), "image/png");
+  assert.equal(allowedBomImageType("IMAGE/JPEG; charset=binary"), "image/jpeg");
+  assert.equal(allowedBomImageType("image/webp"), "image/webp");
+  assert.equal(allowedBomImageType("image/svg+xml"), null);
+  assert.equal(allowedBomImageType("image/svg+xml; charset=utf-8"), null);
+  assert.equal(allowedBomImageType("text/html"), null);
+  assert.equal(allowedBomImageType(""), null);
+  assert.equal(allowedBomImageType(null), null);
 });

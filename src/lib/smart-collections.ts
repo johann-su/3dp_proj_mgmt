@@ -28,6 +28,24 @@ async function matchingModelIds(rules: unknown, limit: number): Promise<string[]
   return result.rows.map((r) => r.id);
 }
 
+// Whether one (non-trashed) model currently matches a rule tree — the
+// membership check behind a shared smart collection (src/lib/share-links.ts),
+// evaluated live like everything else here.
+export async function smartCollectionContains(
+  rules: unknown,
+  modelId: string,
+): Promise<boolean> {
+  const parsed = parseRuleTree(rules);
+  if ("error" in parsed) return false;
+  const result = await db.execute<{ id: string }>(sql`
+    SELECT m.id FROM models m
+    WHERE m.id = ${modelId} AND m.deleted_at IS NULL
+      AND ${ruleTreeToSql(parsed.tree)}
+    LIMIT 1
+  `);
+  return result.rows.length > 0;
+}
+
 // Broad rules can match the whole catalog; the collection page renders full
 // cards for every member, so keep it bounded.
 export const SMART_COLLECTION_PAGE_CAP = 200;

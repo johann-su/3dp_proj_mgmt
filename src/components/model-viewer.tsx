@@ -12,6 +12,7 @@ import {
   TriangleAlert,
 } from "lucide-react";
 import { parsePlateLayout } from "@/lib/threemf-plates";
+import { exceedsBed, measureBounds } from "@/lib/plate-fit";
 import {
   BED_PRESET_GROUPS,
   bedForChoice,
@@ -46,7 +47,13 @@ export type ViewerFile = {
   bed?: { x: number; y: number } | null;
 };
 
-type Plate = { name: string; group: THREE.Group };
+type Plate = {
+  name: string;
+  group: THREE.Group;
+  // The plate's true extents (mm) in the .3mf's Z-up space — X/Y are the bed
+  // axes, Z is height — measured from the geometry once at load time.
+  size: THREE.Vector3;
+};
 
 type SceneRefs = {
   renderer: THREE.WebGLRenderer;
@@ -191,18 +198,18 @@ export function ModelViewer({
 
     plates.forEach((p, i) => (p.group.visible = i === index));
 
-    const box = new THREE.Box3().setFromObject(plate.group);
-    const size = box.getSize(new THREE.Vector3());
-    const center = box.getCenter(new THREE.Vector3());
+    // The plate's load-time size, re-expressed in world axes: the root's
+    // Z-up→Y-up rotation sends .3mf X/Y (the bed axes) to world X/Z and .3mf Z
+    // to world Y. Since the plate was recentred on the bed and dropped onto
+    // z = 0, it straddles the origin in XZ and rests on y = 0.
+    const size = new THREE.Vector3(plate.size.x, plate.size.z, plate.size.y);
+    const center = new THREE.Vector3(0, size.y / 2, 0);
 
-    // Draw the file's real bed when we know it (.3mf X→world X, Y→world Z), so
-    // the plate is a true size reference; otherwise fall back to a square just
-    // larger than the plate's footprint (10 mm cells, min 100 mm).
+    // Draw the file's real bed when we know it, so the plate is a true size
+    // reference; otherwise fall back to a square just larger than the plate's
+    // footprint (10 mm cells, min 100 mm).
     const realBed = bedForChoice(bedChoiceRef.current, bedRef.current);
-    // A small tolerance keeps a print that exactly fills the bed from tripping
-    // the overflow flag.
-    const isOversized =
-      !!realBed && (size.x > realBed.x + 1 || size.z > realBed.y + 1);
+    const isOversized = exceedsBed(plate.size, realBed);
     let bedX: number;
     let bedZ: number;
     if (realBed) {
@@ -371,14 +378,20 @@ export function ModelViewer({
           if (children.length === 0) return;
           const group = new THREE.Group();
           children.forEach((c) => group.add(c)); // reparent (build transforms kept)
-          // Recenter in the .3mf's Z-up space: center on the bed (XY) and drop
-          // the lowest point to Z=0 so it rests on the plate.
-          const box = new THREE.Box3().setFromObject(group);
+          // Measure once, in the .3mf's Z-up space, and keep the size for the
+          // bed fit check (measureBounds reads vertices, not mesh bounding
+          // boxes — see why there). Then recenter: center on the bed (XY) and
+          // drop the lowest point to Z=0 so it rests on the plate.
+          const box = measureBounds(group);
           const center = box.getCenter(new THREE.Vector3());
           group.position.set(-center.x, -center.y, -box.min.z);
           group.visible = false;
           r.root.add(group);
-          plates.push({ name: names[i], group });
+          plates.push({
+            name: names[i],
+            group,
+            size: box.getSize(new THREE.Vector3()),
+          });
         });
         if (plates.length === 0) throw new Error("The file contained no geometry.");
 

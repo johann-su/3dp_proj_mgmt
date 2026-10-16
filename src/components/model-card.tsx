@@ -27,11 +27,13 @@ export type ModelCardData = {
   parametric?: boolean;
 };
 
-export function ModelCard({ model }: { model: ModelCardData }) {
+// `href` overrides the link target — the public share view points cards at
+// share-scoped model pages instead of the (sign-in only) catalog.
+export function ModelCard({ model, href }: { model: ModelCardData; href?: string }) {
   const cover = model.files[0];
   const platform = platformFromSourceUrl(model.sourceUrl);
   return (
-    <Link href={`/models/${model.id}`} className="group">
+    <Link href={href ?? `/models/${model.id}`} className="group">
       <Card className="overflow-hidden h-full py-0 gap-0 border-0 shadow-sm transition-shadow group-hover:shadow-lg">
         <div className="relative aspect-[4/3] bg-muted flex items-center justify-center overflow-hidden">
           {cover ? (

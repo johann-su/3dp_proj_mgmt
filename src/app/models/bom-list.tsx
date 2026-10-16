@@ -10,6 +10,9 @@ type BomListItem = {
   quantity: string;
   link: string | null;
   imageUrl: string | null;
+  // Where to load the image from, when not the member proxy for `imageUrl`
+  // — the public share view passes a share-scoped src (sharedBomImageSrc).
+  imageSrc?: string | null;
   section: string | null;
 };
 
@@ -46,7 +49,7 @@ export function BomList({
               {item.imageUrl ? (
                 // eslint-disable-next-line @next/next/no-img-element
                 <img
-                  src={bomImageProxySrc(item.imageUrl)}
+                  src={item.imageSrc ?? bomImageProxySrc(item.imageUrl)}
                   alt={item.name}
                   className="size-10 rounded object-cover bg-muted shrink-0"
                 />

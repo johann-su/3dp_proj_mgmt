@@ -48,6 +48,7 @@ test("a project reports its own plates, not the ones that were sliced", async ()
     slicedPlateCount: 1,
     printTimeSeconds: 3600,
     filamentGrams: 12.5,
+    engine: null, // the slice_info header names no slicer here
   });
 });
 
@@ -80,6 +81,7 @@ test("readSliceData sums predictions and weights across plates (sliced Bambu fil
     slicedPlateCount: null,
     printTimeSeconds: 5400,
     filamentGrams: 20,
+    engine: null, // no <header> in this fixture
   });
   assert.deepEqual(data?.printerInfo, {
     model: "Bambu Lab P1S",
@@ -92,6 +94,43 @@ test("readSliceData sums predictions and weights across plates (sliced Bambu fil
     usesSupport: true,
     bedSizeMm: { x: 256, y: 256 },
   });
+});
+
+// One plate is one print: the AMS is only needed when a single plate prints
+// from several filaments — here plate 1 (painted two-colour PLA). Plate 2
+// using PETG on its own is a separate print, not a mid-print change.
+test("readSliceData derives mid-print filament changes and the engine from slice_info", async () => {
+  const plate = (prediction: number, types: string[]) => `
+    <plate>
+      <metadata key="prediction" value="${prediction}"/>
+      <metadata key="weight" value="10"/>
+      ${types.map((t) => `<filament id="1" type="${t}" used_g="5"/>`).join("")}
+    </plate>`;
+  const sliceInfo = (plates: string) => `<config>
+    <header>
+      <header_item key="X-BBL-Client-Type" value="slicer"/>
+      <header_item key="X-BBL-Client-Version" value="02.08.02.61"/>
+    </header>${plates}</config>`;
+  const read = async (plates: string) => {
+    const zip = zipSync({
+      "3D/3dmodel.model": strToU8("<model/>"),
+      "Metadata/slice_info.config": strToU8(sliceInfo(plates)),
+    });
+    const { readRange, size } = readerFor(zip);
+    return readSliceData(readRange, size);
+  };
+
+  const painted = await read(plate(3600, ["PLA", "PLA"]) + plate(600, ["PETG"]));
+  assert.equal(painted?.sliceInfo?.engine, "Bambu Studio 02.08.02.61");
+  assert.equal(painted?.printerInfo?.filamentChanges, "color");
+
+  const platePerColour = await read(plate(3600, ["PLA"]) + plate(600, ["PETG"]));
+  assert.equal(platePerColour?.printerInfo?.filamentChanges, "none");
+
+  // An unsliced plate lists no predictions; its filaments don't count.
+  const unsliced = await read(`<plate><filament id="1" type="PLA"/><filament id="2" type="PLA"/></plate>`);
+  assert.equal(unsliced?.printerInfo?.filamentChanges, undefined);
+  assert.equal(unsliced?.sliceInfo?.engine, null);
 });
 
 // "Does it need supports?" is answerable from the embedded config, but only
@@ -167,6 +206,47 @@ test("readSliceData omits filament colours unless every used slot has one", asyn
   const info = (await readSliceData(readRange, size))?.printerInfo;
   assert.deepEqual(info?.filamentTypes, ["PLA", "PETG"]);
   assert.equal(info?.filamentColors, undefined);
+});
+
+// Objects can keep a stale assignment to a slot the project no longer has
+// (assigned to AMS slot 5, then the filament list cut down to one). That is
+// reported, never remapped: the slicer's fallback could be another material.
+test("readSliceData reports a filament slot the project doesn't define", async () => {
+  const zip = zipSync({
+    "Metadata/model_settings.config": strToU8(
+      `<config><object><metadata key="extruder" value="5"/></object></config>`,
+    ),
+    "Metadata/project_settings.config": strToU8(
+      JSON.stringify({
+        printer_model: "Bambu Lab P1S",
+        nozzle_diameter: ["0.4"],
+        filament_type: ["ASA"],
+        filament_colour: ["#8A949E"],
+      }),
+    ),
+  });
+  const { readRange, size } = readerFor(zip);
+  const info = (await readSliceData(readRange, size))?.printerInfo;
+  assert.deepEqual(info?.missingFilamentSlots, [5]);
+  assert.equal(info?.filamentTypes, undefined); // not guessed as "ASA"
+  assert.equal(info?.model, "Bambu Lab P1S"); // the rest still parses
+});
+
+// Only the dangling slot is flagged; slots that resolve keep their badges.
+test("readSliceData keeps resolvable slots alongside a missing one", async () => {
+  const zip = zipSync({
+    "Metadata/model_settings.config": strToU8(
+      `<config><object><metadata key="extruder" value="1"/>` +
+        `<part><metadata key="extruder" value="3"/></part></object></config>`,
+    ),
+    "Metadata/project_settings.config": strToU8(
+      JSON.stringify({ filament_type: ["PLA", "PETG"] }),
+    ),
+  });
+  const { readRange, size } = readerFor(zip);
+  const info = (await readSliceData(readRange, size))?.printerInfo;
+  assert.deepEqual(info?.filamentTypes, ["PLA"]);
+  assert.deepEqual(info?.missingFilamentSlots, [3]);
 });
 
 // Multi-*colour* and multi-*nozzle* are different questions: an AMS feeds many
@@ -257,6 +337,7 @@ test("readSliceData counts plates from model_settings for unsliced projects", as
     slicedPlateCount: null,
     printTimeSeconds: null,
     filamentGrams: null,
+    engine: null, // unsliced: no slicer produced an estimate
   });
 });
 

@@ -87,6 +87,13 @@ export function namedFileSrc(fileId: string, filename: string): string {
   return `/api/files/${fileId}/${fileToken(fileId)}/${encodeURIComponent(filename)}`;
 }
 
+// Prefix for slicer deep links (file-download-menu.tsx appends
+// `/<name>.3mf`): the /api/files/[id]/[token]/[filename] route, token in the
+// path because Orca keeps query strings when naming downloads.
+export function slicerFileBase(fileId: string): string {
+  return `/api/files/${fileId}/${fileToken(fileId)}`;
+}
+
 // Token subject for one file of a version snapshot (the version-preview page,
 // /api/files/versions/[versionId]/[index]): historical files have no
 // model_files row, so the token pins the version row id plus the index into

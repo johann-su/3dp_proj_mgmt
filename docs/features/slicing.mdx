@@ -22,21 +22,38 @@ sliced:
   pull only the bytes it needs.
 - **Unsliced files are sliced on the server.** A `.3mf` with no embedded
   predictions is sent to the optional **slicer service** — a thin wrapper around
-  the headless PrusaSlicer CLI — which slices it and parses the print time and
-  filament use out of the resulting G-code.
+  the headless OrcaSlicer CLI — which slices it and reads the print time and
+  filament use from the result, exactly as if you had pressed "Slice all" in
+  OrcaSlicer.
 
 The estimate shown is the **total across all plates** in a multi-plate project.
 
 ### How server-side slicing picks settings
 
 The slicer service honors the settings **embedded in the file** rather than
-guessing: Bambu/Orca project settings are translated to their PrusaSlicer
-equivalents (machine limits, speeds, accelerations, layer height, infill, and
-the filament of the extruder the objects actually use). A file with no settings
-falls back to a generic **0.4 mm nozzle / PLA** profile. For safety, only a
-whitelist of settings keys is copied across, so a crafted archive can't smuggle
-in post-processing scripts, and the virtual bed is made huge so that multi-plate
-Bambu projects (whose coordinates extend well past a physical bed) still slice.
+guessing:
+
+- **Bambu Studio and OrcaSlicer projects** are sliced as they are — with the
+  project's own printer, process and filament settings and its own plates.
+  OrcaSlicer is a fork of Bambu Studio and reads these projects natively, so
+  the estimate lands very close to what Bambu Studio itself shows. Empty plates
+  are skipped.
+- **PrusaSlicer projects** are sliced with the generic profile below, overlaid
+  with the project's layer height, walls, infill, speeds, accelerations,
+  machine limits and the filament of the extruder the objects use. Only a
+  whitelist of settings carries over, so a crafted archive can't smuggle
+  anything else in.
+- **Files with no settings** (a plain `.3mf` from CAD, Onshape, OpenSCAD, …)
+  use a generic profile — by default a **Bambu Lab P1S, 0.4 mm nozzle, 0.20 mm
+  Standard, Bambu PLA Basic**; your instance can pick another printer (see
+  [configuration](/configuration#slicer-service-printer)). The file card says
+  which printer such an estimate assumed ("Bambu Lab P1S … · generic profile").
+
+Post-processing scripts in a project are never run. Projects from a newer Bambu
+Studio than the bundled OrcaSlicer can contain settings it doesn't understand
+(new "auto" values, start G-code using newer placeholders); those few settings
+are reset to OrcaSlicer's defaults so the file still gets an estimate. For
+multi-colour prints that can leave out filament-change time.
 
 ### Re-running slicing on a file
 
@@ -61,20 +78,42 @@ Print Vault re-reads the numbers the file already carries.
 
 ### Things to know about estimates
 
-- **They are approximations, and shown with a `~` prefix.** Server-side numbers
-  come from PrusaSlicer's time estimator, not your printer's firmware, so treat
-  them as ballpark figures.
-- **Unsliceable files are flagged.** If PrusaSlicer can't slice a file, the
+- **Hover the print time to see which slicer produced it.**
+- **They are slicer predictions**, not your printer's firmware — the same kind
+  of number Bambu Studio or OrcaSlicer shows. Bambu/Orca projects sliced on the
+  server use the file's own settings and land within a fraction of a percent
+  of what your slicer reports, so they're shown plainly.
+- **A `~` marks an estimate that had to assume something:** a file without
+  printer settings (estimated for the generic printer), a PrusaSlicer project
+  (its settings translated to OrcaSlicer), or a project from a newer Bambu
+  Studio whose custom G-code OrcaSlicer couldn't read (so it was left out).
+  Treat those as ballpark figures.
+  Files estimated before this distinction existed keep their `~` until they
+  are re-sliced.
+- **Unsliceable files are flagged.** If OrcaSlicer can't slice a file, the
   model page marks it — a useful signal that the file may be broken or
-  unprintable, not silently missing an estimate.
+  unprintable, not silently missing an estimate. A model that is too big for
+  its printer says so instead, naming the printer and its build volume
+  ("Doesn't fit on the Bambu Lab P1S (256 × 256 × 250 mm)") — it may well fit
+  a larger one.
 - **Multi-colour prints are called out.** The filament badges show one swatch
   per slot the file actually prints from, in the colours the project was sliced
-  with, plus a `multi-color` or `multi-material` badge when it uses more than
-  one. A `multi-nozzle` badge means the print needs a printer with two nozzles
+  with, plus a `multi-color` or `multi-material` badge when **a single plate
+  changes filament mid-print** — the case that needs an AMS/MMU (or manual
+  swaps). A project whose plates each print one different colour doesn't get
+  it: each plate is its own print. This comes from the sliced result, so files
+  estimated before it shipped fall back to "uses more than one filament" until
+  they are re-sliced. A `multi-nozzle` badge means the print needs a printer with two nozzles
   (an H2D, Prusa XL or other toolchanger) — colours fed through a single nozzle
   by an AMS or MMU don't get it, since those are a filament swap rather than
   hardware you either have or don't. Files sliced before this shipped show the
   older plain filament badges until they are re-uploaded or re-synced.
+- **Stale filament assignments are flagged.** If a file's objects point at a
+  filament slot the project no longer defines (say, everything still on AMS
+  slot 5 after the project was cut down to one filament), the model page shows
+  a warning instead of a material badge. Open the file in your slicer and check
+  which filament each object uses before printing; it isn't guessed, because the
+  fallback could be a different material entirely.
 - **The build plate is drawn at real size.** Alongside the estimate, the file's
   hardware context is recorded (printer model, nozzle, build plate, filaments,
   whether the project prints support material — shown as a `supports` badge —

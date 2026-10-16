@@ -1,11 +1,14 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { Box } from "lucide-react";
+import { Box, Pin } from "lucide-react";
 import { db } from "@/db";
 import { getSession, signInRedirect } from "@/lib/auth";
 import { parseFeedSort } from "@/lib/feed-params";
 import { listFeed } from "@/lib/list-queries";
+import { listPinned } from "@/lib/pins";
+import { CollectionCard } from "@/components/collection-card";
 import { FeedGrid } from "@/components/feed-grid";
+import { ModelCard } from "@/components/model-card";
 import { FeedSort } from "@/components/feed-sort";
 import { SearchBar } from "@/components/search-bar";
 
@@ -31,10 +34,12 @@ export default async function HomePage({
       })
     : undefined;
 
-  const { items, nextCursor } = await listFeed({
-    categoryId: activeCategory?.id,
-    sort,
-  });
+  // Pins are shared across all users. They're a homepage shelf, so a
+  // category deep link (a filtered view) shows just the filtered feed.
+  const [{ items, nextCursor }, pinned] = await Promise.all([
+    listFeed({ categoryId: activeCategory?.id, sort }),
+    activeCategory ? Promise.resolve([]) : listPinned(),
+  ]);
 
   return (
     <div className="mx-auto max-w-6xl px-4 py-8">
@@ -49,6 +54,36 @@ export default async function HomePage({
         <SearchBar />
         <FeedSort sort={sort} category={category} />
       </div>
+
+      {pinned.length > 0 && (
+        <section className="mb-10" aria-labelledby="pinned-heading">
+          <h2
+            id="pinned-heading"
+            className="mb-4 flex items-center gap-2 text-xl font-semibold tracking-tight"
+          >
+            <Pin className="size-5" />
+            Pinned
+          </h2>
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+            {pinned.map((item) =>
+              item.kind === "model" ? (
+                <ModelCard key={`m:${item.model.id}`} model={item.model} />
+              ) : (
+                <CollectionCard
+                  key={`c:${item.collection.id}`}
+                  collection={item.collection}
+                />
+              ),
+            )}
+          </div>
+        </section>
+      )}
+
+      {pinned.length > 0 && (
+        <h2 className="mb-4 text-xl font-semibold tracking-tight">
+          All models &amp; collections
+        </h2>
+      )}
 
       {items.length === 0 ? (
         <div className="text-center py-24 text-muted-foreground">

@@ -15,21 +15,20 @@
 
 import { createHash } from "node:crypto";
 import { and, eq, isNull } from "drizzle-orm";
-import { GetObjectCommand } from "@aws-sdk/client-s3";
 import { db } from "@/db";
 import { modelFiles } from "@/db/schema";
-import { s3, S3_BUCKET } from "@/lib/s3";
+import { blobStore } from "@/lib/storage";
 
 const dryRun = process.argv.includes("--dry-run");
 
 async function hashObject(key: string): Promise<string> {
-  const object = await s3.send(
-    new GetObjectCommand({ Bucket: S3_BUCKET, Key: key }),
-  );
-  const body = object.Body as NodeJS.ReadableStream | undefined;
-  if (!body) throw new Error("empty body");
+  const object = await blobStore().get(key);
+  if (!object) throw new Error("object not found");
   const digest = createHash("sha256");
-  for await (const chunk of body) digest.update(chunk as Buffer);
+  const reader = object.stream.getReader();
+  for (let r = await reader.read(); !r.done; r = await reader.read()) {
+    digest.update(r.value);
+  }
   return digest.digest("hex");
 }
 

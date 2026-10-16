@@ -43,7 +43,7 @@ export function ModelPreview({ data }: { data: ModelPreviewData }) {
     bom: data.bom.filter((item) => item.name.trim()),
     printFiles: data.printFiles.map((f) => ({
       id: null,
-      downloadToken: null,
+      slicerPath: null,
       filename: f.filename,
       imported: false,
       size: f.size,

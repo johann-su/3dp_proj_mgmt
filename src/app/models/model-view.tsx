@@ -11,6 +11,7 @@ import type { SourcePlatform } from "@/lib/platform";
 import { platformLabels } from "@/lib/platform";
 import { formatDate } from "@/lib/format";
 import type { BomItemInput } from "@/lib/bom";
+import { safeFileBase } from "@/lib/file-kind";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
@@ -35,6 +36,7 @@ import { AddToCollection, type CollectionOption } from "./[id]/add-to-collection
 import { DeleteModelButton } from "./[id]/delete-model-button";
 import { ExportButton } from "./[id]/export-button";
 import { LikeButton } from "./[id]/like-button";
+import { PinButton } from "@/components/pin-button";
 import { HistoryPanel, type ModelHistoryEntry } from "./[id]/history-panel";
 import { OnshapeSyncButton } from "./[id]/onshape-sync-button";
 import { SlicePushDialog } from "./[id]/slice-push-dialog";
@@ -65,7 +67,8 @@ export type ModelViewData = {
   // Previewable .3mf files for the gallery's interactive 3D view (issue #35),
   // each carrying its real bed size for the plate reference (issue #80).
   modelFiles: ViewerFile[];
-  bom: BomItemInput[];
+  // `imageSrc` overrides the member image proxy (public share view).
+  bom: Array<BomItemInput & { imageSrc?: string | null }>;
   printFiles: PrintFileData[];
   pdfFiles: PdfFileData[];
   modelId: string | null;
@@ -75,10 +78,23 @@ export type ModelViewData = {
   isLoggedIn: boolean;
   // Whether the current viewer has liked this model (false in the previews).
   liked?: boolean;
+  // Whether the model is pinned to the shared homepage section (false in the
+  // previews).
+  pinned?: boolean;
   collectionOptions: CollectionOption[];
   slicerConfigured: boolean;
   // Edit history, newest first (absent in the create-wizard preview).
   history?: ModelHistoryEntry[];
+  // The anonymous public-share view: read-only like the previews
+  // (`modelId: null`), but what a visitor can act on stays live — BOM vendor
+  // links and the BOM CSV download.
+  publicShare?: boolean;
+  // Share dialog state (absent in the previews and the public share view).
+  share?: {
+    token: string | null;
+    canEnable: boolean;
+    available: boolean;
+  };
 };
 
 export function ModelView({ data }: { data: ModelViewData }) {
@@ -105,9 +121,12 @@ export function ModelView({ data }: { data: ModelViewData }) {
     canManage,
     isLoggedIn,
     liked,
+    pinned,
     collectionOptions,
     slicerConfigured,
     history,
+    share,
+    publicShare,
   } = data;
 
   return (
@@ -167,8 +186,12 @@ export function ModelView({ data }: { data: ModelViewData }) {
         {bom.length > 0 && (
           <BomSection
             items={bom}
-            downloadUrl={modelId ? `/api/models/${modelId}/bom` : undefined}
-            interactive={modelId !== null}
+            csvFilename={
+              modelId || publicShare
+                ? `${safeFileBase(title)}-bom.csv`
+                : undefined
+            }
+            interactive={modelId !== null || !!publicShare}
           />
         )}
 
@@ -292,7 +315,16 @@ export function ModelView({ data }: { data: ModelViewData }) {
               <Separator />
               <div className="flex flex-wrap items-center gap-2">
                 <LikeButton modelId={modelId} initialLiked={liked ?? false} />
-                <ShareButton />
+                <PinButton kind="model" id={modelId} initialPinned={pinned ?? false} />
+                {share && (
+                  <ShareButton
+                    kind="model"
+                    id={modelId}
+                    initialToken={share.token}
+                    canEnable={share.canEnable}
+                    publicSharingAvailable={share.available}
+                  />
+                )}
                 <ExportButton modelId={modelId} />
                 {/* The return leg of the slicer round-trip is open to any
                     signed-in user, like editing (issue #122). */}

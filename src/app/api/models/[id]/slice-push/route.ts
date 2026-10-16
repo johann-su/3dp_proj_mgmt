@@ -18,7 +18,7 @@ import { revalidatePath } from "next/cache";
 import { eq } from "drizzle-orm";
 import { db } from "@/db";
 import { modelFiles, models } from "@/db/schema";
-import { contentTypeForFilename } from "@/lib/s3";
+import { contentTypeForFilename } from "@/lib/file-kind";
 import { stageStream } from "@/lib/storage";
 import {
   deleteS3Keys,

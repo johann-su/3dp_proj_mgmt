@@ -1,6 +1,6 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
-  "extends": ["config:recommended", ":dependencyDashboard"],
+  "extends": ["config:recommended", ":dependencyDashboard", "customManagers:dockerfileVersions"],
   "timezone": "Europe/Berlin",
   "schedule": ["before 6am on monday"],
   "minimumReleaseAge": "5 days",
@@ -76,6 +76,11 @@
       "matchUpdateTypes": ["major"],
       "automerge": false,
       "addLabels": ["breaking"]
+    },
+    {
+      "description": "OrcaSlicer powers the slicer service's estimates; a release can change slicing behaviour, so review it by hand (last rule so it wins over the patch automerge)",
+      "matchPackageNames": ["OrcaSlicer/OrcaSlicer"],
+      "automerge": false
     }
   ]
 }
