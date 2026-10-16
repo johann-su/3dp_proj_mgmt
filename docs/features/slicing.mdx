@@ -197,6 +197,29 @@ Once per machine, not once per model.
    runs a slicing plugin for profiles that name it, and it is per profile.
    Skipping this changes nothing except that you open the window yourself.
 
+### The Print Vault panel
+
+On a nightly from **10 October 2026 or later**, the quickest way is the panel
+docked beside the 3D view. Open a file you got from Print Vault and it appears
+on its own, naming the model the file belongs to. Files that don't come from
+the catalogue don't open it. Run **Print Vault panel** from the Speed Dial
+(Space) to open it by hand, or to connect for the first time; pin it with
+Cmd/Ctrl+B.
+
+Updating the catalogue is a separate step you take on purpose. It is not a
+side effect of slicing or saving. Edits only change the panel's status line
+("Edited since it was opened"). **Update catalogue** asks you to confirm, then
+sends the project exactly as it is on the plate: unsaved changes included,
+sliced or not. It lands as one new version of the model's own `.3mf`, under the
+file's catalogue name. Drag the panel's caption to dock it elsewhere;
+OrcaSlicer remembers where.
+
+A file the catalogue doesn't recognise (re-saved, or from a model that predates
+content hashes) shows **Not linked**. Search for its model and **Link** it.
+That choice is remembered for the project, and so is **Not this model**.
+
+### The sync window
+
 Now open a file from a model, change whatever you came to change, and run
 **Plugins → Sync with Print Vault** (pin it to the Actions Speed Dial and it is
 one click from the plate). The window names the project on the plate, the model

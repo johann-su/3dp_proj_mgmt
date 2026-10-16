@@ -449,6 +449,48 @@ def main() -> int:
                                   "2": {"printTimeSeconds": 20, "filamentGrams": 2.5}})
               == {"printTimeSeconds": 30, "filamentGrams": 4.0})
 
+        print("\nthe panel's push (export_3mf_copy, then sanitize_project):")
+        # OrcaSlicer's export writes the print config as a project save does,
+        # plugin overrides — and so the push token — included.
+        exported = os.path.join(root, "exported.3mf")
+        mesh = os.urandom(4096)  # incompressible, so a re-compression would show
+        with zipfile.ZipFile(exported, "w") as z:
+            z.writestr("3D/3dmodel.model", "<model/>", compress_type=zipfile.ZIP_DEFLATED)
+            z.writestr("3D/Objects/object_1.model", mesh, compress_type=zipfile.ZIP_STORED)
+            z.writestr(
+                pv.PROJECT_SETTINGS_PART,
+                '{"layer_height": "0.2", "plugins": ["print-vault"],'
+                ' "print_plugin_config_overrides": "{\\"token\\": \\"pvpush_secret\\"}"}',
+            )
+        clean = os.path.join(root, "clean.3mf")
+        pv.sanitize_project(exported, clean)
+        with zipfile.ZipFile(clean) as z:
+            settings = z.read(pv.PROJECT_SETTINGS_PART).decode()
+            check("the token does not leave the machine", "pvpush_secret" not in settings, settings)
+            check("the plugin is not pre-enabled for whoever opens the file",
+                  '"plugins": []' in settings, settings)
+            check("the project's own settings survive", '"layer_height": "0.2"' in settings, settings)
+            check("meshes are copied byte for byte", z.read("3D/Objects/object_1.model") == mesh)
+            check("entries keep their compression",
+                  z.getinfo("3D/Objects/object_1.model").compress_type == zipfile.ZIP_STORED
+                  and z.getinfo("3D/3dmodel.model").compress_type == zipfile.ZIP_DEFLATED)
+
+        print("\nwhen the panel assumes a model without asking:")
+        hit = {"modelId": "m1", "via": "hash"}
+        same_model_twice = [hit, {"modelId": "m1", "via": "hash", "fileId": "f2"}]
+        remembered = {"modelId": "m9", "via": "remembered"}
+        check("one model holding the exact file is certain",
+              pv.confident_target([hit, {"modelId": "m2", "via": "filename"}], None) == hit)
+        check("the same model matched through two files is still one model",
+              pv.confident_target(same_model_twice, None)["modelId"] == "m1")
+        check("two models holding the exact file is a question, not an answer",
+              pv.confident_target([hit, {"modelId": "m2", "via": "hash"}], None) is None)
+        check("an exact match beats an old link", pv.confident_target([hit], remembered) == hit)
+        check("without an exact match, the model the user linked wins",
+              pv.confident_target([], remembered) == remembered)
+        check("a filename match alone is never assumed — 'Cube.3mf' is not evidence",
+              pv.confident_target([{"modelId": "m2", "via": "filename"}], None) is None)
+
     print("\nfailed" if check.failed else "\nall checks passed")
     return 1 if check.failed else 0
 

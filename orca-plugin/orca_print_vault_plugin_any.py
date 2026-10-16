@@ -3,9 +3,9 @@
 #
 # [tool.orcaslicer.plugin]
 # name = "Print Vault"
-# description = "Send a freshly sliced file back to its model in Print Vault, as a new revision."
+# description = "Send the project on the plate back to its model in Print Vault, as a new revision."
 # author = "Print Vault"
-# version = "0.1.0"
+# version = "0.2.0"
 # ///
 """Print Vault — the return leg of the slicer round-trip (issue #122).
 
@@ -313,6 +313,7 @@ class VaultClient:
         filenames: list[str],
         design_id: str | None,
         query: str | None = None,
+        timeout: float = HTTP_TIMEOUT,
     ) -> list[dict]:
         payload = json.dumps(
             {
@@ -327,6 +328,7 @@ class VaultClient:
             "/api/slice-push/resolve",
             data=payload,
             headers={"Content-Type": "application/json"},
+            timeout=timeout,
         )
         return answer.get("candidates", [])
 
@@ -715,7 +717,7 @@ STATE = State()
 _HASH_CACHE: dict[tuple[str, int, int], str] = {}
 
 
-def _cached_hash(path: str) -> str | None:
+def _cached_hash(path: str, max_bytes: int | None = None) -> str | None:
     """Hashing the opened project on every slice would add seconds to a
     re-slice, so results are keyed on (path, mtime, size) — the same triple a
     build system would use."""
@@ -724,6 +726,8 @@ def _cached_hash(path: str) -> str | None:
     except OSError:
         return None
     key = (path, int(stat.st_mtime), stat.st_size)
+    if max_bytes is not None and stat.st_size > max_bytes and key not in _HASH_CACHE:
+        return None
     if key not in _HASH_CACHE:
         digest = sha256_file(path)
         if digest is None:
@@ -789,23 +793,41 @@ def remember_target(identity: dict, candidate: dict) -> None:
     STATE.save_settings({"remembered": remembered})
 
 
+def forget_target(identity: dict) -> None:
+    """Undo remember_target — the user said the project does not belong there."""
+    key = remember_key(identity)
+    remembered = dict(STATE.settings().get("remembered", {}))
+    if key and remembered.pop(key, None) is not None:
+        STATE.save_settings({"remembered": remembered})
+
+
 def collect_identity() -> dict:
     """What the open project can tell us about where it came from: the files it
     was loaded from (hashed), their names, and the Bambu design id."""
-    identity: dict = {"hashes": [], "filenames": [], "designId": None}
+    return identity_from_sources(project_sources())
+
+
+def project_sources(project_path: str | None = None) -> dict:
+    """The paths the open project was loaded from, and its Bambu design id.
+
+    Split from the hashing (identity_from_sources) because the two belong on
+    different threads: this reads the live model and is quick, while hashing a
+    few hundred MB of project is neither, and must stay off the UI thread.
+    `project_path`, when given, is listed first — it is the file the catalogue
+    served, where object `input_file`s can be the STLs a project was built from.
+    """
+    sources: dict = {"paths": [project_path] if project_path else [], "designId": None}
     try:
         model = orca.host.model()  # type: ignore[name-defined]
     except Exception as exc:
         log(f"could not read the open project: {exc}")
-        return identity
+        return sources
 
     try:
-        design_id = model.design_id()
-        identity["designId"] = design_id or None
+        sources["designId"] = model.design_id() or None
     except Exception:
         pass
 
-    seen: set[str] = set()
     try:
         objects = model.objects()
     except Exception:
@@ -815,9 +837,14 @@ def collect_identity() -> dict:
             path = obj.input_file
         except Exception:
             continue
-        if not path or path in seen:
-            continue
-        seen.add(path)
+        if path and path not in sources["paths"]:
+            sources["paths"].append(path)
+    return sources
+
+
+def identity_from_sources(sources: dict, max_hash_bytes: int | None = None) -> dict:
+    identity: dict = {"hashes": [], "filenames": [], "designId": sources.get("designId")}
+    for path in sources.get("paths", []):
         name = os.path.basename(path)
         identity["filenames"].append(name)
         # "fuselage(7).3mf" is still the file the catalogue calls
@@ -825,7 +852,7 @@ def collect_identity() -> dict:
         stripped = strip_copy_suffix(name)
         if stripped != name:
             identity["filenames"].append(stripped)
-        digest = _cached_hash(path)
+        digest = _cached_hash(path, max_hash_bytes)
         if digest:
             identity["hashes"].append(digest)
     return identity
@@ -1319,6 +1346,33 @@ def strip_plugin_settings(raw: bytes) -> bytes:
     # Orca writes this file tab-indented; matching it keeps a diff between a
     # synced file and a hand-saved one readable.
     return json.dumps(config, indent="\t", ensure_ascii=False).encode("utf-8")
+
+
+def sanitize_project(source: str, dest: str) -> None:
+    """Copy a project archive to `dest` with this plugin's settings stripped
+    out of `project_settings.config` (see strip_plugin_settings).
+
+    What the panel pushes is OrcaSlicer's own `export_3mf_copy`, which writes
+    the print config — plugin overrides included — exactly as a project save
+    does, so the same credential is in there. Every other entry is streamed
+    across unchanged with its own compression: a project with embedded meshes
+    is routinely hundreds of MB and must not be read into memory.
+    """
+    with zipfile.ZipFile(source) as src, zipfile.ZipFile(dest, "w", allowZip64=True) as out:
+        for info in src.infolist():
+            # A fresh ZipInfo rather than the source's own: that one carries the
+            # source's header offsets and sizes, which the writer must compute.
+            copy = zipfile.ZipInfo(info.filename, date_time=info.date_time)
+            copy.compress_type = info.compress_type
+            copy.external_attr = info.external_attr
+            if info.filename == PROJECT_SETTINGS_PART:
+                out.writestr(copy, strip_plugin_settings(src.read(info)))
+                continue
+            copy.file_size = info.file_size
+            with src.open(info) as reader, out.open(
+                copy, "w", force_zip64=info.file_size >= zipfile.ZIP64_LIMIT
+            ) as writer:
+                shutil.copyfileobj(reader, writer, UPLOAD_BLOCK)
 
 
 # `<object id="N"` — the ids a `.model` part defines — and the component
@@ -2604,6 +2658,385 @@ class PrintVaultSync(orca.script.ScriptPluginCapabilityBase if orca else object)
         self._send_state()
 
 
+# --- Capability 3: the panel beside the plate --------------------------------
+
+
+def confident_target(candidates: list[dict], remembered: dict | None) -> dict | None:
+    """The model a project belongs to, when that is certain enough to show
+    without asking: exactly one model holding a byte-identical file, else the
+    model the user picked for this project before. Filename and design-id
+    matches are only ever offered, never assumed — "Cube.3mf" is not evidence.
+    """
+    by_hash = {c["modelId"]: c for c in candidates if c.get("via") == "hash" and c.get("modelId")}
+    if len(by_hash) == 1:
+        return next(iter(by_hash.values()))
+    return remembered
+
+
+# Edits that make the catalogue's copy stale. Approximate by nature: a value
+# changed in the settings sidebar fires nothing until the project first turns
+# dirty, so the panel says "no changes noticed", never "no changes".
+EDIT_EVENTS = {
+    "ObjectAdded",
+    "ObjectDeleted",
+    "ObjectTransformed",
+    "ObjectChanged",
+    "ObjectRenamed",
+    "PlateCreated",
+    "PlateDeleted",
+    "PlateRenamed",
+    "PresetSelected",
+    "PresetSaved",
+}
+
+
+class PrintVaultPanel(orca.script.ScriptPluginCapabilityBase if orca else object):
+    """A dock panel beside the 3D view with one button: update the catalogue.
+
+    Updating the catalogue is its own decision, not a side effect of slicing
+    or saving — a project is tuned over many edits, most of which are not
+    worth a version, and a half-finished one is not worth sharing. So nothing
+    here pushes by itself: lifecycle events only keep the panel's status
+    current, and the push is a button with a confirm step.
+
+    The panel opens on its own only for a project that resolves to a catalogue
+    model with confidence (confident_target); anything else stays out of the
+    way, and running this capability (Plugins, or Speed Dial) opens it by hand.
+
+    Threads: lifecycle events and page messages arrive on the UI thread, which
+    is also the only thread `export_3mf_copy` may run on. Resolving, hashing
+    and uploading run on worker threads; `panel.post()` and
+    `create_dock_panel()` marshal to the UI thread themselves, so workers may
+    call them.
+    """
+
+    def __init__(self):
+        super().__init__()
+        self.panel = None
+        self.lock = threading.RLock()
+        self._reset()
+
+    def _reset(self) -> None:
+        self.project_path: str | None = None
+        self.identity: dict = {}
+        self.candidates: list[dict] = []
+        self.target: dict | None = None
+        self.changed = False
+        self.busy = False
+        self.pushed_at: float | None = None
+        self.opened_at = time.time()
+        # The user closed the panel for this project: do not reopen it on
+        # every edit. Cleared by the next project, or by running the capability.
+        self.dismissed = False
+
+    def get_name(self):
+        # The Speed Dial entry's title — pin it (Cmd/Ctrl+B) for one keystroke.
+        return "Print Vault panel"
+
+    def has_config_ui(self):
+        return True
+
+    def get_config_ui(self):
+        return POINTER_HTML
+
+    # --- entry points ---
+
+    def execute(self):
+        """Open the panel by hand, for the project on the plate right now —
+        also how a project opened before the plugin loaded gets looked up."""
+        self.dismissed = False
+        path = self._current_project_path()
+        if path != self.project_path or not self.identity:
+            self._project_opened(path, may_open=False)
+        self._open()
+        return orca.ExecutionResult.success()
+
+    def on_lifecycle_event(self, event, ctx):
+        # Compared by name: the enum is new, and a plugin that raises on an
+        # event it does not know would be worse than one that ignores it.
+        name = getattr(event, "name", str(event))
+        try:
+            if name == "ProjectOpened":
+                self._project_opened(ctx.name or self._current_project_path())
+            elif name in ("NewProject", "ProjectClosed"):
+                with self.lock:
+                    self._reset()
+                self._send_state()
+            elif name == "ProjectDirtyChanged":
+                if ctx.dirty:
+                    self._mark_changed()
+            elif name in EDIT_EVENTS:
+                self._mark_changed()
+        except Exception as exc:  # noqa: BLE001 - never let an event raise into the host
+            log(f"panel: {name} handler failed: {exc}")
+
+    # --- project tracking ---
+
+    @staticmethod
+    def _current_project_path() -> str | None:
+        try:
+            return orca.host.plater().project_path() or None  # type: ignore[union-attr]
+        except Exception:
+            return None
+
+    # The lookup on open blocks the UI thread, so it gets a short leash: a
+    # catalogue that does not answer in this long is treated as "not linked",
+    # and the panel's Retry asks again.
+    RESOLVE_TIMEOUT = 3
+
+    def _project_opened(self, path: str | None, may_open: bool = True) -> None:
+        """Work out which catalogue model the project on the plate is.
+
+        Synchronous, on the UI thread, on purpose. Opening the panel by itself
+        has to happen inside the lifecycle handler: OrcaSlicer only knows which
+        plugin is calling while it is dispatching to one (the audit context is
+        thread-local and is not carried into threads a plugin starts), so a
+        panel created later from a worker would belong to no plugin. That is
+        affordable — one hash, cached on (path, mtime, size), and one small
+        POST under RESOLVE_TIMEOUT. `may_open` is False when the page itself
+        asked (it is open already, and page callbacks run without that context).
+        """
+        sources = project_sources(path)
+        with self.lock:
+            self._reset()
+            self.project_path = path
+        identity = (
+            identity_from_sources(sources, max_hash_bytes=MAX_PUSH_BYTES) if sources["paths"] else {}
+        )
+        candidates: list[dict] = []
+        error = None
+        client = STATE.client()
+        if identity and client.configured():
+            try:
+                candidates = client.resolve(
+                    identity["hashes"],
+                    identity["filenames"],
+                    identity["designId"],
+                    timeout=self.RESOLVE_TIMEOUT,
+                )
+            except VaultError as exc:
+                error = str(exc)
+        target = confident_target(candidates, remembered_target(identity)) if identity else None
+        with self.lock:
+            self.identity = identity
+            self.candidates = candidates
+            self.target = target
+        # A catalogue project announces itself; anything else waits to be asked.
+        if may_open and target and not self.dismissed:
+            self._open()
+        if error:
+            self._post({"command": "result", "ok": False, "message": error})
+        self._send_state()
+
+    def _mark_changed(self) -> None:
+        if not self.changed:
+            self.changed = True
+            self._send_state()
+
+    # --- the panel ---
+
+    def _open(self) -> None:
+        if self.panel is not None and self.panel.is_open():
+            self.panel.show()
+            return
+        self.panel = orca.host.ui.create_dock_panel(
+            html=PANEL_HTML,
+            title="Print Vault",
+            width=300,
+            height=260,
+            on_message=self.on_message,
+            on_close=self._closed,
+            dock="right",
+        )
+
+    def _closed(self) -> None:
+        self.panel = None
+        self.dismissed = True
+
+    def _post(self, payload: dict) -> None:
+        panel = self.panel
+        if panel is not None and panel.is_open():
+            panel.post(payload)
+
+    @staticmethod
+    def _run(fn, *args) -> None:
+        threading.Thread(target=fn, args=args, daemon=True).start()
+
+    def _send_state(self) -> None:
+        client = STATE.client()
+        with self.lock:
+            target = self.target
+            data = {
+                "configured": client.configured(),
+                "url": client.url,
+                "projectName": os.path.basename(self.project_path) if self.project_path else None,
+                "hasProject": bool(self.project_path or self.identity.get("filenames")),
+                "target": target and {
+                    "modelTitle": target.get("modelTitle") or "this model",
+                    "filename": target.get("filename"),
+                    "via": target.get("via"),
+                    "hasUrl": bool(target.get("url")),
+                },
+                "candidates": [] if target else [
+                    {
+                        "modelId": c.get("modelId"),
+                        "modelTitle": c.get("modelTitle"),
+                        "filename": c.get("filename"),
+                        "via": c.get("via"),
+                    }
+                    for c in self.candidates
+                ],
+                "changed": self.changed,
+                "since": "update" if self.pushed_at else "open",
+                "sinceAt": self.pushed_at or self.opened_at,
+                "busy": self.busy,
+            }
+        self._post({"command": "state", "data": data})
+
+    # --- page -> plugin (UI thread) ---
+
+    def on_message(self, msg):
+        try:
+            command = (msg or {}).get("command")
+            if command == "state":
+                self._send_state()
+            elif command == "refresh":
+                self._project_opened(self._current_project_path(), may_open=False)
+            elif command == "setup":
+                self._run(self._setup, msg.get("url", ""), msg.get("token", ""))
+            elif command == "pick":
+                self._pick(msg.get("modelId", ""))
+            elif command == "unlink":
+                with self.lock:
+                    forget_target(self.identity)
+                    self.target = None
+                self._send_state()
+            elif command == "search":
+                self._run(self._search, msg.get("query", ""))
+            elif command == "push":
+                self._push()
+            elif command == "open":
+                self._run(self._open_in_browser)
+        except Exception as exc:  # noqa: BLE001
+            self._post({"command": "result", "ok": False, "message": str(exc)})
+
+    def _setup(self, url: str, token: str) -> None:
+        client = VaultClient(url, token)
+        try:
+            answer = client.ping()
+        except VaultError as exc:
+            self._post({"command": "result", "ok": False, "message": str(exc)})
+            return
+        STATE.save_settings({"url": client.url, "token": client.token})
+        who = answer.get("user") or "this instance"
+        self._post({"command": "result", "ok": True, "message": f"Connected as {who}"})
+        # Now the open project can be looked up. That reads the live model,
+        # which belongs on the UI thread — the page asks for it ("refresh").
+        self._post({"command": "connected"})
+
+    def _pick(self, model_id: str) -> None:
+        with self.lock:
+            chosen = next((c for c in self.candidates if c.get("modelId") == model_id), None)
+            if chosen is None:
+                return
+            self.target = chosen
+            # A human decision about this exact project: kept, so it is asked once.
+            remember_target(self.identity, chosen)
+        self._send_state()
+
+    def _search(self, query: str) -> None:
+        if len(query.strip()) < 2:
+            return
+        try:
+            found = STATE.client().resolve([], [], None, query=query.strip())
+        except VaultError as exc:
+            self._post({"command": "result", "ok": False, "message": str(exc)})
+            return
+        with self.lock:
+            existing = {c.get("modelId") for c in self.candidates}
+            self.candidates += [c for c in found if c.get("modelId") not in existing]
+        if not found:
+            self._post({"command": "result", "ok": False, "message": f"No model matches “{query}”"})
+        self._send_state()
+
+    def _open_in_browser(self) -> None:
+        url = (self.target or {}).get("url")
+        if url:
+            import webbrowser
+
+            webbrowser.open(url)
+
+    # --- the push ---
+
+    def _push(self) -> None:
+        """Export the project as it is right now and upload it.
+
+        The export runs here, on the UI thread, because `export_3mf_copy`
+        refuses any other; it writes what a project save writes, unsaved
+        edits included, without touching the project's own file or dirty
+        state. Everything after it runs on a worker.
+        """
+        with self.lock:
+            if self.busy or not self.target:
+                return
+            target = dict(self.target)
+            identity = dict(self.identity)
+            self.busy = True
+        self._send_state()
+        raw = os.path.join(STATE.sync_dir(), f"{uuid.uuid4().hex}.export.3mf")
+        try:
+            orca.host.plater().export_3mf_copy(raw)  # type: ignore[union-attr]
+            meta = collect_meta_host()
+        except Exception as exc:  # noqa: BLE001
+            self._remove(raw)
+            self._finish(False, f"Could not export the project: {exc}")
+            return
+        self._run(self._upload, raw, target, identity, meta)
+
+    def _upload(self, raw: str, target: dict, identity: dict, meta: dict) -> None:
+        clean = raw[: -len(".export.3mf")] + ".3mf"
+        progress = lambda f: self._post({"command": "progress", "fraction": f})  # noqa: E731
+        try:
+            progress(0.02)
+            sanitize_project(raw, clean)
+            if os.path.getsize(clean) > MAX_PUSH_BYTES:
+                raise VaultError("The project is larger than Print Vault accepts (256 MB)")
+            filename = target.get("filename") or os.path.basename(self.project_path or "project.3mf")
+            answer = STATE.client().push(
+                target["modelId"],
+                clean,
+                filename,
+                meta or None,
+                on_progress=lambda f: progress(0.1 + f * 0.9),
+                replaces=target.get("fileId"),
+            )
+        except (VaultError, OSError, zipfile.BadZipFile) as exc:
+            self._finish(False, str(exc))
+            return
+        finally:
+            self._remove(raw)
+            self._remove(clean)
+        remember_target(identity, target)
+        with self.lock:
+            self.changed = False
+            self.pushed_at = time.time()
+        stored = answer.get("filename") or filename
+        self._finish(True, f"Updated {stored} in {target.get('modelTitle') or 'the catalogue'}")
+
+    def _finish(self, ok: bool, message: str) -> None:
+        with self.lock:
+            self.busy = False
+        self._post({"command": "result", "ok": ok, "message": message})
+        self._send_state()
+
+    @staticmethod
+    def _remove(path: str) -> None:
+        try:
+            os.remove(path)
+        except OSError:
+            pass
+
+
 # --- The pages --------------------------------------------------------------
 #
 # Self-contained HTML (the window loads no external resources) and themed from
@@ -3012,6 +3445,150 @@ document.getElementById('save').onclick = () => {
 )
 
 
+PANEL_HTML = (
+    """<style>"""
+    + BASE_CSS
+    + """
+  body { padding:12px; }
+  h1 { font-size:13px; margin:0 0 2px; overflow-wrap:anywhere; }
+  .small { font-size:12px; }
+  .stack > * + * { margin-top:8px; }
+  .full { width:100%; }
+  .link { background:none; border:none; padding:0; color:var(--accent); cursor:pointer; font-size:12px; }
+  .cand { display:flex; gap:6px; align-items:center; justify-content:space-between;
+          border-top:1px solid var(--border); padding:6px 0; }
+  .cand:first-child { border-top:none; }
+  .cand div { min-width:0; overflow-wrap:anywhere; }
+  .confirm { border:1px solid var(--border); border-radius:6px; padding:8px; }
+  .note { margin:8px 0 0; font-size:12px; }
+</style>
+<div id="body" class="stack"><p class="muted small">Loading…</p></div>
+<div class="bar" id="bar" hidden><i></i></div>
+<div id="note"></div>
+<script>
+let S = null, confirming = false, noteTimer = null;
+
+function esc(s) {
+  return String(s == null ? '' : s).replace(/[&<>"]/g, c =>
+    ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;' }[c]));
+}
+function send(command, extra) { orca.postMessage(Object.assign({ command }, extra || {})); }
+function via(v) {
+  return v === 'hash' ? 'exact file match'
+       : v === 'remembered' ? 'you linked this project'
+       : v === 'filename' ? 'same filename'
+       : v === 'search' ? 'found by name' : 'same source design';
+}
+function ago(at) {
+  const s = Math.max(0, Math.round(Date.now() / 1000 - at));
+  return s < 60 ? 'just now' : s < 3600 ? Math.round(s / 60) + ' min ago'
+       : new Date(at * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+}
+
+function render() {
+  const el = document.getElementById('body');
+  if (!S) return;
+  if (!S.configured) {
+    el.innerHTML = `
+      <h1>Connect to Print Vault</h1>
+      <p class="muted small">Create a token in Print Vault under Settings → Push from slicer.</p>
+      <label><span class="small">Instance URL</span>
+        <input id="url" class="full" placeholder="https://vault.example.com" value="${esc(S.url)}"></label>
+      <label><span class="small">Token</span>
+        <input id="token" class="full" type="password" placeholder="pvpush_…"></label>
+      <button id="connect">Connect</button>`;
+    document.getElementById('connect').onclick = () =>
+      send('setup', { url: document.getElementById('url').value.trim(),
+                      token: document.getElementById('token').value.trim() });
+    return;
+  }
+  if (!S.hasProject) {
+    el.innerHTML = `<p class="muted small">Open a project from Print Vault, and you can send your
+      changes back to it from here.</p>`;
+    return;
+  }
+  if (!S.target) {
+    const cands = S.candidates.map(c => `
+      <div class="cand"><div><div>${esc(c.modelTitle)}</div>
+        <div class="muted small">${esc(c.filename || '')} · ${esc(via(c.via))}</div></div>
+        <button class="secondary" data-pick="${esc(c.modelId)}">Link</button></div>`).join('');
+    el.innerHTML = `
+      <h1>${esc(S.projectName || 'This project')}</h1>
+      <p class="muted small">Not linked to a catalogue model.</p>
+      ${cands ? `<div>${cands}</div>` : ''}
+      <div class="row"><input id="q" class="grow" placeholder="Find a model by name">
+        <button class="secondary" id="search">Search</button></div>
+      <button class="link" id="retry">Look it up again</button>`;
+    el.querySelectorAll('[data-pick]').forEach(b => b.onclick = () => send('pick', { modelId: b.dataset.pick }));
+    const search = () => send('search', { query: document.getElementById('q').value });
+    document.getElementById('search').onclick = search;
+    document.getElementById('q').onkeydown = e => { if (e.key === 'Enter') search(); };
+    document.getElementById('retry').onclick = () => send('refresh');
+    return;
+  }
+  const t = S.target, since = S.since === 'update' ? 'your last update' : 'it was opened';
+  const status = S.changed ? `Edited since ${since}`
+                           : `No changes noticed since ${since} (${ago(S.sinceAt)})`;
+  el.innerHTML = `
+    <div><h1>${esc(t.modelTitle)}</h1>
+      <div class="muted small">${esc(t.filename || S.projectName || '')} · ${esc(via(t.via))}</div></div>
+    <div class="small">${esc(status)}</div>
+    ${confirming ? `
+      <div class="confirm stack">
+        <div class="small">Replace <strong>${esc(t.filename || 'the file')}</strong> with the project as
+          it is now? This adds a version to the model’s history.</div>
+        ${S.changed ? '' : '<div class="muted small">No changes were noticed, so this may only add a duplicate version.</div>'}
+        <div class="row"><button id="go">Update</button>
+          <button class="secondary" id="cancel">Cancel</button></div>
+      </div>` : `
+      <button id="push" class="full" ${S.busy ? 'disabled' : ''}>
+        ${S.busy ? 'Updating…' : 'Update catalogue'}</button>`}
+    <div class="row">
+      ${t.hasUrl ? '<button class="link" id="open">Open in Print Vault</button>' : ''}
+      <button class="link" id="unlink">Not this model</button></div>`;
+  const on = (id, fn) => { const b = document.getElementById(id); if (b) b.onclick = fn; };
+  on('push', () => { confirming = true; render(); });
+  on('cancel', () => { confirming = false; render(); });
+  on('go', () => { confirming = false; send('push'); });
+  on('open', () => send('open'));
+  on('unlink', () => send('unlink'));
+}
+
+function note(ok, message) {
+  const n = document.getElementById('note');
+  n.innerHTML = `<div class="note ${ok ? 'ok' : 'err'}">${esc(message)}</div>`;
+  clearTimeout(noteTimer);
+  if (ok) noteTimer = setTimeout(() => { n.innerHTML = ''; }, 8000);
+}
+
+function progress(fraction) {
+  const bar = document.getElementById('bar');
+  bar.hidden = fraction == null;
+  bar.firstElementChild.style.width = Math.round((fraction || 0) * 100) + '%';
+}
+
+orca.onMessage(msg => {
+  if (!msg) return;
+  if (msg.command === 'state') {
+    S = msg.data;
+    if (!S.busy) progress(null);
+    render();
+  } else if (msg.command === 'progress') {
+    progress(msg.fraction);
+  } else if (msg.command === 'result') {
+    note(msg.ok, msg.message);
+  } else if (msg.command === 'connected') {
+    send('refresh');
+  }
+});
+// A post made before the page loaded can be dropped, so the page asks first.
+send('state');
+// Keep "n min ago" honest without the plugin having to push a clock.
+setInterval(() => { if (S && S.target && !S.busy && !confirming) render(); }, 30000);
+</script>"""
+)
+
+
 # --- Registration -----------------------------------------------------------
 
 if orca is not None:
@@ -3021,6 +3598,7 @@ if orca is not None:
         def register_capabilities(self):
             orca.register_capability(PrintVaultSlicePush)
             orca.register_capability(PrintVaultSync)
+            orca.register_capability(PrintVaultPanel)
 
 
 # --- Stand-alone CLI --------------------------------------------------------

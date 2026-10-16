@@ -44,6 +44,41 @@ project](#how-it-reads-the-project).
    network, reads a file, or writes to its own folder — that is the host's
    audit hook, and the answer is remembered per plugin.
 
+## The panel (nightlies from 2026-10-10)
+
+`PrintVaultPanel` is a dock panel beside the 3D view with one button,
+**Update catalogue**. It is meant to replace the sync window and the slicing
+hook below. Both are still registered until the panel has been used on a real
+nightly; delete them after that.
+
+- **Pushing is never automatic.** Lifecycle events (`on_lifecycle_event`) only
+  update the status line: object, plate and preset edits mark the project
+  "edited". The push is the button plus a confirm step. A project is tuned
+  over many edits, most not worth a version, and a half-finished one is not
+  worth sharing.
+- **What it pushes** is OrcaSlicer's own `plater.export_3mf_copy()`: the
+  project exactly as Save Project would write it, unsaved edits included,
+  without touching the project's file or dirty state. `sanitize_project`
+  strips the plugin's settings (and with them the token) on the way. There is
+  no checkpoint, no merge and no wait for auto-backup.
+- **Opening by itself.** On `ProjectOpened` the panel resolves the file. It
+  opens only for a confident match (`confident_target`): exactly one model
+  holding the byte-identical file, or a model the user linked this project to
+  before. If the user closes the panel, it stays closed until the next project.
+- **Threads.** Orca knows which plugin is calling only while it dispatches to
+  one. The audit context is thread-local and is not carried into threads a
+  plugin starts, so a panel created from a worker would belong to no plugin.
+  That is why the lookup on open runs synchronously inside the lifecycle
+  handler, capped by `RESOLVE_TIMEOUT` (3 s) and with no hashing above
+  256 MB. `export_3mf_copy` only runs on the UI thread, so it runs in the
+  button's `on_message`. Stripping and uploading run on a worker;
+  `panel.post()` marshals to the UI thread by itself.
+- **Not covered by tests** (needs a real OrcaSlicer): the HTML page in the
+  dock's web view, and `export_3mf_copy`'s output. In particular, whether it
+  carries `slice_info` predictions for a sliced plate is still unconfirmed.
+  The capability's flow has been driven end to end against a dev instance
+  with a stand-in `orca` module.
+
 ## Syncing a project
 
 Open a file from a model, change what you came to change, and run **Plugins →
