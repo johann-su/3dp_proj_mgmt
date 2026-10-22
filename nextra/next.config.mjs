@@ -5,6 +5,11 @@ import nextra from "nextra";
 // docs/ directory (the location is not configurable — Nextra globs for
 // `{src/,}content` relative to this app). Keeping the pages in docs/ lets a
 // feature PR update its docs in the same commit.
+//
+// package.json builds with `--webpack`: Turbopack (Next 16's default) refuses
+// to follow a symlink whose target leaves the project root, so ./content would
+// not resolve. Widening turbopack.root to the repo doesn't work either — Next
+// then picks up the app's src/proxy.ts.
 const withNextra = nextra({});
 
 export default withNextra({
