@@ -1,3 +1,9 @@
+# Node comes from the official image rather than the distro's `nodejs`
+# package: Ubuntu/Debian ship EOL lines (18/20) that miss security releases
+# such as CVE-2026-111497 (Node2Shell, Brotli RCE; fixed in 24.22.1). The
+# official binary is built against an old glibc and runs on this base as-is.
+FROM node:24.22.1-trixie-slim AS node
+
 # OrcaSlicer ships for Linux only as an AppImage (built against Ubuntu 24.04)
 # or a flatpak. The AppImage is an ELF runtime with a squashfs appended; it is
 # unpacked with unsquashfs rather than by running `--appimage-extract`, so the
@@ -33,7 +39,8 @@ FROM ubuntu:24.04
 
 # The CLI slices headless (no X server or xvfb needed), but the binary is the
 # GUI build and links GTK/WebKit/GL, so those runtime libraries must exist.
-# nodejs runs the thin HTTP wrapper in server.mjs; unzip/zip read and patch
+# node (copied from the node stage) runs the thin HTTP wrapper in
+# server.mjs; unzip/zip read and patch
 # the .3mf archives.
 COPY --from=orca /etc/apt/apt.conf.d/80-retries /etc/apt/apt.conf.d/80-retries
 RUN apt-get update \
@@ -41,10 +48,11 @@ RUN apt-get update \
        libgtk-3-0t64 libwebkit2gtk-4.1-0 libgl1 libegl1 libglu1-mesa \
        libopengl0 libgstreamer1.0-0 libgstreamer-plugins-base1.0-0 \
        libsecret-1-0 libsm6 libice6 libwayland-egl1 libdbus-1-3 \
-       nodejs unzip zip \
+       unzip zip \
     && rm -rf /var/lib/apt/lists/*
 
 COPY --from=orca /opt/orca /opt/orca
+COPY --from=node /usr/local/bin/node /usr/local/bin/node
 COPY server.mjs lib.mjs presets.mjs /opt/slicer/
 
 RUN useradd --system --create-home slicer
