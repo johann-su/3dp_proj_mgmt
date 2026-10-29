@@ -85,7 +85,11 @@ export default async function SettingsPage() {
                       {conn.description}
                     </p>
                   </div>
-                  {conn.status.connected ? (
+                  {"state" in conn.status && conn.status.state === "expired" ? (
+                    <Badge variant="destructive">Login expired</Badge>
+                  ) : "state" in conn.status && conn.status.state === "expiring" ? (
+                    <Badge variant="outline">Expires soon</Badge>
+                  ) : conn.status.connected ? (
                     <Badge>Connected</Badge>
                   ) : (
                     <Badge variant="outline">Not connected</Badge>

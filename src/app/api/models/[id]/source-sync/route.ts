@@ -12,7 +12,10 @@ import {
 } from "@/lib/model-versions";
 import { processPendingSlices, sliceEligible } from "@/lib/slicer";
 import { reportError } from "@/lib/telemetry";
-import { getBambuCredential } from "@/lib/bambu/credentials";
+import {
+  getBambuCredential,
+  markBambuCredentialInvalid,
+} from "@/lib/bambu/credentials";
 import {
   fetchProfileDownload,
   fetchRawModelDownload,
@@ -281,6 +284,9 @@ export async function POST(
     });
   } catch (err) {
     if (err instanceof ImportError) {
+      if (err.message === BAMBU_EXPIRED_WARNING) {
+        await markBambuCredentialInvalid(session.user.id);
+      }
       return NextResponse.json({ error: err.message }, { status: 502 });
     }
     reportError("Source sync failed", err);

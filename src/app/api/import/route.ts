@@ -5,7 +5,11 @@ import { ImportError, type ImportedProject } from "@/lib/import/types";
 import { stageImportedAssets } from "@/lib/import/stage";
 import type { UploadedFile } from "@/app/models/actions";
 import type { BomItemInput } from "@/lib/bom";
-import { importFromMakerworld, parseMakerworldUrl } from "@/lib/import/makerworld";
+import {
+  BAMBU_EXPIRED_WARNING,
+  importFromMakerworld,
+  parseMakerworldUrl,
+} from "@/lib/import/makerworld";
 import { parseMakerworldCollectionUrl } from "@/lib/import/makerworld-collection";
 import { importFromPrintables, parsePrintablesUrl } from "@/lib/import/printables";
 import {
@@ -20,7 +24,10 @@ import {
   parseOnshapeUrl,
   type OnshapeBranchChoice,
 } from "@/lib/onshape/api";
-import { getBambuCredential } from "@/lib/bambu/credentials";
+import {
+  getBambuCredential,
+  markBambuCredentialInvalid,
+} from "@/lib/bambu/credentials";
 import { getOnshapeAccessToken } from "@/lib/onshape/credentials";
 import { findDuplicatesForUrl, type DuplicateMatch } from "@/lib/duplicates";
 import { reportError } from "@/lib/telemetry";
@@ -150,6 +157,10 @@ export async function POST(req: NextRequest) {
           ? { token: cred.token, region: cred.region, confirmManyFiles }
           : { confirmManyFiles },
       );
+      // Bambu rejected the stored token — flag it so the renewal reminder shows.
+      if (cred && project.warnings.includes(BAMBU_EXPIRED_WARNING)) {
+        await markBambuCredentialInvalid(session.user.id);
+      }
     } else if (parseMakerworldCollectionUrl(url)) {
       // Whole collections import in the background — see /api/import/collection.
       return NextResponse.json(

@@ -34,6 +34,19 @@ is stored **encrypted at rest** (AES-256-GCM, `src/lib/crypto.ts`, keyed by
 each print profile for a short-lived presigned URL that streams to S3 like any
 other asset. Without a connection, only metadata + images import.
 
+**Token expiry & renewal**: Bambu tokens last ~90 days and **cannot be
+refreshed silently** — the community-documented `/user/refreshtoken` endpoint
+only answers 401 now, and its "refresh token" equals the access token. So
+`bambu_credentials` records `expires_at` (login response `expiresIn`, the TFA
+cookie's `Max-Age`, or the pasted token's JWT `exp`; null when unknown — never
+guessed) and `invalid_at` (set via `markBambuCredentialInvalid` wherever
+`BAMBU_EXPIRED_WARNING` surfaces: the import route, the collection job, source
+sync; cleared by any save). `src/lib/bambu/token-expiry.ts` turns those into
+valid/expiring (< `EXPIRY_WARNING_DAYS`)/expired; the root layout passes a
+reminder to `BambuRenewalBanner` in the app header, and Settings → Bambu Cloud
+offers "Renew login" — a re-login with the account/region prefilled. A new
+place that sees a Bambu 401 should call `markBambuCredentialInvalid` too.
+
 **Per-file import provenance**: every file staged by an importer (all three
 platforms, single-model and collection jobs, Onshape sync inserts) is flagged
 `model_files.imported`, so files added manually to an imported model later stay

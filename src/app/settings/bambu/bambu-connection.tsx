@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { CheckCircle2, Cloud, Unplug } from "lucide-react";
+import { AlertTriangle, CheckCircle2, Cloud, RefreshCw, Unplug } from "lucide-react";
 import {
   disconnectBambu,
   finishBambuCode,
@@ -12,6 +12,7 @@ import {
   startBambuLogin,
 } from "./actions";
 import type { BambuConnectionStatus } from "@/lib/bambu/credentials";
+import { formatDaysLeft } from "@/lib/bambu/token-expiry";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -32,6 +33,9 @@ export function BambuConnection({ status }: { status: BambuConnectionStatus }) {
   const [mode, setMode] = useState<Mode>("login");
   const [step, setStep] = useState<Step>("credentials");
   const [busy, setBusy] = useState(false);
+  // Re-login over an existing connection (Bambu tokens can't be refreshed
+  // silently — see src/lib/bambu/token-expiry.ts).
+  const [renewing, setRenewing] = useState(false);
 
   const [account, setAccount] = useState("");
   const [password, setPassword] = useState("");
@@ -42,8 +46,21 @@ export function BambuConnection({ status }: { status: BambuConnectionStatus }) {
   const [token, setToken] = useState("");
 
   function connected() {
-    toast.success("Bambu Cloud connected");
+    toast.success(renewing ? "Bambu Cloud login renewed" : "Bambu Cloud connected");
+    setRenewing(false);
+    setStep("credentials");
+    setPassword("");
+    setCode("");
+    setTfaCode("");
     router.refresh();
+  }
+
+  function startRenew() {
+    setAccount(status.account ?? "");
+    setRegion(status.region ?? "global");
+    setMode("login");
+    setStep("credentials");
+    setRenewing(true);
   }
 
   async function handleDisconnect() {
@@ -58,27 +75,65 @@ export function BambuConnection({ status }: { status: BambuConnectionStatus }) {
     router.refresh();
   }
 
-  if (status.connected) {
+  if (status.connected && !renewing) {
+    const needsRenewal = status.state === "expired" || status.state === "expiring";
     return (
       <Card>
-        <CardContent className="flex items-center gap-3 py-4">
-          <CheckCircle2 className="size-5 text-primary shrink-0" />
-          <div className="min-w-0">
-            <div className="text-sm font-medium">Connected</div>
-            <div className="text-xs text-muted-foreground truncate">
-              {status.account} · {status.region === "china" ? "China" : "Global"}
+        <CardContent className="grid gap-4 py-4">
+          <div className="flex items-center gap-3">
+            {needsRenewal ? (
+              <AlertTriangle
+                className={
+                  "size-5 shrink-0 " +
+                  (status.state === "expired" ? "text-destructive" : "text-amber-500")
+                }
+              />
+            ) : (
+              <CheckCircle2 className="size-5 text-primary shrink-0" />
+            )}
+            <div className="min-w-0">
+              <div className="text-sm font-medium">
+                {status.state === "expired"
+                  ? "Login expired"
+                  : status.state === "expiring"
+                    ? "Login expires soon"
+                    : "Connected"}
+              </div>
+              <div className="text-xs text-muted-foreground truncate">
+                {status.account} · {status.region === "china" ? "China" : "Global"}
+                {status.expiresAt && status.state !== "expired" && (
+                  <> · expires {new Date(status.expiresAt).toLocaleDateString()}</>
+                )}
+              </div>
+            </div>
+            <div className="ml-auto flex shrink-0 gap-2">
+              <Button
+                variant={needsRenewal ? "default" : "outline"}
+                size="sm"
+                disabled={busy}
+                onClick={startRenew}
+              >
+                <RefreshCw className="size-4" />
+                Renew login
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={busy}
+                onClick={handleDisconnect}
+              >
+                <Unplug className="size-4" />
+                Disconnect
+              </Button>
             </div>
           </div>
-          <Button
-            variant="outline"
-            size="sm"
-            className="ml-auto shrink-0"
-            disabled={busy}
-            onClick={handleDisconnect}
-          >
-            <Unplug className="size-4" />
-            Disconnect
-          </Button>
+          {needsRenewal && (
+            <p className="text-xs text-muted-foreground">
+              {status.state === "expired"
+                ? "Bambu no longer accepts this login, so MakerWorld imports and syncs can't download files. Log in again to renew it."
+                : `This login expires in ${formatDaysLeft(status.daysLeft ?? 0)}. Renew it now to keep MakerWorld downloads working.`}
+            </p>
+          )}
         </CardContent>
       </Card>
     );
@@ -148,6 +203,22 @@ export function BambuConnection({ status }: { status: BambuConnectionStatus }) {
   return (
     <Card>
       <CardContent className="grid gap-4 py-5">
+        {renewing && (
+          <div className="flex items-center gap-2 text-sm">
+            <span className="text-muted-foreground">
+              Log in again to renew the connection for {status.account}.
+            </span>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="ml-auto"
+              disabled={busy}
+              onClick={() => setRenewing(false)}
+            >
+              Cancel
+            </Button>
+          </div>
+        )}
         <div className="flex gap-1 rounded-lg bg-muted p-1 text-sm">
           {(
             [

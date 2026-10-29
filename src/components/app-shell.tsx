@@ -6,6 +6,10 @@ import { SidebarInset, SidebarProvider, SidebarTrigger } from "@/components/ui/s
 import { AppSidebar } from "@/components/app-sidebar";
 import { ImportProgressIndicator } from "@/components/import-progress";
 import { ThemeToggle } from "@/components/theme-toggle";
+import {
+  BambuRenewalBanner,
+  type BambuReminder,
+} from "@/components/bambu-renewal-banner";
 
 type SessionUser = { name: string; email: string };
 
@@ -16,9 +20,11 @@ type SessionUser = { name: string; email: string };
 // on share pages too.
 export function AppShell({
   user,
+  bambuReminder = null,
   children,
 }: {
   user: SessionUser | null;
+  bambuReminder?: BambuReminder | null;
   children: React.ReactNode;
 }) {
   const pathname = usePathname();
@@ -52,6 +58,7 @@ export function AppShell({
             </div>
           )}
         </header>
+        {user && bambuReminder && <BambuRenewalBanner reminder={bambuReminder} />}
         <main className="flex-1">{children}</main>
       </SidebarInset>
     </SidebarProvider>
