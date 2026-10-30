@@ -6,6 +6,7 @@
 // mutating affordance is disabled by `modelId: null`.
 
 import Link from "next/link";
+import { useRef, useState } from "react";
 import { ExternalLink, Pencil, SquarePen } from "lucide-react";
 import type { SourcePlatform } from "@/lib/platform";
 import { platformLabels } from "@/lib/platform";
@@ -15,7 +16,11 @@ import { safeFileBase } from "@/lib/file-kind";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
-import { ImageGallery, type GalleryMedia } from "@/components/image-gallery";
+import {
+  galleryOpensIn3d,
+  ImageGallery,
+  type GalleryMedia,
+} from "@/components/image-gallery";
 import type { ViewerFile } from "@/components/model-viewer";
 import type { ModelVideo } from "@/lib/video";
 import { Markdown } from "@/components/markdown";
@@ -29,6 +34,7 @@ import { BomSection } from "./bom-section";
 import {
   DocumentsCard,
   PrintFilesCard,
+  type FilePreviewControl,
   type PdfFileData,
   type PrintFileData,
 } from "./model-file-cards";
@@ -128,6 +134,38 @@ export function ModelView({ data }: { data: ModelViewData }) {
     publicShare,
   } = data;
 
+  // The gallery's Photos/3D toggle and previewed file live here so a click on
+  // a .3mf in the Files card can open it in the viewer and highlight its row.
+  const [show3d, setShow3d] = useState(() =>
+    galleryOpensIn3d(media, videos, modelFiles),
+  );
+  const [modelFileIndex, setModelFileIndex] = useState(0);
+  const galleryRef = useRef<HTMLDivElement>(null);
+  const filePreview: FilePreviewControl | undefined =
+    modelFiles.length > 0
+      ? {
+          // Model-page rows carry the file id; the read-only views' rows carry
+          // the same tokened src the viewer loads.
+          indexOf: (file) =>
+            file.filename.toLowerCase().endsWith(".3mf")
+              ? modelFiles.findIndex((f) =>
+                  file.id ? f.fileId === file.id : !!file.src && f.src === file.src,
+                )
+              : -1,
+          activeIndex: show3d ? modelFileIndex : null,
+          onSelect: (index) => {
+            setModelFileIndex(index);
+            setShow3d(true);
+            // On mobile the gallery sits above the description, out of sight
+            // of the Files card.
+            galleryRef.current?.scrollIntoView({
+              behavior: "smooth",
+              block: "nearest",
+            });
+          },
+        }
+      : undefined;
+
   return (
     // On mobile the columns fold into a single flow reordered with `order`:
     // header first (order-1), then the gallery (order-2), then the description
@@ -135,52 +173,58 @@ export function ModelView({ data }: { data: ModelViewData }) {
     // columns take over and `order-none` restores document order.
     <div className="flex flex-col gap-8 lg:grid lg:grid-cols-[1fr_400px]">
       <div className="order-2 min-w-0 lg:order-none">
-        <ImageGallery
-          media={media}
-          videos={videos}
-          title={title}
-          modelFiles={modelFiles}
-          badge={
-            (platform || parametric) && (
-              <div className="flex flex-col gap-2">
-                {platform && (
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <div className="flex size-8 items-center justify-center rounded-lg bg-white/90 p-1.5 shadow-sm ring-1 ring-black/5 backdrop-blur">
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img
-                          src={`/logos/${platform}.svg`}
-                          alt={`${platformLabels[platform]} logo`}
-                          className="size-full object-contain"
-                        />
-                      </div>
-                    </TooltipTrigger>
-                    <TooltipContent side="right">
-                      {platformLabels[platform]}
-                    </TooltipContent>
-                  </Tooltip>
-                )}
-                {parametric && (
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <div className="flex size-8 items-center justify-center rounded-lg bg-primary p-1 shadow-sm ring-1 ring-black/5 backdrop-blur">
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img
-                          src="/customize.svg"
-                          alt="Parametric model"
-                          className="size-full object-contain"
-                        />
-                      </div>
-                    </TooltipTrigger>
-                    <TooltipContent side="right">
-                      Customizable OpenSCAD model
-                    </TooltipContent>
-                  </Tooltip>
-                )}
-              </div>
-            )
-          }
-        />
+        <div ref={galleryRef} className="scroll-mt-20">
+          <ImageGallery
+            media={media}
+            videos={videos}
+            title={title}
+            modelFiles={modelFiles}
+            show3d={show3d}
+            onShow3dChange={setShow3d}
+            modelFileIndex={modelFileIndex}
+            onModelFileIndexChange={setModelFileIndex}
+            badge={
+              (platform || parametric) && (
+                <div className="flex flex-col gap-2">
+                  {platform && (
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <div className="flex size-8 items-center justify-center rounded-lg bg-white/90 p-1.5 shadow-sm ring-1 ring-black/5 backdrop-blur">
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img
+                            src={`/logos/${platform}.svg`}
+                            alt={`${platformLabels[platform]} logo`}
+                            className="size-full object-contain"
+                          />
+                        </div>
+                      </TooltipTrigger>
+                      <TooltipContent side="right">
+                        {platformLabels[platform]}
+                      </TooltipContent>
+                    </Tooltip>
+                  )}
+                  {parametric && (
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <div className="flex size-8 items-center justify-center rounded-lg bg-primary p-1 shadow-sm ring-1 ring-black/5 backdrop-blur">
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img
+                            src="/customize.svg"
+                            alt="Parametric model"
+                            className="size-full object-contain"
+                          />
+                        </div>
+                      </TooltipTrigger>
+                      <TooltipContent side="right">
+                        Customizable OpenSCAD model
+                      </TooltipContent>
+                    </Tooltip>
+                  )}
+                </div>
+              )
+            }
+          />
+        </div>
 
         {bom.length > 0 && (
           <BomSection
@@ -301,6 +345,7 @@ export function ModelView({ data }: { data: ModelViewData }) {
             makerworldUrl={makerworldUrl}
             slicerConfigured={slicerConfigured}
             modelId={modelId}
+            preview={filePreview}
           />
 
           {pdfFiles.length > 0 && <DocumentsCard pdfFiles={pdfFiles} />}

@@ -45,6 +45,9 @@ export type ViewerFile = {
   // bed instead of a square sized to the geometry, giving a "will it fit"
   // reference; absent for files with no printer info.
   bed?: { x: number; y: number } | null;
+  // The model_files row id, so the model page's Files card can match its rows
+  // to viewer files (other views match on `src`, which their rows share).
+  fileId?: string;
 };
 
 type Plate = {
@@ -148,10 +151,16 @@ function disposeObject(object: THREE.Object3D) {
 
 export function ModelViewer({
   files,
+  fileIndex: controlledFileIndex,
+  onFileIndexChange,
   onError,
 }: {
   // Every previewable .3mf on the model (tokened fileSrc URLs).
   files: ViewerFile[];
+  // Which file to show. Optional: when set, the parent owns the selection
+  // (the model page's Files card picks it); otherwise the switcher does.
+  fileIndex?: number;
+  onFileIndexChange?: (index: number) => void;
   // Called if a file can't be fetched/parsed, so the parent can fall back to
   // the thumbnail gallery.
   onError?: () => void;
@@ -162,14 +171,22 @@ export function ModelViewer({
   // Real bed size (mm) of the selected file, set on load and read by showPlate
   // (kept on a ref so showPlate stays dependency-free like platesRef).
   const bedRef = useRef<{ x: number; y: number } | null>(null);
-  const [fileIndex, setFileIndex] = useState(0);
+  const [ownFileIndex, setOwnFileIndex] = useState(0);
+  const fileIndex = Math.min(
+    controlledFileIndex ?? ownFileIndex,
+    Math.max(files.length - 1, 0),
+  );
+  function setFileIndex(index: number) {
+    setOwnFileIndex(index);
+    onFileIndexChange?.(index);
+  }
   const [plateIndex, setPlateIndex] = useState(0);
   const [plateNames, setPlateNames] = useState<string[]>([]);
   // Which build plate the picker is showing: "file" (the config's own bed,
   // the default), "auto" (footprint square), or a BED_PRESETS id. Mirrored on a
   // ref so showPlate can read it without re-running the load effect.
   const [bedChoice, setBedChoice] = useState(() =>
-    defaultBedChoice(files[0]?.bed ?? null),
+    defaultBedChoice(files[fileIndex]?.bed ?? null),
   );
   const bedChoiceRef = useRef(bedChoice);
   // Tracks which file the picker was last reset for, so switching files snaps

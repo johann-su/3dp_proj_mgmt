@@ -296,12 +296,31 @@ function YouTubeSlide({ video, title }: { video: YouTubeVideo; title: string }) 
   );
 }
 
+// Whether the gallery starts on the 3D view: only when there's a .3mf and no
+// slide to show instead. Exported so a parent that controls `show3d` (the
+// model page) starts from the same default.
+export function galleryOpensIn3d(
+  media: GalleryMedia[],
+  videos: ModelVideo[] | undefined,
+  modelFiles: ViewerFile[] | undefined,
+): boolean {
+  return (
+    !!modelFiles?.length &&
+    media.length === 0 &&
+    !(videos ?? []).some((entry) => parseYouTubeUrl(entry.url))
+  );
+}
+
 export function ImageGallery({
   media,
   videos,
   title,
   badge,
   modelFiles,
+  show3d: controlledShow3d,
+  onShow3dChange,
+  modelFileIndex,
+  onModelFileIndexChange,
 }: {
   // Stored photos and videos, in gallery order.
   media: GalleryMedia[];
@@ -314,6 +333,13 @@ export function ImageGallery({
   // Previewable .3mf files to offer as an interactive 3D view (issue #35).
   // When any are present, a Photos/3D toggle appears over the main frame.
   modelFiles?: ViewerFile[];
+  // Optional control of the Photos/3D toggle and the previewed file, so the
+  // model page's Files card can open a file in 3D (and highlight it). Left
+  // unset, the gallery manages both itself.
+  show3d?: boolean;
+  onShow3dChange?: (show3d: boolean) => void;
+  modelFileIndex?: number;
+  onModelFileIndexChange?: (index: number) => void;
 }) {
   const hasModel = !!modelFiles && modelFiles.length > 0;
   const [selected, setSelected] = useState(0);
@@ -342,7 +368,14 @@ export function ImageGallery({
   // 3D view is offered only when a .3mf is available; default to it when there
   // is nothing else to show. A viewer error flips this off so we fall back to
   // the slides (or the empty-state placeholder).
-  const [show3d, setShow3d] = useState(hasModel && items.length === 0);
+  const [ownShow3d, setOwnShow3d] = useState(() =>
+    galleryOpensIn3d(media, videos, modelFiles),
+  );
+  const show3d = controlledShow3d ?? ownShow3d;
+  function setShow3d(value: boolean) {
+    setOwnShow3d(value);
+    onShow3dChange?.(value);
+  }
 
   const index = Math.min(selected, items.length - 1);
 
@@ -373,7 +406,12 @@ export function ImageGallery({
     return (
       <div className="relative aspect-[4/3] rounded-lg bg-muted overflow-hidden flex items-center justify-center">
         {show3d && hasModel ? (
-          <ModelViewer files={modelFiles} onError={() => setShow3d(false)} />
+          <ModelViewer
+            files={modelFiles}
+            fileIndex={modelFileIndex}
+            onFileIndexChange={onModelFileIndexChange}
+            onError={() => setShow3d(false)}
+          />
         ) : (
           <Box className="size-16 text-muted-foreground/40" />
         )}
@@ -499,7 +537,12 @@ export function ImageGallery({
     <div className="grid gap-2">
       <div className="relative aspect-[4/3] rounded-lg bg-muted overflow-hidden flex items-center justify-center group">
         {show3d && hasModel ? (
-          <ModelViewer files={modelFiles} onError={() => setShow3d(false)} />
+          <ModelViewer
+            files={modelFiles}
+            fileIndex={modelFileIndex}
+            onFileIndexChange={onModelFileIndexChange}
+            onError={() => setShow3d(false)}
+          />
         ) : current.kind === "youtube" ? (
           // Keyed by video so switching slides resets to the poster instead of
           // carrying the previous video's player over.
