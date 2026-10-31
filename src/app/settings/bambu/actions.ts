@@ -43,8 +43,14 @@ export async function startBambuLogin(input: {
   try {
     const result = await bambuLogin(account, input.password, region);
     if (result.status === "success") {
-      await saveBambuCredential(session.user.id, account, region, result.accessToken);
-      revalidatePath("/settings/bambu");
+      await saveBambuCredential(
+        session.user.id,
+        account,
+        region,
+        result.accessToken,
+        result.expiresIn,
+      );
+      revalidatePath("/", "layout");
       return { status: "connected" };
     }
     if (result.status === "needCode") return { status: "needCode" };
@@ -70,8 +76,14 @@ export async function finishBambuCode(input: {
 
   try {
     const token = await bambuLoginWithCode(account, code, region);
-    await saveBambuCredential(session.user.id, account, region, token);
-    revalidatePath("/settings/bambu");
+    await saveBambuCredential(
+      session.user.id,
+      account,
+      region,
+      token.accessToken,
+      token.expiresIn,
+    );
+    revalidatePath("/", "layout");
     return { status: "connected" };
   } catch (err) {
     return { error: err instanceof Error ? err.message : "Verification failed" };
@@ -94,8 +106,14 @@ export async function finishBambuTfa(input: {
 
   try {
     const token = await bambuVerifyTfa(input.tfaKey, tfaCode, region);
-    await saveBambuCredential(session.user.id, account, region, token);
-    revalidatePath("/settings/bambu");
+    await saveBambuCredential(
+      session.user.id,
+      account,
+      region,
+      token.accessToken,
+      token.expiresIn,
+    );
+    revalidatePath("/", "layout");
     return { status: "connected" };
   } catch (err) {
     return { error: err instanceof Error ? err.message : "Verification failed" };
@@ -121,7 +139,7 @@ export async function saveBambuToken(input: {
   if (!ok) return { error: "That token was rejected by Bambu (expired or invalid)" };
 
   await saveBambuCredential(session.user.id, account, region, token);
-  revalidatePath("/settings/bambu");
+  revalidatePath("/", "layout");
   return { status: "connected" };
 }
 
@@ -129,5 +147,5 @@ export async function disconnectBambu(): Promise<{ error: string } | void> {
   const session = await getSession();
   if (!session) return { error: "You must be signed in" };
   await deleteBambuCredential(session.user.id);
-  revalidatePath("/settings/bambu");
+  revalidatePath("/", "layout");
 }

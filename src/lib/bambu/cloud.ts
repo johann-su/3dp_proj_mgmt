@@ -33,7 +33,7 @@ function jsonHeaders() {
 
 // Result of an initial email/password login attempt.
 export type LoginResult =
-  | { status: "success"; accessToken: string }
+  | { status: "success"; accessToken: string; expiresIn?: number }
   | { status: "needCode" } // an email verification code was sent
   | { status: "needTfa"; tfaKey: string } // authenticator-app code required
   | { status: "error"; message: string };
@@ -41,6 +41,8 @@ export type LoginResult =
 type LoginResponse = {
   success?: boolean;
   accessToken?: string;
+  // Token lifetime in seconds (~90 days).
+  expiresIn?: number;
   loginType?: string;
   tfaKey?: string;
   code?: number;
@@ -74,7 +76,11 @@ export async function bambuLogin(
   const data = await postLogin(region, { account, password, apiError: "" });
 
   if (data.accessToken) {
-    return { status: "success", accessToken: data.accessToken };
+    return {
+      status: "success",
+      accessToken: data.accessToken,
+      expiresIn: data.expiresIn,
+    };
   }
   if (data.loginType === "verifyCode") {
     await sendEmailCode(account, region);
@@ -100,25 +106,28 @@ export async function sendEmailCode(
   });
 }
 
+export type BambuToken = { accessToken: string; expiresIn?: number };
+
 export async function bambuLoginWithCode(
   account: string,
   code: string,
   region: BambuRegion,
-): Promise<string> {
+): Promise<BambuToken> {
   const data = await postLogin(region, { account, code });
   if (!data.accessToken) {
     throw new Error(data.error || data.message || "Invalid verification code");
   }
-  return data.accessToken;
+  return { accessToken: data.accessToken, expiresIn: data.expiresIn };
 }
 
 // Authenticator-app (TOTP) step. The token is returned in a `token` cookie on
-// the web host rather than in the JSON body.
+// the web host rather than in the JSON body; its lifetime then comes from the
+// cookie's Max-Age when present.
 export async function bambuVerifyTfa(
   tfaKey: string,
   tfaCode: string,
   region: BambuRegion,
-): Promise<string> {
+): Promise<BambuToken> {
   const res = await fetch(`${webBase(region)}/api/sign-in/tfa`, {
     method: "POST",
     headers: jsonHeaders(),
@@ -126,9 +135,18 @@ export async function bambuVerifyTfa(
     redirect: "manual",
   });
 
-  const setCookie = res.headers.get("set-cookie") ?? "";
-  const match = setCookie.match(/(?:^|[;,\s])token=([^;]+)/);
-  if (match) return decodeURIComponent(match[1]);
+  // One entry per cookie, so `Expires=Thu, 01 …` commas can't split them.
+  const tokenCookie = res.headers
+    .getSetCookie()
+    .find((cookie) => /^\s*token=[^;]/.test(cookie));
+  if (tokenCookie) {
+    const value = tokenCookie.match(/^\s*token=([^;]+)/)![1];
+    const maxAge = tokenCookie.match(/;\s*max-age=(\d+)/i);
+    return {
+      accessToken: decodeURIComponent(value),
+      expiresIn: maxAge ? Number(maxAge[1]) : undefined,
+    };
+  }
 
   const data = (await res.json().catch(() => ({}))) as LoginResponse & {
     token?: string;
@@ -137,7 +155,7 @@ export async function bambuVerifyTfa(
   if (!token) {
     throw new Error(data.error || data.message || "Invalid authenticator code");
   }
-  return token;
+  return { accessToken: token, expiresIn: data.expiresIn };
 }
 
 // Best-effort token check: 401 means the token is invalid/expired; anything

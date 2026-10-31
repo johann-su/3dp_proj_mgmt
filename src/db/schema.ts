@@ -195,6 +195,13 @@ export const bambuCredentials = pgTable("bambu_credentials", {
   account: text("account").notNull(),
   region: text("region").$type<"global" | "china">().notNull().default("global"),
   tokenCipher: text("token_cipher").notNull(),
+  // When the token stops working, from the login response (~90 days) or the
+  // token's JWT claim; null when unknown. Drives the renewal reminder — see
+  // src/lib/bambu/token-expiry.ts.
+  expiresAt: timestamp("expires_at"),
+  // Set when Bambu rejected the token during an import/sync (401); cleared on
+  // reconnect. Overrides expiresAt.
+  invalidAt: timestamp("invalid_at"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });

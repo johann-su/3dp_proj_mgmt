@@ -247,6 +247,7 @@ export default async function ModelPage({
     modelFiles: printFiles
       .filter((f) => f.filename.toLowerCase().endsWith(".3mf"))
       .map((f) => ({
+        fileId: f.id,
         filename: f.filename,
         src: fileSrc(f.id),
         bed: resolveBedSizeMm(f.printerInfo),

@@ -23,7 +23,10 @@ import {
   modelFiles,
   models,
 } from "@/db/schema";
-import { getBambuCredential } from "@/lib/bambu/credentials";
+import {
+  getBambuCredential,
+  markBambuCredentialInvalid,
+} from "@/lib/bambu/credentials";
 import { pickCategoryId } from "@/lib/categories";
 import { sanitizeBomItems } from "@/lib/bom";
 import { linkTags, normalizeTagNames } from "@/lib/tags";
@@ -314,6 +317,7 @@ async function runJob(jobId: string) {
       // An expired login fails every remaining download the same way — stop
       // instead of burning through the rest of the list.
       if (err instanceof ImportError && err.message === BAMBU_EXPIRED_WARNING) {
+        await markBambuCredentialInvalid(job.userId);
         throw err;
       }
       failed++;

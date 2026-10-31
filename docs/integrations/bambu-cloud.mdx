@@ -28,6 +28,21 @@ code** or a **TOTP two-factor code** may be requested. Alternatively, a
 `token` cookie copied from a logged-in MakerWorld browser session can be
 pasted directly.
 
+## Expiry and renewal
+
+Bambu logins expire after roughly three months, and Bambu offers no way to
+extend one in the background, so renewing means logging in again. Print Vault
+tracks when each connection expires and, starting a week before, shows a
+reminder banner at the top of every page. The banner also appears as soon as
+Bambu rejects the login during an import or sync. Follow **Renew login** (or
+open **Settings → Bambu Cloud**) to log in again with the account and region
+already filled in. Dismissing the banner hides it until the login actually
+expires.
+
+Connections made before expiry tracking existed, and pasted tokens without a
+readable expiry date, show no advance reminder. The banner still appears once
+Bambu rejects them.
+
 ## How tokens are stored
 
 The resulting access token is stored **encrypted at rest** (AES-256-GCM),

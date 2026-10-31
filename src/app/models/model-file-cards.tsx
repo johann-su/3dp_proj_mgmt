@@ -19,6 +19,7 @@ import {
   Layers,
   Loader2,
   Printer,
+  Rotate3d,
   Trash2,
   TriangleAlert,
   Weight,
@@ -81,6 +82,16 @@ export type PrintFileData = {
   // On a generated variant: whether the current viewer may delete it (the
   // model owner may delete any variant; anyone else only those they generated).
   deletableByViewer?: boolean;
+};
+
+// Wiring from ModelView that lets a click on a .3mf row open it in the
+// gallery's 3D viewer. `indexOf` maps a row to its viewer file (-1 when the
+// file has no 3D preview); `activeIndex` is the file currently on screen in
+// 3D (null while the gallery shows photos), whose row gets highlighted.
+export type FilePreviewControl = {
+  indexOf: (file: PrintFileData) => number;
+  activeIndex: number | null;
+  onSelect: (index: number) => void;
 };
 
 export type PdfFileData = {
@@ -152,6 +163,7 @@ function PrintFileRow({
   makerworldUrl,
   slicerConfigured,
   deletable,
+  preview,
 }: {
   file: PrintFileData;
   // Platform label for the imported badge's tooltip ("MakerWorld", …).
@@ -159,6 +171,7 @@ function PrintFileRow({
   makerworldUrl: string | null;
   slicerConfigured: boolean;
   deletable?: { modelId: string };
+  preview?: FilePreviewControl;
 }) {
   // Slicer deep links only make sense for .3mf files — Bambu Studio hard-
   // rejects any other filename ("unknown file format") and Orca would save a
@@ -166,12 +179,63 @@ function PrintFileRow({
   const is3mf = file.filename.toLowerCase().endsWith(".3mf");
   const filaments = filamentSummary(file.printer);
   const missingSlots = file.printer?.missingFilamentSlots;
+  const previewIndex = preview?.indexOf(file) ?? -1;
+  const previewing = previewIndex >= 0 && preview?.activeIndex === previewIndex;
 
   return (
-    <div className="flex min-w-0 items-center gap-3 border rounded-lg px-3 py-2.5">
-      <div className="flex size-10 shrink-0 items-center justify-center rounded-md bg-muted">
-        <FileBox className="size-5 text-muted-foreground/80" />
-      </div>
+    <div
+      className={cn(
+        "flex min-w-0 items-center gap-3 border rounded-lg px-3 py-2.5 transition-colors",
+        previewIndex >= 0 && "cursor-pointer hover:bg-muted/50",
+        previewing &&
+          "border-primary bg-primary/5 ring-2 ring-primary/30 hover:bg-primary/5",
+      )}
+      aria-current={previewing || undefined}
+      onClick={
+        preview && previewIndex >= 0
+          ? (e) => {
+              // The row's own controls (download menu, delete) keep their
+              // behaviour. React also bubbles clicks out of their portaled
+              // menus, which the DOM `contains` check filters out.
+              const target = e.target as HTMLElement;
+              if (!e.currentTarget.contains(target)) return;
+              if (target.closest("a, button, [role=menuitem]")) return;
+              preview.onSelect(previewIndex);
+            }
+          : undefined
+      }
+    >
+      {preview && previewIndex >= 0 ? (
+        // The keyboard-reachable twin of clicking the row.
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <button
+              type="button"
+              onClick={() => preview.onSelect(previewIndex)}
+              className={cn(
+                "flex size-10 shrink-0 items-center justify-center rounded-md transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50",
+                previewing
+                  ? "bg-primary text-primary-foreground"
+                  : "bg-muted text-muted-foreground/80 hover:text-primary",
+              )}
+              aria-label={`Preview ${file.filename} in 3D`}
+            >
+              {previewing ? (
+                <Rotate3d className="size-5" />
+              ) : (
+                <FileBox className="size-5" />
+              )}
+            </button>
+          </TooltipTrigger>
+          <TooltipContent>
+            {previewing ? "Showing in the 3D preview" : "Preview in 3D"}
+          </TooltipContent>
+        </Tooltip>
+      ) : (
+        <div className="flex size-10 shrink-0 items-center justify-center rounded-md bg-muted">
+          <FileBox className="size-5 text-muted-foreground/80" />
+        </div>
+      )}
       <div className="min-w-0 flex-1 space-y-1">
         <div className="flex min-w-0 items-center gap-1.5">
           <span className="text-sm font-medium truncate">{file.filename}</span>
@@ -421,6 +485,7 @@ export function PrintFilesCard({
   makerworldUrl,
   slicerConfigured,
   modelId,
+  preview,
 }: {
   printFiles: PrintFileData[];
   sourceName: string | null;
@@ -429,6 +494,8 @@ export function PrintFilesCard({
   // Null in the create-wizard preview and version preview, which disables
   // the customize link and variant deletion.
   modelId: string | null;
+  // Click-to-preview wiring; absent where there is no 3D viewer to drive.
+  preview?: FilePreviewControl;
 }) {
   const [open, setOpen] = useState(true);
 
@@ -463,6 +530,7 @@ export function PrintFilesCard({
                   sourceName={sourceName}
                   makerworldUrl={makerworldUrl}
                   slicerConfigured={slicerConfigured}
+                  preview={preview}
                 />
                 {file.customizer &&
                   file.customizer.length > 0 &&
@@ -494,6 +562,7 @@ export function PrintFilesCard({
                             ? { modelId }
                             : undefined
                         }
+                        preview={preview}
                       />
                     ))}
                   </div>
