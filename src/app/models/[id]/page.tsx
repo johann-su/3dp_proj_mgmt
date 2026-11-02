@@ -13,6 +13,9 @@ import { buildSnapshot, summarizeVersionChange } from "@/lib/version-snapshot";
 import { getSession, signInRedirect } from "@/lib/auth";
 import { canActAsOwner } from "@/lib/roles";
 import { fileSrc, slicerFileBase } from "@/lib/file-token";
+import { scanRulerBase } from "@/lib/scanruler";
+import { describeScanRulerProject } from "@/lib/scanruler-project";
+import { getScanRulerProjectSummary } from "@/lib/scanruler-project-remote";
 import { resolveBedSizeMm } from "@/lib/printer-beds";
 import { get3mfSliceInfo } from "@/lib/threemf-remote";
 import { processPendingSlices } from "@/lib/slicer";
@@ -146,6 +149,13 @@ export default async function ModelPage({
   const sliceInfoByFileId = new Map(
     printFiles.map((f, index) => [f.id, sliceInfos[index]]),
   );
+  const scanRulerProjects = new Map(
+    await Promise.all(
+      printFiles
+        .filter((f) => fileExtension(f.filename) === ".scanruler")
+        .map(async (f) => [f.id, await getScanRulerProjectSummary(f.s3Key, f.size)] as const),
+    ),
+  );
 
   // Parametric .scad files: parse the customizer schema from the source so
   // any signed-in viewer gets the parameter form (customizing is open to
@@ -265,6 +275,9 @@ export default async function ModelPage({
           // Signed URL prefix for the slicer deep links, which download the
           // file without the session cookie (see file-download-menu.tsx).
           slicerPath: slicerFileBase(file.id),
+          scanRulerProject: scanRulerProjects.has(file.id)
+            ? describeScanRulerProject(scanRulerProjects.get(file.id) ?? null)
+            : null,
           size: file.size,
           printTime:
             info?.printTimeSeconds ??
@@ -317,6 +330,7 @@ export default async function ModelPage({
     pinned,
     collectionOptions,
     slicerConfigured,
+    scanRulerUrl: scanRulerBase(),
     history,
     share: {
       token: shareToken,

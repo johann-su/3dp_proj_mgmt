@@ -86,6 +86,7 @@ disappears from the UI.
 | Variable | Compose default | Description |
 |---|---|---|
 | `SLICER_URL` | `http://slicer:8000` | Headless OrcaSlicer service (`slicer` in `compose.yml`). Estimates print time & filament use for unsliced `.3mf` uploads; without it, such files show no estimates. |
+| `SCANRULER_URL` | unset | A [ScanRuler](/integrations/scanruler) deployment, e.g. `https://scanruler.com/` or your own. Adds "Open in ScanRuler" (Measure, Mesh Tools, Reverse engineer) to `.3mf`, STEP and `.scanruler` files, and lets that one origin read files through short-lived links (CORS). Without it, the entries are hidden. |
 | `OPENSCAD_URL` | `http://openscad:8000` | Headless OpenSCAD service (`openscad` in `compose.yml`). Renders customized `.3mf` files from parametric `.scad` models; without it, the customizer UI is hidden and `.scad` files are plain downloads. |
 
 ### Slicer service printer

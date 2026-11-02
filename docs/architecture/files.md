@@ -83,6 +83,13 @@ downloads, so `?token=` would corrupt the filename). `next.config.ts` must keep
 `images.localPatterns` allowing `/api/files/**` with unrestricted `search`, or
 Next 16 rejects the tokened srcs.
 
+ScanRuler links ([scanruler.md](./scanruler.md)) are a third cookie-less
+consumer of the token path route, with two differences: their token is
+`shortFileToken` (minutes, minted on click — the URL lands in a third-party web
+address), and the two `[token]/[filename]` routes grant **CORS to exactly the
+`SCANRULER_URL` origin**, because ScanRuler fetches from its own origin. No
+other route, and no other origin, gets CORS.
+
 A third, anonymous variant serves public share links:
 `/api/files/shared/[fileId]?share=<token>` (and its slicer-deep-link path form
 `/api/files/shared/[fileId]/[token]/[filename]`) re-checks the share link and the

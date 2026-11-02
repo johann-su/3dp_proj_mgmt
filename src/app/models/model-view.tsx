@@ -88,6 +88,9 @@ export type ModelViewData = {
   pinned?: boolean;
   collectionOptions: CollectionOption[];
   slicerConfigured: boolean;
+  // ScanRuler deployment for the "Open in ScanRuler" entries (SCANRULER_URL,
+  // see src/lib/scanruler.ts); absent/null hides them.
+  scanRulerUrl?: string | null;
   // Edit history, newest first (absent in the create-wizard preview).
   history?: ModelHistoryEntry[];
   // The anonymous public-share view: read-only like the previews
@@ -129,6 +132,7 @@ export function ModelView({ data }: { data: ModelViewData }) {
     pinned,
     collectionOptions,
     slicerConfigured,
+    scanRulerUrl,
     history,
     share,
     publicShare,
@@ -344,6 +348,7 @@ export function ModelView({ data }: { data: ModelViewData }) {
             sourceName={sourceName}
             makerworldUrl={makerworldUrl}
             slicerConfigured={slicerConfigured}
+            scanRulerUrl={scanRulerUrl ?? null}
             modelId={modelId}
             preview={filePreview}
           />

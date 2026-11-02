@@ -444,7 +444,7 @@ export function ModelForm({
     e.preventDefault();
 
     if (!hasModelFile) {
-      toast.error("Add at least one model file (.3mf or .scad)");
+      toast.error("Add at least one model file (.3mf, .scad, STEP or ScanRuler project)");
       setPreview(false);
       setStep(1);
       return;

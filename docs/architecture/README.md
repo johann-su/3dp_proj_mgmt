@@ -19,6 +19,7 @@ these only stay useful if they move in lockstep with the code.
 | Platform import (.3mf, MakerWorld/Printables URL, source sync, collections) | [`import.md`](./import.md) |
 | Onshape import/sync + API client | [`onshape.md`](./onshape.md) |
 | Slicer estimates & "open in slicer" deep links | [`slicing.md`](./slicing.md) |
+| "Open in ScanRuler" links, `.scanruler` projects, the AGPL boundary | [`scanruler.md`](./scanruler.md) |
 | OpenSCAD customizer / parametric models | [`openscad.md`](./openscad.md) |
 | Search, homepage listing, categories | [`search-and-catalog.md`](./search-and-catalog.md) |
 | MCP server, its tools, the OAuth provider wiring | [`mcp.md`](./mcp.md) |

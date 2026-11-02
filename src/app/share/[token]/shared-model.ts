@@ -3,6 +3,9 @@ import { db } from "@/db";
 import { models } from "@/db/schema";
 import { resolveBedSizeMm } from "@/lib/printer-beds";
 import { get3mfSliceInfo } from "@/lib/threemf-remote";
+import { scanRulerBase } from "@/lib/scanruler";
+import { describeScanRulerProject } from "@/lib/scanruler-project";
+import { getScanRulerProjectSummary } from "@/lib/scanruler-project-remote";
 import { fileExtension } from "@/lib/file-kind";
 import { platformFromSourceUrl } from "@/lib/platform";
 import { parseOnshapeUrl } from "@/lib/onshape/api";
@@ -68,6 +71,13 @@ export async function loadSharedModelView(
     printFiles.map((f) => get3mfSliceInfo(f.s3Key, f.size)),
   );
   const sliceInfoByFileId = new Map(printFiles.map((f, i) => [f.id, sliceInfos[i]]));
+  const scanRulerProjects = new Map(
+    await Promise.all(
+      printFiles
+        .filter((f) => fileExtension(f.filename) === ".scanruler")
+        .map(async (f) => [f.id, await getScanRulerProjectSummary(f.s3Key, f.size)] as const),
+    ),
+  );
 
   const toEntry = (file: (typeof printFiles)[number]): PrintFileData => {
     const info = sliceInfoByFileId.get(file.id);
@@ -77,6 +87,9 @@ export async function loadSharedModelView(
       // to the share-scoped path route — both die with the link.
       id: null,
       slicerPath: sharedSlicerFileBase(token, file.id),
+      scanRulerProject: scanRulerProjects.has(file.id)
+        ? describeScanRulerProject(scanRulerProjects.get(file.id) ?? null)
+        : null,
       src: src(file.id),
       filename: file.filename,
       imported: file.imported,
@@ -152,5 +165,6 @@ export async function loadSharedModelView(
     isLoggedIn: false,
     collectionOptions: [],
     slicerConfigured: false,
+    scanRulerUrl: scanRulerBase(),
   };
 }

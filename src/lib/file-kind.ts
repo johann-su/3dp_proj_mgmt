@@ -6,8 +6,10 @@
 // keeps the upload UI and ingestion simple (stl support was deliberately
 // removed). step exists for the Onshape integration, whose exports are STEP
 // files. scad is parametric OpenSCAD source — customized .3mf variants are
-// rendered from it via the openscad service (see AGENTS.md).
-export const MODEL_EXTENSIONS = [".3mf", ".step", ".stp", ".scad"];
+// rendered from it via the openscad service (see AGENTS.md). scanruler is a
+// ScanRuler project (a ZIP of the scan + its measurements / reverse-engineering
+// features), kept so the session reopens from the catalog (scanruler.ts).
+export const MODEL_EXTENSIONS = [".3mf", ".step", ".stp", ".scad", ".scanruler"];
 export const IMAGE_EXTENSIONS = [".png", ".jpg", ".jpeg", ".webp", ".gif"];
 // Optional documents attached to a model (build instructions, manual, …)
 export const PDF_EXTENSIONS = [".pdf"];
@@ -52,6 +54,7 @@ const EXTENSION_CONTENT_TYPES: Record<string, string> = {
   // Plain text, but never text/* — /api/files must not serve it inline as
   // something a browser would render (same stored-XSS reasoning as images).
   ".scad": "application/x-openscad",
+  ".scanruler": "application/zip",
   ".png": "image/png",
   ".jpg": "image/jpeg",
   ".jpeg": "image/jpeg",

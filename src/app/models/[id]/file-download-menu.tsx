@@ -1,10 +1,11 @@
 "use client";
 
-// Slicer deep links (orcaslicer:// / bambustudioopen://) need an absolute URL
-// to the .3mf file, which is only known in the browser — hence a client
-// component.
+// Slicer deep links (orcaslicer:// / bambustudioopen://) and ScanRuler links
+// need an absolute URL to the file, which is only known in the browser — hence
+// a client component.
 
-import { Download, ExternalLink } from "lucide-react";
+import { Download, ExternalLink, ScanLine } from "lucide-react";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -19,6 +20,8 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { SCANRULER_WORKSPACES, scanRulerOpenUrl, type ScanRulerWorkspace } from "@/lib/scanruler";
+import { scanRulerFilePath } from "../scanruler-actions";
 
 // Orca and Bambu register different URL schemes (`orcaslicer:` vs.
 // `bambustudioopen:` — NOT `bambustudio:`, an unregistered scheme fails
@@ -62,6 +65,9 @@ export function FileDownloadMenu({
   downloadHref,
   filename,
   makerworldUrl,
+  slicers,
+  fileId,
+  scanRulerUrl,
 }: {
   // Cookie-less file URL prefix with the credential as a path segment —
   // `/api/files/<id>/<file token>` for members, or
@@ -71,11 +77,38 @@ export function FileDownloadMenu({
   downloadHref: string;
   filename: string;
   makerworldUrl?: string;
+  // Offer the slicer entries (only .3mf files can be opened in a slicer).
+  slicers: boolean;
+  // Members' live file id: the ScanRuler link then gets a fresh short-lived
+  // token (scanRulerFilePath). Null on share pages, where slicerPath's share
+  // token is already revocable and is used as is.
+  fileId: string | null;
+  // The ScanRuler deployment (SCANRULER_URL); null hides its entries.
+  scanRulerUrl: string | null;
 }) {
   function openInSlicer(buildUrl: (fileUrl: string, name: string) => string) {
     const name = /\.3mf$/i.test(filename) ? filename : `${filename}.3mf`;
     const fileUrl = `${window.location.origin}${slicerPath}/${encodeURIComponent(name)}`;
     window.location.assign(buildUrl(fileUrl, name));
+  }
+
+  async function openInScanRuler(base: string, workspace: ScanRulerWorkspace) {
+    // Open the tab synchronously, inside the click, so the popup blocker
+    // allows it; it is pointed at ScanRuler once the token is minted. Cut
+    // the opener so the third-party page can't script this one.
+    const tab = window.open("", "_blank");
+    if (tab) tab.opener = null;
+    try {
+      const path = fileId ? await scanRulerFilePath(fileId) : slicerPath;
+      if (!path) throw new Error("no link");
+      const fileUrl = `${window.location.origin}${path}/${encodeURIComponent(filename)}`;
+      const link = scanRulerOpenUrl(base, fileUrl, workspace);
+      if (tab) tab.location.href = link;
+      else window.location.assign(link);
+    } catch {
+      tab?.close();
+      toast.error(`Couldn't open ${filename} in ScanRuler`);
+    }
   }
 
   return (
@@ -102,16 +135,35 @@ export function FileDownloadMenu({
             Download
           </a>
         </DropdownMenuItem>
-        <DropdownMenuSeparator />
-        <DropdownMenuLabel>Open in</DropdownMenuLabel>
-        {SLICERS.map((slicer) => (
-          <DropdownMenuItem
-            key={slicer.name}
-            onSelect={() => openInSlicer(slicer.buildUrl)}
-          >
-            {slicer.name}
-          </DropdownMenuItem>
-        ))}
+        {slicers && (
+          <>
+            <DropdownMenuSeparator />
+            <DropdownMenuLabel>Open in</DropdownMenuLabel>
+            {SLICERS.map((slicer) => (
+              <DropdownMenuItem
+                key={slicer.name}
+                onSelect={() => openInSlicer(slicer.buildUrl)}
+              >
+                {slicer.name}
+              </DropdownMenuItem>
+            ))}
+          </>
+        )}
+        {scanRulerUrl && (
+          <>
+            <DropdownMenuSeparator />
+            <DropdownMenuLabel>ScanRuler</DropdownMenuLabel>
+            {SCANRULER_WORKSPACES.map((workspace) => (
+              <DropdownMenuItem
+                key={workspace.id}
+                onSelect={() => void openInScanRuler(scanRulerUrl, workspace.id)}
+              >
+                <ScanLine className="size-4" />
+                {workspace.label}
+              </DropdownMenuItem>
+            ))}
+          </>
+        )}
         {makerworldUrl && (
           <>
             <DropdownMenuSeparator />

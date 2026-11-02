@@ -104,7 +104,7 @@ type CentralEntry = {
   localOffset: number;
 };
 
-function scanCentralDirectory(cd: Uint8Array) {
+function scanCentralDirectory(cd: Uint8Array, wanted: ReadonlySet<string> = WANTED_ENTRIES) {
   const view = viewOf(cd);
   const decoder = new TextDecoder();
   const entries = new Map<string, CentralEntry>();
@@ -117,7 +117,7 @@ function scanCentralDirectory(cd: Uint8Array) {
     const name = decoder
       .decode(cd.subarray(i + 46, i + 46 + nameLen))
       .toLowerCase();
-    if (WANTED_ENTRIES.has(name)) {
+    if (wanted.has(name)) {
       entries.set(name, {
         method: view.getUint16(i + 10, true),
         compressedSize: view.getUint32(i + 20, true),
@@ -422,6 +422,30 @@ function slicedPlateFilaments(xml: string): string[][] {
     );
   }
   return plates;
+}
+
+// One small text entry of any ZIP (matched case-insensitively), read with
+// the same tail → central directory → entry ranged reads as the 3MF metadata —
+// so a large archive costs a few KB of reads. Null when the archive or the
+// entry is missing, or the entry is larger than MAX_ENTRY_BYTES. Used for
+// ScanRuler projects' project.json (scanruler-project.ts).
+export async function readZipTextEntry(
+  readRange: RangeReader,
+  size: number,
+  entryName: string,
+): Promise<string | null> {
+  const name = entryName.toLowerCase();
+  const tail = await readRange(Math.max(0, size - TAIL_BYTES), size - 1);
+  const cd = findCentralDirectory(tail);
+  if (!cd || cd.size === 0) return null;
+  const { entries } = scanCentralDirectory(
+    await readRange(cd.offset, cd.offset + cd.size - 1),
+    new Set([name]),
+  );
+  const entry = entries.get(name);
+  return entry && entry.compressedSize > 0 && entry.compressedSize <= MAX_ENTRY_BYTES
+    ? await readEntry(readRange, entry)
+    : null;
 }
 
 // Returns null for archives without the relevant metadata (plain core-spec

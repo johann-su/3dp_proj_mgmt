@@ -508,8 +508,8 @@ export function ModelFilePicker({
       >
         <FileBox className="size-6" />
         Click to add .3mf files (title, description, images and printer are
-        imported automatically) or parametric .scad files. Drag rows to
-        reorder.
+        imported automatically), parametric .scad files, STEP parts or
+        ScanRuler projects. Drag rows to reorder.
       </button>
       {entries.length > 0 && (
         <ul className="grid gap-1">

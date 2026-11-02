@@ -20,6 +20,7 @@ import {
   Loader2,
   Printer,
   Rotate3d,
+  ScanLine,
   Trash2,
   TriangleAlert,
   Weight,
@@ -28,6 +29,7 @@ import type { PrinterInfo } from "@/db/schema";
 import type { ScadParameterGroup } from "@/lib/scad-params";
 import { formatBytes, formatDuration, formatGrams } from "@/lib/format";
 import { filamentSummary, sliceFailureMessage } from "@/lib/printer-info";
+import { scanRulerOpens } from "@/lib/scanruler";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -79,6 +81,8 @@ export type PrintFileData = {
   variants?: PrintFileData[];
   // On a generated variant: the customizer values it was rendered with.
   paramsSummary?: string | null;
+  // On a .scanruler project: what it holds (describeScanRulerProject).
+  scanRulerProject?: string | null;
   // On a generated variant: whether the current viewer may delete it (the
   // model owner may delete any variant; anyone else only those they generated).
   deletableByViewer?: boolean;
@@ -162,6 +166,7 @@ function PrintFileRow({
   sourceName,
   makerworldUrl,
   slicerConfigured,
+  scanRulerUrl,
   deletable,
   preview,
 }: {
@@ -170,13 +175,15 @@ function PrintFileRow({
   sourceName: string | null;
   makerworldUrl: string | null;
   slicerConfigured: boolean;
+  scanRulerUrl: string | null;
   deletable?: { modelId: string };
   preview?: FilePreviewControl;
 }) {
   // Slicer deep links only make sense for .3mf files — Bambu Studio hard-
   // rejects any other filename ("unknown file format") and Orca would save a
-  // useless download. Other model files (.scad, .step) get a plain download.
+  // useless download. ScanRuler also opens .step; .scad gets a plain download.
   const is3mf = file.filename.toLowerCase().endsWith(".3mf");
+  const scanRuler = scanRulerUrl && scanRulerOpens(file.filename) ? scanRulerUrl : null;
   const filaments = filamentSummary(file.printer);
   const missingSlots = file.printer?.missingFilamentSlots;
   const previewIndex = preview?.indexOf(file) ?? -1;
@@ -256,6 +263,15 @@ function PrintFileRow({
         {file.paramsSummary && (
           <div className="text-xs text-muted-foreground truncate">
             {file.paramsSummary}
+          </div>
+        )}
+        {file.scanRulerProject != null && (
+          <div className="inline-flex max-w-full items-center gap-1 text-xs text-muted-foreground">
+            <ScanLine className="size-3.5 shrink-0 text-chart-4" />
+            <span className="truncate">
+              ScanRuler project
+              {file.scanRulerProject && ` · ${file.scanRulerProject}`}
+            </span>
           </div>
         )}
         <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
@@ -431,8 +447,11 @@ function PrintFileRow({
             filename={file.filename}
           />
         )}
-        {file.slicerPath && (file.id || file.src) && is3mf ? (
+        {file.slicerPath && (file.id || file.src) && (is3mf || scanRuler) ? (
           <FileDownloadMenu
+            slicers={is3mf}
+            fileId={file.id}
+            scanRulerUrl={scanRuler}
             slicerPath={file.slicerPath}
             downloadHref={
               file.id
@@ -484,6 +503,7 @@ export function PrintFilesCard({
   sourceName,
   makerworldUrl,
   slicerConfigured,
+  scanRulerUrl,
   modelId,
   preview,
 }: {
@@ -491,6 +511,7 @@ export function PrintFilesCard({
   sourceName: string | null;
   makerworldUrl: string | null;
   slicerConfigured: boolean;
+  scanRulerUrl: string | null;
   // Null in the create-wizard preview and version preview, which disables
   // the customize link and variant deletion.
   modelId: string | null;
@@ -530,6 +551,7 @@ export function PrintFilesCard({
                   sourceName={sourceName}
                   makerworldUrl={makerworldUrl}
                   slicerConfigured={slicerConfigured}
+                  scanRulerUrl={scanRulerUrl}
                   preview={preview}
                 />
                 {file.customizer &&
@@ -557,6 +579,7 @@ export function PrintFilesCard({
                         sourceName={sourceName}
                         makerworldUrl={makerworldUrl}
                         slicerConfigured={slicerConfigured}
+                        scanRulerUrl={scanRulerUrl}
                         deletable={
                           variant.deletableByViewer && modelId
                             ? { modelId }

@@ -164,6 +164,7 @@ every session and defeat the point).
 | Platform import (.3mf, MakerWorld/Printables URL, source sync, collections) | [`import.md`](docs/architecture/import.md) |
 | Onshape import/sync + API client | [`onshape.md`](docs/architecture/onshape.md) |
 | Slicer estimates & "open in slicer" deep links | [`slicing.md`](docs/architecture/slicing.md) |
+| "Open in ScanRuler" links, `.scanruler` projects, the AGPL boundary | [`scanruler.md`](docs/architecture/scanruler.md) |
 | OpenSCAD customizer / parametric models | [`openscad.md`](docs/architecture/openscad.md) |
 | Search, homepage listing, categories | [`search-and-catalog.md`](docs/architecture/search-and-catalog.md) |
 | MCP server, its tools, the OAuth provider wiring | [`mcp.md`](docs/architecture/mcp.md) |

@@ -71,3 +71,18 @@ test("version-file tokens are scoped to one version and file index", async () =>
   // …and never for a regular file id.
   assert.equal(verifyFileToken(FILE_ID, token), false);
 });
+
+// ScanRuler links leak the URL into a third-party web address, so their token
+// must die in minutes — unlike fileToken's one-to-two weeks.
+test("shortFileToken expires after SHORT_TOKEN_SECONDS", async () => {
+  const { shortFileToken, verifyFileToken, SHORT_TOKEN_SECONDS } = await import(
+    "@/lib/file-token"
+  );
+  const now = Date.now();
+  const token = shortFileToken(FILE_ID, now);
+  assert.equal(verifyFileToken(FILE_ID, token, now + 60_000), true);
+  assert.equal(
+    verifyFileToken(FILE_ID, token, now + (SHORT_TOKEN_SECONDS + 1) * 1000),
+    false,
+  );
+});

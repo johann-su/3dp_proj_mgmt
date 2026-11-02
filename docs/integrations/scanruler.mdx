@@ -1,0 +1,66 @@
+---
+title: ScanRuler
+description: Open model files in ScanRuler to measure, repair or reverse engineer them, and keep ScanRuler projects on the model
+---
+
+# ScanRuler
+
+[ScanRuler](https://scanruler.com/) by CNC Kitchen is a free browser tool for
+3D scans: fit spheres, cylinders and planes and measure between them, clean up
+or reduce a mesh (**Mesh Tools**), or model a scan into a solid STEP part
+(**Reverse engineer**). It runs entirely in your browser.
+
+Print Vault links to it; it does not include it. ScanRuler is a separate,
+AGPL-licensed project, so the two exchange **files**, nothing else.
+
+## Setup
+
+Set `SCANRULER_URL` on the app (see [Configuration](/configuration)):
+
+```bash
+SCANRULER_URL=https://scanruler.com/
+```
+
+or the address of your own ScanRuler build (`npm run build` in a clone of
+[its repository](https://github.com/CNCKitchen/scanruler), served as static
+files). Unset, the feature is hidden.
+
+## Opening a file
+
+On a model page, the download menu of a `.3mf`, `.step`/`.stp` or
+`.scanruler` file gets a **ScanRuler** section: **Measure**, **Mesh Tools** or
+**Reverse engineer**. A new tab opens ScanRuler in that workspace with the file
+loaded. It also works on public share pages.
+
+What this sends where:
+
+- Your browser downloads the file from Print Vault and hands it to ScanRuler.
+  The file is **not uploaded** to ScanRuler's server, since ScanRuler works
+  locally.
+- The link it opens contains a **file address valid for 10 minutes**. That
+  address ends up in the ScanRuler site's address bar, so it can appear in
+  browser history or in that host's logs. It expires quickly for that reason.
+  A self-hosted `SCANRULER_URL` keeps it on your own infrastructure.
+- On a public share page the address carries the share link instead, and stops
+  working when the share link is revoked.
+- Print Vault lets only the configured ScanRuler address read files this way.
+
+## Bringing results back
+
+ScanRuler saves by downloading a file, so you upload the result to the model
+like any other file (**Edit model → Files**):
+
+| Result | Save in ScanRuler as | Upload as |
+|---|---|---|
+| Cleaned-up / reduced scan | **Export mesh → 3MF** | `.3mf`, which gets print estimates and the 3D preview |
+| Reverse-engineered part | **Export STEP** | `.step` |
+| The editable session | **Save** | `.scanruler` |
+
+Print Vault does not store STL files, so export meshes as **3MF**.
+
+A `.scanruler` project keeps the scan together with its measurements and
+modelled features. On the model page it shows what it contains (for example
+*ScanRuler project · bracket.stl · 4 elements · 12 features*), and **Open in
+ScanRuler** reopens it right where you left off. It is versioned like every
+other file. A project includes a copy of its scan, so it is about as large as
+the scan.

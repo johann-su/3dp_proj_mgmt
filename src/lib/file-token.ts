@@ -69,6 +69,17 @@ export function fileToken(fileId: string, nowMs = Date.now()): string {
   return signFileToken(fileId, expiresAt);
 }
 
+// ScanRuler links (src/lib/scanruler.ts) put the file URL into a *web* address
+// on a third-party site — browser history, sync, the host's access logs — not a
+// local app's argv like the slicer links. So they get a token minted on click
+// that dies in minutes instead of the week-long cache-stable one: long enough
+// for the page to load and fetch, useless by the time anyone finds it in a log.
+export const SHORT_TOKEN_SECONDS = 10 * 60;
+
+export function shortFileToken(fileId: string, nowMs = Date.now()): string {
+  return signFileToken(fileId, Math.floor(nowMs / 1000) + SHORT_TOKEN_SECONDS);
+}
+
 // Image URL for <Image>/<img> src attributes, valid without a session.
 export function fileSrc(fileId: string): string {
   return `/api/files/${fileId}?token=${fileToken(fileId)}`;

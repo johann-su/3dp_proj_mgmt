@@ -44,7 +44,7 @@ container format keeps ingestion simple. The accepted extensions:
 
 | Kind | Extensions | Notes |
 |---|---|---|
-| Model files | `.3mf`, `.step` / `.stp`, `.scad` | `.3mf` is primary. `.step` exists for Onshape exports. `.scad` is [parametric OpenSCAD](/features/parametric) source. |
+| Model files | `.3mf`, `.step` / `.stp`, `.scad`, `.scanruler` | `.3mf` is primary. `.step` comes from Onshape exports or from a reverse-engineered part. `.scad` is [parametric OpenSCAD](/features/parametric) source. `.scanruler` is a [ScanRuler](/integrations/scanruler) project. |
 | Images | `.png`, `.jpg` / `.jpeg`, `.webp`, `.gif` | Preview images. `.gif` may be animated. |
 | Videos | `.mp4`, `.webm`, `.mov` | Gallery videos. Played by the browser as-is — nothing is transcoded, so `.mov` won't play in Firefox. |
 | Documents | `.pdf` | Build instructions / manuals. |
@@ -166,7 +166,7 @@ time stay apart on disk and you can tell which
 metadata.json  everything needed to import the archive back
 README.md      the title, the version, and the description as Markdown
 bom.csv        the bill of materials (only if the model has one)
-files/         the .3mf / .step / .scad files
+files/         the .3mf / .step / .scad / .scanruler files
 documents/     PDF manuals
 images/        the gallery images
 videos/        the gallery videos

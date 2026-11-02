@@ -13,7 +13,7 @@ import {
   type YouTubeVideo,
 } from "@/lib/video";
 
-export const MODEL_ACCEPT = ".3mf,.scad";
+export const MODEL_ACCEPT = ".3mf,.scad,.step,.stp,.scanruler";
 export const IMAGE_ACCEPT = ".png,.jpg,.jpeg,.webp,.gif";
 export const VIDEO_ACCEPT = ".mp4,.webm,.mov";
 // One picker takes both: photos and videos are the same gallery (see
