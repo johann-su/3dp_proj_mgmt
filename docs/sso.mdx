@@ -12,7 +12,14 @@ button below the email/password form on the sign-in page
 - The issuer must serve `/.well-known/openid-configuration` (a full discovery
   URL is also accepted).
 - Register the client with the redirect URI
-  `{BETTER_AUTH_URL}/api/auth/oauth2/callback/oidc`.
+  `{BETTER_AUTH_URL}/api/auth/oauth2/callback/oidc`. (Better Auth 1.7 moved
+  its own callback route; Print Vault keeps answering on this URL, so an
+  existing IdP registration keeps working across the upgrade.)
+- ID tokens are **verified** against the keys your IdP publishes in its
+  discovery document (`jwks_uri`), and sign-in uses PKCE. The IdP must
+  therefore sign ID tokens with an asymmetric key (RS256, ES256, …); a
+  symmetric HS256 setup has no published key to verify against, and sign-in
+  fails.
 
 Users are created on first SSO login, and an SSO login with the same email
 links to an existing email/password account. With
@@ -25,6 +32,10 @@ The issuer is **per application**, not the domain root — use
 `https://<host>/application/o/<app-slug>/` (shown as "OpenID Configuration
 Issuer" in the provider settings). A wrong issuer is logged at server start
 with the exact discovery URL that failed.
+
+Give the OAuth2/OpenID provider a **Signing Key** (any certificate, e.g. the
+default self-signed one). Without it Authentik signs ID tokens with HS256 and
+the client secret, which can't be verified through the JWKS — see above.
 
 ## Roles from IdP groups (optional)
 

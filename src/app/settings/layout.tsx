@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { getSession, mcpEnabled, signInRedirect } from "@/lib/auth";
+import { apiEnabled, getSession, mcpEnabled, signInRedirect } from "@/lib/auth";
 import { ensureInitialAdmin } from "@/lib/admin";
 import { isAdmin, isModerator } from "@/lib/roles";
 import { countOpenDuplicates } from "@/lib/duplicates";
@@ -28,6 +28,7 @@ export default async function SettingsLayout({
         <aside className="sm:sticky sm:top-20 sm:self-start">
           <SettingsNav
             showMcp={mcpEnabled}
+            showApiKeys={apiEnabled}
             showUsers={isAdmin(session.user.role)}
             showDuplicates={canModerate}
             duplicateCount={duplicateCount}

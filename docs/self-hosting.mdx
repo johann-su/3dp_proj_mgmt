@@ -111,6 +111,13 @@ The app sends its own baseline security headers (CSP, HSTS, `frame-ancestors`,
 those. Note that HSTS is served with `includeSubDomains`; drop it in
 `next.config.ts` if a sibling subdomain of your deployment is HTTP-only.
 
+**Credentials besides a sign-in** are off unless you enable them, and each
+is a door that doesn't go through your IdP's MFA: `ENABLE_API` lets users
+create long-lived [API keys](/api-reference#rest-api-v1) (scoped, revocable,
+acting as their user), and `ENABLE_MCP` lets them approve
+[MCP clients](/integrations/mcp) (and opens an unauthenticated client
+registration endpoint). Leave both unset unless you want them.
+
 **Public share links** are the one deliberate exception to "everything needs
 a sign-in": an owner can publish a single model or collection (including its
 file downloads) to anyone holding a random link, and revoke it again — see

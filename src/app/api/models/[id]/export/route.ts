@@ -50,7 +50,7 @@ export async function GET(
       title: true,
       description: true,
       sourceUrl: true,
-      onshapeMicroversion: true,
+      sourceRevision: true,
       videos: true,
     },
     with: {
@@ -122,7 +122,7 @@ export async function GET(
     tags: model.modelTags.map((mt) => mt.tag.name),
     category: model.category?.name ?? null,
     sourceUrl: model.sourceUrl,
-    onshapeMicroversion: model.onshapeMicroversion,
+    sourceRevision: model.sourceRevision,
     videos: model.videos,
     exportedAt: new Date(),
     bomItems: model.bomItems,

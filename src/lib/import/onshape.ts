@@ -207,7 +207,7 @@ export async function importFromOnshape(
       assets,
       bom: [],
       warnings,
-      onshapeMicroversion: microversion,
+      sourceRevision: microversion,
     };
   } catch (err) {
     if (err instanceof OnshapeError) throw new ImportError(err.message);

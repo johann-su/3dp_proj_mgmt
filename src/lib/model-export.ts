@@ -47,7 +47,7 @@ export type ModelExportInput = {
   // the name against the categories of the instance being imported into.
   category: string | null;
   sourceUrl: string | null;
-  onshapeMicroversion: string | null;
+  sourceRevision: string | null;
   // Gallery videos with their slots in the combined order. Nothing to put in
   // the zip tree — they are links, not files — so the manifest is the only
   // place they survive the round trip.
@@ -77,7 +77,7 @@ export type ModelExportManifest = {
     category: string | null;
     tags: string[];
     sourceUrl: string | null;
-    onshapeMicroversion: string | null;
+    sourceRevision: string | null;
     videos: ModelVideo[];
   };
   bom: BomItemInput[];
@@ -245,7 +245,7 @@ export function buildModelExportZip(model: ModelExportInput): Uint8Array {
       // manifest — the tag rows come back in join order, which isn't stable.
       tags: [...model.tags].sort(),
       sourceUrl: model.sourceUrl,
-      onshapeMicroversion: model.onshapeMicroversion,
+      sourceRevision: model.sourceRevision,
       videos: model.videos,
     },
     // Projected field by field on purpose: callers pass whole bom_items rows,

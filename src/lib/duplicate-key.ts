@@ -4,14 +4,11 @@
 // Two `sourceUrl` values can name the same design without being byte-equal:
 // MakerWorld carries a `#`-hash selecting a print profile, Onshape carries a
 // workspace/version pin plus the tab that was imported, and both survive
-// `validateSourceUrl`'s canonicalization (it only strips tracking params).
-// Each platform's own parser already extracts the stable id, so reuse those
-// rather than re-deriving the URL shapes here.
+// `canonicalSourceUrl`'s canonicalization (it only strips tracking params).
+// Each source's descriptor (src/lib/sources/registry.ts) already extracts the
+// stable design id, so reuse that rather than re-deriving the URL shapes here.
 
-import { parseMakerworldUrl } from "@/lib/import/makerworld";
-import { parsePrintablesUrl } from "@/lib/import/printables";
-import { parseOnshapeUrl } from "@/lib/onshape/api";
-import type { SourcePlatform } from "@/lib/platform";
+import { SOURCES, sourceById, type SourcePlatform } from "@/lib/sources/registry";
 
 export type SourceKey = { platform: SourcePlatform; id: string };
 
@@ -32,15 +29,10 @@ export function sourceKeyFromUrl(
   } catch {
     return null;
   }
-  const makerworldId = parseMakerworldUrl(url);
-  if (makerworldId) return { platform: "makerworld", id: makerworldId };
-  const printablesId = parsePrintablesUrl(url);
-  if (printablesId) return { platform: "printables", id: printablesId };
-  const onshapePin = parseOnshapeUrl(url);
-  // The document id alone is the identity: a version-pinned (/v/) import, a
-  // different branch and another tab of the same document are all the same
-  // upstream design, so wvm/wvmId/elementId are deliberately ignored.
-  if (onshapePin) return { platform: "onshape", id: onshapePin.documentId };
+  for (const source of SOURCES) {
+    const id = source.designId(url);
+    if (id) return { platform: source.id, id };
+  }
   return null;
 }
 
@@ -62,12 +54,5 @@ export function isContentHash(value: unknown): value is string {
 // model 123), so it must never be used as the match on its own. Ids are
 // digits or lowercase hex, so there is nothing for LIKE to escape.
 export function sourceKeyUrlFragment(key: SourceKey): string {
-  switch (key.platform) {
-    case "makerworld":
-      return `/models/${key.id}`;
-    case "printables":
-      return `/model/${key.id}`;
-    case "onshape":
-      return `/documents/${key.id}`;
-  }
+  return sourceById(key.platform).designUrlFragment(key.id);
 }

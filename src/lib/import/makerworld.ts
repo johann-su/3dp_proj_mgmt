@@ -26,6 +26,7 @@ import {
   type RemoteAsset,
 } from "./types";
 import type { UpstreamFile } from "./sync-diff";
+import { parseMakerworldUrl } from "@/lib/sources/registry";
 
 // Exact warning pushed when the stored Bambu token stops working. The
 // collection import job matches on it to abort early (every following
@@ -33,11 +34,9 @@ import type { UpstreamFile } from "./sync-diff";
 export const BAMBU_EXPIRED_WARNING =
   "Your Bambu Cloud login has expired — reconnect it in Settings → Bambu Cloud, then import again.";
 
-export function parseMakerworldUrl(url: URL): string | null {
-  if (!/(^|\.)makerworld\.com$/.test(url.hostname)) return null;
-  const match = url.pathname.match(/\/models\/(\d+)/);
-  return match ? match[1] : null;
-}
+// The URL parser lives with the source registry so client components can use
+// it; re-exported here for the importer's existing callers.
+export { parseMakerworldUrl };
 
 type DesignPicture = { url?: string; name?: string };
 // A MakerWorld user (design author or the author of an individual print

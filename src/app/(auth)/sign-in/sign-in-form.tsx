@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { KeyRound } from "lucide-react";
-import { authClient, signIn } from "@/lib/auth-client";
+import { signIn } from "@/lib/auth-client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -55,8 +55,8 @@ export function SignInForm({
 
   async function handleSso() {
     setSsoLoading(true);
-    const { error } = await authClient.signIn.oauth2({
-      providerId: "oidc",
+    const { error } = await signIn.social({
+      provider: "oidc",
       callbackURL: destination,
     });
     // On success the browser is redirected to the identity provider.

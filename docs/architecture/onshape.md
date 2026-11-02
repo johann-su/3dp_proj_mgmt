@@ -48,7 +48,9 @@ files stream to S3 like any other asset and get slice estimates like regular
 uploads.
 
 The canonical document URL is stored as the model's `sourceUrl` (doubling as the
-"Edit in Onshape" link) together with the workspace microversion; "Sync from
+"Edit in Onshape" link) together with the workspace microversion (in the
+source-neutral `models.source_revision` column — see the source registry in
+[`import.md`](./import.md#source-registry)); "Sync from
 Onshape" (any signed-in user — syncing counts as editing, per the
 collaborative-editing rule; `POST /api/models/{id}/onshape-sync`) compares the
 current microversion and re-exports **the tabs the model was imported with** (the

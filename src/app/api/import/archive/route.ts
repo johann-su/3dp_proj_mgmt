@@ -112,7 +112,7 @@ export async function POST(req: NextRequest) {
       bom: archive.bom,
       videos: archive.videos,
       warnings: archive.warnings,
-      onshapeMicroversion: archive.onshapeMicroversion,
+      sourceRevision: archive.sourceRevision,
     };
     return NextResponse.json(draft);
   } catch (err) {

@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { strToU8, zipSync } from "fflate";
+import { strFromU8, strToU8, unzipSync, zipSync } from "fflate";
 import {
   ArchiveImportError,
   parseExportReadme,
@@ -20,7 +20,7 @@ function exported(input: Partial<Parameters<typeof buildModelExportZip>[0]> = {}
     tags: ["bracket", "petg"],
     category: "Tools",
     sourceUrl: null,
-    onshapeMicroversion: null,
+    sourceRevision: null,
     exportedAt: new Date("2026-07-27T10:00:00Z"),
     videos: [],
     bomItems: [],
@@ -236,4 +236,28 @@ test("the title falls back to the uploaded file's name", () => {
     fallbackTitle: "Bracket_v5.zip",
   });
   assert.equal(draft.title, "Bracket_v5");
+});
+
+// The upstream revision token (Onshape's workspace microversion) is what lets
+// a restored model's first "Sync from Onshape" short-circuit when nothing
+// changed upstream, so it must survive the trip.
+test("the source revision round-trips through the manifest", () => {
+  const draft = readModelArchive(
+    exported({
+      sourceUrl: "https://cad.onshape.com/documents/0123456789abcdef01234567/w/0123456789abcdef01234568",
+      sourceRevision: "0123456789abcdef01234569",
+    }),
+  );
+  assert.equal(draft.sourceRevision, "0123456789abcdef01234569");
+});
+
+// Archives on people's disks predate the field's generalization and spell it
+// `onshapeMicroversion`; the reader keeps accepting that name.
+test("archives using the old onshapeMicroversion key still restore the revision", () => {
+  const entries = unzipSync(exported({ sourceRevision: "0123456789abcdef01234569" }));
+  const manifest = JSON.parse(strFromU8(entries["metadata.json"]));
+  manifest.model.onshapeMicroversion = manifest.model.sourceRevision;
+  delete manifest.model.sourceRevision;
+  entries["metadata.json"] = strToU8(JSON.stringify(manifest));
+  assert.equal(readModelArchive(zipSync(entries)).sourceRevision, "0123456789abcdef01234569");
 });

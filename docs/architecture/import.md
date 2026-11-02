@@ -4,6 +4,39 @@
 has its own file — see [`onshape.md`](./onshape.md). Update in the same PR that
 changes this behaviour.*
 
+## Source registry
+
+Every upstream source (MakerWorld, Printables, Onshape) is described once, in
+two halves:
+
+- **`src/lib/sources/registry.ts`** — pure and **client-safe** (the model page
+  and the rule builder render source labels): label, host test (and the same
+  test as a Postgres regex for the smart-collection "source" rule), the
+  sourceUrl allowlist (`canonicalSourceUrl`), the design id duplicate detection
+  compares (`designId`/`designUrlFragment`), the revision-token format, and
+  the URL parsers themselves — re-exported from the importer modules that
+  used to own them. `platform.ts`, `duplicate-key.ts`, `collection-rules.ts`
+  and the mutation core read it; none of them lists platforms any more.
+  `registry.test.ts` pins the contracts, including that each SQL host regex
+  agrees with its JS twin.
+- **`src/lib/sources/importers.ts`** — server-only: per source, which URLs it
+  takes, a more useful rejection for near misses (a MakerWorld *collection*
+  link), and `importUrl`, which returns either an `ImportedProject` or a
+  `prompt` — a JSON body for a round-trip the client answers first (Onshape's
+  tab/branch picker, `OnshapeSelectionResponse`). Follow-up answers come back
+  in the request body untouched and each importer validates its own fields.
+  `POST /api/import` only dispatches; it names no platform.
+
+Adding a source = a descriptor + an importer (+ its logo and an icon in the
+UI copy). This is the in-process seam a plugin system would register sources
+through. Still platform-specific, deliberately for now: the two sync routes
+(`source-sync`, `onshape-sync`), the Onshape tab dialog in `import-form.tsx`,
+the credential tables (`bambu_credentials`, `onshape_credentials`) and
+`model_files.onshape_element_id` — generalizing those needs the plugin
+connection/prompt design, not just a rename. The model-level revision token
+already is generic: `models.source_revision` (was `onshape_microversion`,
+migration `0032`), whose format each source declares (`isRevisionToken`).
+
 ## .3mf import
 
 `src/lib/threemf.ts` runs client-side on file selection: the zip is unpacked in

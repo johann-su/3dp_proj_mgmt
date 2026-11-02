@@ -53,17 +53,26 @@ In Claude Desktop, add it under **Settings → Connectors → Add custom
 connector** with the same URL.
 
 The client then opens your browser, where you sign in as usual (including via
-[SSO](/sso)) and land on an approval screen naming the client. Approve it and
-the client is connected; the tokens it receives are refreshed automatically, so
-it stays connected until you disconnect it.
+[SSO](/sso)) and land on an approval screen naming the client and where its
+answers are sent. Approve it and the client is connected; its short-lived
+access tokens are renewed automatically, so it stays connected until you
+disconnect it.
+
+**Upgrading from a release before Better Auth 1.7** drops existing
+connections: the OAuth server was replaced, and neither its tokens nor the
+clients' registrations carry over. Reconnect each assistant once — most
+notice the rejected token and start the sign-in again on their own; one that
+keeps failing (it cached its old registration) needs the server removed and
+added again on its side.
 
 ## Disconnecting
 
 **Settings → AI access** lists everything you have approved, with the date it
 was connected and when it last signed in. **Disconnect** deletes that
-assistant's tokens for your account, and it stops working immediately — the
-next call it makes is rejected and it has to ask for approval again. Other
-users' connections are untouched, even to the same assistant.
+assistant's tokens for your account: it can't renew its access any more, and
+its current access token — valid for at most 15 minutes — runs out soon
+after. Then it has to ask for approval again. Other users' connections are
+untouched, even to the same assistant.
 
 Deleting a user account removes their connections too. Turning `ENABLE_MCP`
 back off disables every connection at once, without deleting anything.

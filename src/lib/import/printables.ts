@@ -20,11 +20,8 @@ export type PrintablesOptions = {
   confirmManyFiles?: boolean;
 };
 
-export function parsePrintablesUrl(url: URL): string | null {
-  if (!/(^|\.)printables\.com$/.test(url.hostname)) return null;
-  const match = url.pathname.match(/\/model\/(\d+)/);
-  return match ? match[1] : null;
-}
+// Lives with the source registry (src/lib/sources/registry.ts).
+export { parsePrintablesUrl } from "@/lib/sources/registry";
 
 type PrintablesFile = {
   id: string;

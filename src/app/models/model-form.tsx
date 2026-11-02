@@ -160,7 +160,7 @@ export function ModelForm({
   const [extracting, setExtracting] = useState(0);
 
   const [sourceUrl, setSourceUrl] = useState<string | null>(null);
-  const [onshapeMicroversion, setOnshapeMicroversion] = useState<string | null>(null);
+  const [sourceRevision, setSourceRevision] = useState<string | null>(null);
   // Models the URL importer flagged this draft against and the user imported
   // anyway — recorded on save so an admin can scrub the copies later.
   const [duplicateOfIds, setDuplicateOfIds] = useState<string[]>([]);
@@ -238,7 +238,7 @@ export function ModelForm({
       setTags((draft.tags ?? []).join(", "));
       setSourceCategories(draft.categories ?? []);
       setSourceUrl(draft.sourceUrl ?? null);
-      setOnshapeMicroversion(draft.onshapeMicroversion ?? null);
+      setSourceRevision(draft.sourceRevision ?? null);
       setDuplicateOfIds(draft.duplicateOfIds ?? []);
       setModelFileEntries(
         (draft.files ?? [])
@@ -561,7 +561,7 @@ export function ModelForm({
             bom,
             videos: mediaLinkedVideos(media),
             sourceUrl,
-            onshapeMicroversion,
+            sourceRevision,
             skipSliceKeys,
             duplicateOfIds,
           },
