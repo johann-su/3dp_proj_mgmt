@@ -101,6 +101,9 @@ services:
       # opens an unauthenticated OAuth client-registration endpoint — read the
       # MCP integration docs before enabling it on a public instance.
       ENABLE_MCP: ${ENABLE_MCP:-}
+      # Set to true to serve the REST API at /api/v1 with per-user API keys
+      # (Settings → API keys). Keys bypass SSO/MFA, hence opt-in.
+      ENABLE_API: ${ENABLE_API:-}
     depends_on:
       postgres:
         condition: service_healthy

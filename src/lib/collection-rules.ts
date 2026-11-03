@@ -1,4 +1,10 @@
 import { sql, type SQL } from "drizzle-orm";
+import {
+  isSourcePlatform,
+  sourceById,
+  sourceLabels,
+  type SourcePlatform,
+} from "@/lib/sources/registry";
 
 // Smart-collection rules (issue #46): a collection can define its membership
 // as a rule tree evaluated against model metadata instead of hand-picked
@@ -15,11 +21,9 @@ import { sql, type SQL } from "drizzle-orm";
 
 export type RuleGroupOp = "AND" | "OR";
 
-export type SourcePlatformValue =
-  | "makerworld"
-  | "printables"
-  | "onshape"
-  | "manual";
+// Any registered source (src/lib/sources/registry.ts), or "manual" for models
+// with no sourceUrl at all.
+export type SourcePlatformValue = SourcePlatform | "manual";
 
 export type RuleCondition =
   // has any/all of the listed tags (negate for "none"/"not all")
@@ -62,9 +66,7 @@ export const RULE_FIELD_LABELS: Record<RuleField, string> = {
 };
 
 export const SOURCE_VALUE_LABELS: Record<SourcePlatformValue, string> = {
-  makerworld: "MakerWorld",
-  printables: "Printables",
-  onshape: "Onshape",
+  ...sourceLabels,
   manual: "Manual upload",
 };
 
@@ -161,12 +163,7 @@ function parseCondition(
       return { field: c.field, value: c.value.trim(), negate };
     }
     case "source": {
-      if (
-        c.value !== "makerworld" &&
-        c.value !== "printables" &&
-        c.value !== "onshape" &&
-        c.value !== "manual"
-      ) {
+      if (c.value !== "manual" && !isSourcePlatform(c.value)) {
         return "Unknown source platform";
       }
       return { field: "source", value: c.value, negate };
@@ -198,13 +195,6 @@ function escapeLike(q: string): string {
   return q.replace(/[%_\\]/g, "\\$&");
 }
 
-// Hostname patterns mirroring platformFromSourceUrl (src/lib/platform.ts),
-// expressed as SQL regexes so classification happens in the WHERE clause.
-const SOURCE_HOST_PATTERNS: Record<Exclude<SourcePlatformValue, "manual">, string> = {
-  makerworld: "^https?://([^/]*\\.)?makerworld\\.com(/|$)",
-  printables: "^https?://([^/]*\\.)?printables\\.com(/|$)",
-  onshape: "^https?://([^/]*\\.)?onshape\\.com(/|$)",
-};
 
 // Compiles a validated rule tree into one boolean SQL expression over the
 // `models m` alias (subqueries reach into model_files/model_tags/tags, the
@@ -258,7 +248,8 @@ function fieldSql(cond: RuleCondition): SQL {
     case "source": {
       if (cond.value === "manual") return sql`(m.source_url IS NULL)`;
       // COALESCE keeps the match false (not NULL) for manual uploads.
-      return sql`(COALESCE(m.source_url, '') ~* ${SOURCE_HOST_PATTERNS[cond.value]})`;
+      // The host test platformFromSourceUrl applies, as a Postgres regex.
+      return sql`(COALESCE(m.source_url, '') ~* ${sourceById(cond.value).hostSqlRegex})`;
     }
     case "printer":
       return sql`(${fileExists(sql`lower(mf.printer_info->>'model') = ${cond.value.toLowerCase()}`)})`;

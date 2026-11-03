@@ -1,16 +1,130 @@
 ---
 title: API reference
-description: The HTTP endpoints under /api that the web app exposes — auth, file upload/download, platform import, model sync, and OpenSCAD customization
+description: The public REST API (/api/v1, API keys) and the internal HTTP endpoints the web app uses — auth, file upload/download, platform import, model sync, and OpenSCAD customization
 ---
 
 # API reference
 
-This page documents the HTTP endpoints Print Vault exposes under `/api`. They
-are the same endpoints the browser UI calls — **not a separate, stable public
-API**. There is no versioning guarantee and no API-key mechanism: treat them as
-internal to the app and expect them to change alongside it.
+Print Vault has two HTTP surfaces:
 
-A few conventions hold across the whole surface:
+- **The REST API under `/api/v1`** — for scripts and integrations (n8n, Home
+  Assistant, a CAD add-in, a browser extension). Versioned, authenticated with
+  personal **API keys**, described by an OpenAPI document. Off unless
+  `ENABLE_API=true`. [Jump to it](#rest-api-v1).
+- **The app's own routes under `/api/*`** — the endpoints the browser UI
+  calls, documented further down. They are **not a stable public API**: no
+  versioning guarantee, session-cookie auth only. Treat them as internal and
+  expect them to change alongside the app.
+
+## REST API (v1)
+
+### Turning it on and getting a key
+
+Set `ENABLE_API=true` and restart (see [Configuration](/configuration#rest-api-optional)).
+Every user then finds **Settings → API keys**, where they create keys for
+themselves: a name, the scopes it may use, and an expiry (30 days to never).
+The key (`pv_…`) is shown **once** — only a hash is stored. A key acts as the
+user who created it, so it can never do more than they can; deleting the user
+deletes their keys, and **Revoke** takes effect on the very next request.
+
+An API key is a long-lived bearer credential that bypasses SSO and its MFA.
+On an internet-facing instance that relies on
+[`DISABLE_PASSWORD_LOGIN`](/sso) to keep a single, MFA-protected door, think
+about whether you want that second door before enabling it.
+
+### Authentication and scopes
+
+Send the key as `Authorization: Bearer pv_…` (or in an `x-api-key` header).
+Each key carries a set of scopes:
+
+| Scope | Allows |
+|---|---|
+| `models:read` | List and read models: metadata, tags, BOMs, print estimates; categories and tags |
+| `models:write` | Create, edit and trash models |
+| `files:read` | Download model files, images and documents — the bytes themselves |
+| `files:write` | Stage uploads to attach to models |
+| `collections:read` | List and read collections |
+| `collections:write` | Add models to and remove them from collections |
+
+A write scope implies read on the same resource. `files:read` is listed
+separately on purpose: many integrations only need metadata, and model files
+can be paid content. Like the browser, editing is collaborative — any key with
+`models:write` can edit any model — while trashing a model stays limited to its
+owner (or a [moderator](/roles)).
+
+### Conventions
+
+- **Base URL** — `{BETTER_AUTH_URL}/api/v1`. The machine-readable description
+  is at **`GET /api/v1/openapi.json`** (OpenAPI 3.1, readable without a key) —
+  point Swagger UI, n8n's HTTP node or a client generator at it.
+- **JSON in and out**, except uploads (raw bytes in) and downloads (bytes out).
+  Responses are never cacheable (`Cache-Control: no-store`).
+- **Errors** are `{ "error": "…", "code": "…" }` with a matching status;
+  `code` is stable, `error` is human-readable. Validation errors add
+  `issues: [{ path, message }]`.
+
+| Status | `code` | Meaning |
+|---|---|---|
+| `400` | `invalid_request` | Malformed body or parameters, an invalid/expired upload handle, a rule the model breaks (e.g. no model file left) |
+| `401` | `unauthorized` | No key, or a key that is invalid, expired or revoked |
+| `403` | `insufficient_scope` | The key lacks the scope (named in the message and `WWW-Authenticate`) |
+| `403` | `forbidden` | Owner-only action on someone else's model |
+| `404` | `not_found` | No such model/file/collection — trashed models count as gone |
+| `409` | `duplicate` | A model file matches one already in the catalog; nothing was saved |
+| `429` | `rate_limited` | More than 600 requests in a minute for this key; see `Retry-After` |
+
+- **Pagination** — list endpoints return `{ data, nextCursor }`; pass
+  `?cursor=<nextCursor>` (with the same `sort`) for the next page and stop at
+  `null`. `limit` is 1–100, default 24.
+
+### Endpoints
+
+| Method & path | Scope | What it does |
+|---|---|---|
+| `GET /me` | any | The key's user and scopes — check your configuration with this |
+| `GET /models` | `models:read` | List models. Filters: `q`, `category`, `tag` (repeatable), `source` (`makerworld`/`printables`/`onshape`/`manual`), `owner` (user id or `me`), `collection`, `updatedSince`; `sort` = `created_desc` (default), `created_asc`, `updated_desc`, `updated_asc` |
+| `POST /models` | `models:write` | Create a model from staged uploads |
+| `GET /models/{id}` | `models:read` | One model with its files (and print estimates), BOM and videos |
+| `PATCH /models/{id}` | `models:write` | Change only the fields sent; `tags`/`bom` replace the list; `addFiles`, `removeFileIds`, `renameFiles` |
+| `DELETE /models/{id}` | `models:write` | Move to the owner's trash (restorable in the app for 30 days) |
+| `POST /uploads?filename=` | `files:write` | Stage one file (raw body); returns an `upload` handle |
+| `GET /files/{id}` | `files:read` | Download a file; `Range` requests supported |
+| `GET /categories`, `GET /tags` | `models:read` | Categories (ids for `categoryId`) and tags in use |
+| `GET /collections`, `GET /collections/{id}` | `collections:read` | Collections; list members with `GET /models?collection={id}` |
+| `PUT`/`DELETE /collections/{id}/models/{modelId}` | `collections:write` | Add/remove a model (hand-picked collections only — smart ones answer `400`) |
+
+Creating a model is two steps — stage the files, then reference them:
+
+```sh
+KEY=pv_…
+API=https://models.example.com/api/v1
+
+# 1. Stage each file; the extension decides its kind (.3mf/.step/.scad, images, .pdf, videos)
+UPLOAD=$(curl -s -H "Authorization: Bearer $KEY" --data-binary @bracket.3mf \
+  "$API/uploads?filename=bracket.3mf" | jq -r .upload)
+
+# 2. Create the model
+curl -s -H "Authorization: Bearer $KEY" -H 'Content-Type: application/json' \
+  -d "{\"title\":\"Bracket\",\"tags\":[\"petg\"],\"files\":[{\"upload\":\"$UPLOAD\"}]}" \
+  "$API/models"
+```
+
+An upload handle is valid for 24 hours and only for the key's own user. A
+`.3mf` is queued for [print estimates](/features/slicing) like a browser
+upload unless its attachment says `"slice": false`. Models created or edited
+through the API are [versioned](/features/versioning) and attributed to the
+key's user exactly like edits in the app.
+
+Not covered yet: restoring from the trash, version history, collection
+create/edit, the customizer, and importing from MakerWorld/Printables/Onshape —
+those stay in the app (or its internal routes below) for now. Deletions don't
+show up in `updatedSince` listings; poll a model by id if you need to notice
+one.
+
+## Internal routes
+
+The rest of this page documents the routes the web UI calls. A few
+conventions hold across them:
 
 - **Base URL.** Every path below is relative to your deployment's public origin
   (`BETTER_AUTH_URL`, e.g. `https://models.example.com`) — so
@@ -20,8 +134,8 @@ A few conventions hold across the whole surface:
   without one — the whole catalog is private. The only alternative credential
   is the **signed file token** accepted by the file-serving routes (for the
   cookie-less consumers: the image optimizer and slicer deep links); it is
-  minted by the app, not something a client requests. There is no way to
-  authenticate a programmatic client other than carrying a real session cookie.
+  minted by the app, not something a client requests. API keys are **not**
+  accepted here — a programmatic client uses [the REST API](#rest-api-v1).
 - **JSON in and out.** Request and response bodies are JSON unless noted (file
   uploads send raw bytes; downloads and the STL preview return binary). Errors are `{ "error": "<message>" }` with a matching
   status code.
@@ -137,7 +251,7 @@ picker; the client re-POSTs with extra fields as prompted.
 client which phase it's in:
 
 - **Draft** (the success case) — `{ source, sourceUrl, title, description, tags,
-  categories, files, bom, warnings, onshapeMicroversion }`.
+  categories, files, bom, warnings, sourceRevision }`.
 - **Needs confirmation** — `{ needsConfirmation: true, fileCount, title }` when
   the model has a lot of files. Re-POST with `confirm: true`.
 - **Needs Onshape selection** — `{ needsOnshapeSelection: true, title, tabs,
@@ -165,7 +279,7 @@ manifest fall back to the folder names, `README.md` and `bom.csv`.
   `?filename=` is optional and only used as the title when the archive names
   the model nowhere.
 - **`200`** — a draft: `{ source: "archive", sourceUrl, title, description,
-  tags, categories, files, bom, warnings, onshapeMicroversion }`. Files the
+  tags, categories, files, bom, warnings, sourceRevision }`. Files the
   OpenSCAD customizer generated are omitted and reported in `warnings`.
 - **`400`** not a readable zip, no archive uploaded, or no model files inside ·
   **`401`** not signed in · **`413`** larger than 250 MB · **`500`** unexpected
@@ -359,9 +473,9 @@ code (`denied`, `state-mismatch`, `connect-failed`, `not-configured`).
 ## MCP server
 
 All of the following are **404 unless `ENABLE_MCP=true`** (see the
-[MCP integration](/integrations/mcp)). This is the one part of the API meant to
-be called by something other than the app's own UI, and the only one that
-accepts a credential other than a session cookie.
+[MCP integration](/integrations/mcp)). Besides the [REST API](#rest-api-v1),
+this is the only part meant to be called by something other than the app's
+own UI, and it accepts an OAuth bearer token instead of a session cookie.
 
 ### `POST /api/mcp`
 
@@ -379,17 +493,18 @@ response (no event stream), exposing read-only catalog tools —
 - **`GET`**/**`DELETE`** return **`405`** — the server never pushes messages,
   so there is no stream to open and no session to end.
 
-### `GET /.well-known/oauth-authorization-server`, `GET /.well-known/oauth-protected-resource`
+### `GET /.well-known/oauth-authorization-server/api/auth`, `GET /.well-known/openid-configuration/api/auth`, `GET /.well-known/oauth-protected-resource/api/mcp`
 
-Public OAuth discovery documents (RFC 8414 / RFC 9728) an MCP client reads
-before it has any credential. The protected-resource document is also served
-under `/.well-known/oauth-protected-resource/api/mcp` and by Better Auth under
-`/api/auth/`; all copies are identical.
+Public OAuth discovery documents (RFC 8414 / OpenID / RFC 9728) an MCP client
+reads before it has any credential. The issuer is `{BETTER_AUTH_URL}/api/auth`;
+the bare `/.well-known/…` spellings answer too.
 
-### `GET|POST /api/auth/mcp/*`
+### `GET|POST /api/auth/oauth2/*`, `GET /api/auth/jwks`
 
 Better Auth's OAuth provider endpoints: `register` (RFC 7591 dynamic client
 registration, **unauthenticated** — this is how a client bootstraps),
-`authorize`, `token`, `userinfo`, `jwks`. The browser-facing approval screen is
-the page at `/mcp/authorize`, which is what the discovery document advertises
-as the authorization endpoint.
+`authorize`, `consent`, `token`, `userinfo`, `revoke`, `introspect`. Access
+tokens are JWTs signed with the key published at `/api/auth/jwks` and expire
+after 15 minutes; clients renew them with their refresh token. The
+browser-facing pages are `/mcp/authorize` (sign-in hand-off) and
+`/mcp/consent` (the approval screen).

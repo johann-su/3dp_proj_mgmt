@@ -85,3 +85,34 @@ export function isApproxEstimate(file: {
   if (file.sliceStatus !== "ok") return false;
   return file.sliceApprox ?? file.sliceSource === "slicer";
 }
+
+// printer_info as API consumers see it (the MCP tools and /api/v1): the
+// hardware a project was set up for, with the "absent" cases spelled as null
+// so clients can tell "the config didn't say" from false. The whole payload is
+// null when the file was never parsed (a .step file, an upload that predates
+// the slicer, an instance with no SLICER_URL).
+export function printerInfoPayload(info: PrinterInfo | null) {
+  if (!info) return null;
+  return {
+    model: info.model ?? null,
+    nozzleDiameterMm: info.nozzleDiameterMm ?? null,
+    bedType: info.bedType ?? null,
+    bedSizeMm: info.bedSizeMm ?? null,
+    // One entry per filament slot in use, so the same material twice reads as a
+    // two-colour print; colors is index-parallel when the file records it.
+    filamentTypes: info.filamentTypes ?? [],
+    filamentColors: info.filamentColors ?? [],
+    // Whether a single plate changes filament mid-print (needs an AMS/MMU);
+    // plates that each print one different filament don't count.
+    multiFilament: filamentSummary(info)?.multi ?? null,
+    // Slots objects are assigned to that the project defines no filament for;
+    // the printed material is then unknown, so check before printing.
+    missingFilamentSlots: info.missingFilamentSlots ?? [],
+    // undefined = the embedded config didn't say, which is not the same as "no
+    // supports" — keep the distinction instead of defaulting it to false.
+    usesSupport: info.usesSupport ?? null,
+    // True only for hardware with more than one nozzle (toolchanger/IDEX); an
+    // AMS/MMU feeding many filaments through one nozzle is false.
+    requiresMultiNozzle: info.requiresMultiNozzle ?? null,
+  };
+}

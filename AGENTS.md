@@ -1,7 +1,11 @@
 <!-- BEGIN:nextjs-agent-rules -->
+
 # This is NOT the Next.js you know
 
-This version has breaking changes — APIs, conventions, and file structure may all differ from your training data. Read the relevant guide in `node_modules/next/dist/docs/` before writing any code. Heed deprecation notices.
+This version has breaking changes — APIs, conventions, and file structure may all differ from your training data. Read the relevant guide in `node_modules/next/dist/docs/` (resolved from this file's directory; in monorepos the `next` package may not be visible from the repo root) before writing any code. Heed deprecation notices.
+
+This block is written and re-added by `next dev` — verify at `node_modules/next/dist/server/lib/generate-agent-files.js`. Removing it from a diff only re-creates the uncommitted change; committing it with your work keeps the tree clean.
+
 <!-- END:nextjs-agent-rules -->
 
 # Testing
@@ -133,7 +137,9 @@ subsystem's non-obvious contracts and are read on demand.
   S3-delete only the keys those helpers return, and **never** delete a
   non-variant model file's S3 object directly (old snapshots reference it). Any
   **new model listing must filter `deleted_at IS NULL`** (trash is a soft
-  delete). See
+  delete). The existing write paths live in `src/lib/model-mutations.ts`,
+  shared by the server actions and the REST API — add new ones there, never
+  in a route or action alone. See
   [`docs/architecture/versioning.md`](docs/architecture/versioning.md).
 - **Logging & errors.** All server logging goes through the pino logger in
   `src/lib/logger.ts` — never `console.*`. In catch-and-continue blocks use
@@ -161,12 +167,13 @@ every session and defeat the point).
 | Auth, sessions, roles, access control | [`auth-and-access.md`](docs/architecture/auth-and-access.md) |
 | Model mutations, versioning, trash | [`versioning.md`](docs/architecture/versioning.md) |
 | Storage backends, uploads, downloads, file tokens/images | [`files.md`](docs/architecture/files.md) |
-| Platform import (.3mf, MakerWorld/Printables URL, source sync, collections) | [`import.md`](docs/architecture/import.md) |
+| Platform import (.3mf, MakerWorld/Printables URL, source registry, source sync, collections) | [`import.md`](docs/architecture/import.md) |
 | Onshape import/sync + API client | [`onshape.md`](docs/architecture/onshape.md) |
 | Slicer estimates & "open in slicer" deep links | [`slicing.md`](docs/architecture/slicing.md) |
 | OpenSCAD customizer / parametric models | [`openscad.md`](docs/architecture/openscad.md) |
 | Search, homepage listing, categories | [`search-and-catalog.md`](docs/architecture/search-and-catalog.md) |
 | MCP server, its tools, the OAuth provider wiring | [`mcp.md`](docs/architecture/mcp.md) |
+| REST API (`/api/v1`), API keys, the shared mutation core | [`api.md`](docs/architecture/api.md) |
 | OpenTelemetry, logging, metrics | [`observability.md`](docs/architecture/observability.md) |
 | Icon-only buttons & other UI conventions | [`ui-conventions.md`](docs/architecture/ui-conventions.md) |
 

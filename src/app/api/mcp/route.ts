@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
-import { withMcpAuth } from "better-auth/plugins";
-import { auth, mcpEnabled } from "@/lib/auth";
+import { requireMcpAuth } from "@better-auth/mcp";
+import { auth, mcpEnabled, mcpResource } from "@/lib/auth";
 import { logger } from "@/lib/logger";
 import { handleMcpPayload, parseErrorResponse } from "@/lib/mcp/protocol";
 import { catalogTools, CATALOG_INSTRUCTIONS } from "@/lib/mcp/tools";
@@ -11,11 +11,12 @@ export const dynamic = "force-dynamic";
 
 // The MCP endpoint (issue #96): read-only catalog tools for LLM clients.
 //
-// Authentication is an OAuth bearer token, not a session cookie — withMcpAuth
-// resolves it against the tokens BetterAuth's `mcp` plugin issued and answers
-// 401 with the `WWW-Authenticate: resource_metadata=…` header a client needs to
-// discover where to get one. A token grants exactly what its user can see in
-// the browser: the whole catalog, read-only (see auth-and-access.md).
+// Authentication is an OAuth bearer token (a JWT signed by the jwt plugin and
+// audience-bound to this URL), not a session cookie. requireMcpAuth verifies
+// it against our JWKS and answers 401 with the `WWW-Authenticate:
+// resource_metadata=…` header a client needs to discover where to get one. A
+// token grants exactly what its user (`sub`) can see in the browser: the whole
+// catalog, read-only (see auth-and-access.md).
 //
 // Transport shape and why it is hand-rolled: see src/lib/mcp/protocol.ts.
 
@@ -27,31 +28,39 @@ const serverInfo = {
   version: process.env.npm_package_version ?? "0.1.0",
 };
 
-const handler = withMcpAuth(auth, async (req, session) => {
-  let payload: unknown;
-  try {
-    payload = await req.json();
-  } catch {
-    return NextResponse.json(parseErrorResponse(), { status: 400 });
-  }
+const handler = requireMcpAuth(
+  auth,
+  async (req, claims) => {
+    if (!claims.sub) {
+      return NextResponse.json({ error: "Token has no subject" }, { status: 401 });
+    }
 
-  const response = await handleMcpPayload(payload, {
-    tools: catalogTools,
-    serverInfo,
-    instructions: CATALOG_INSTRUCTIONS,
-    onError: reportError,
-  });
+    let payload: unknown;
+    try {
+      payload = await req.json();
+    } catch {
+      return NextResponse.json(parseErrorResponse(), { status: 400 });
+    }
 
-  logger.debug(
-    { userId: session.userId, clientId: session.clientId },
-    "[mcp] request handled",
-  );
+    const response = await handleMcpPayload(payload, {
+      tools: catalogTools,
+      serverInfo,
+      instructions: CATALOG_INSTRUCTIONS,
+      onError: reportError,
+    });
 
-  // A body of notifications only has nothing to answer.
-  return response === null
-    ? new Response(null, { status: 202 })
-    : NextResponse.json(response);
-});
+    logger.debug(
+      { userId: claims.sub, clientId: claims.azp },
+      "[mcp] request handled",
+    );
+
+    // A body of notifications only has nothing to answer.
+    return response === null
+      ? new Response(null, { status: 202 })
+      : NextResponse.json(response);
+  },
+  { resource: mcpResource() },
+);
 
 export async function POST(req: Request) {
   if (!mcpEnabled) {

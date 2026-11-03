@@ -17,7 +17,6 @@
 
 import { sql } from "drizzle-orm";
 import { db } from "@/db";
-import type { PrinterInfo } from "@/db/schema";
 import { appUrl } from "@/lib/app-url";
 import { groupBySection } from "@/lib/bom";
 import { ruleTreeToSql, type RuleNode } from "@/lib/collection-rules";
@@ -39,7 +38,7 @@ import {
   type McpImage,
   type McpTool,
 } from "@/lib/mcp/protocol";
-import { filamentSummary, isApproxEstimate } from "@/lib/printer-info";
+import { isApproxEstimate, printerInfoPayload } from "@/lib/printer-info";
 import { readFileBytes } from "@/lib/storage";
 import { reportError } from "@/lib/telemetry";
 
@@ -266,35 +265,6 @@ async function getModelBom(args: Record<string, unknown>) {
   };
 }
 
-// The slicer writes estimates onto the file row; printer_info describes the
-// hardware the project was set up for. Both may be absent (a .step file, an
-// upload that predates the slicer, an instance with no SLICER_URL).
-function printerPayload(info: PrinterInfo | null) {
-  if (!info) return null;
-  return {
-    model: info.model ?? null,
-    nozzleDiameterMm: info.nozzleDiameterMm ?? null,
-    bedType: info.bedType ?? null,
-    bedSizeMm: info.bedSizeMm ?? null,
-    // One entry per filament slot in use, so the same material twice reads as a
-    // two-colour print; colors is index-parallel when the file records it.
-    filamentTypes: info.filamentTypes ?? [],
-    filamentColors: info.filamentColors ?? [],
-    // Whether a single plate changes filament mid-print (needs an AMS/MMU);
-    // plates that each print one different filament don't count.
-    multiFilament: filamentSummary(info)?.multi ?? null,
-    // Slots objects are assigned to that the project defines no filament for;
-    // the printed material is then unknown, so check before printing.
-    missingFilamentSlots: info.missingFilamentSlots ?? [],
-    // undefined = the embedded config didn't say, which is not the same as "no
-    // supports" — keep the distinction instead of defaulting it to false.
-    usesSupport: info.usesSupport ?? null,
-    // True only for hardware with more than one nozzle (toolchanger/IDEX); an
-    // AMS/MMU feeding many filaments through one nozzle is false.
-    requiresMultiNozzle: info.requiresMultiNozzle ?? null,
-  };
-}
-
 async function getModelPrintFiles(args: Record<string, unknown>) {
   const model = await requireModel(args);
   const files = await db.query.modelFiles.findMany({
@@ -339,7 +309,7 @@ async function getModelPrintFiles(args: Record<string, unknown>) {
       printTimeSeconds: file.printTimeSeconds,
       printTime: file.printTimeSeconds !== null ? formatDuration(file.printTimeSeconds) : null,
       filamentGrams: file.filamentGrams,
-      printerInfo: printerPayload(file.printerInfo),
+      printerInfo: printerInfoPayload(file.printerInfo),
     })),
     totals: {
       printTimeSeconds,

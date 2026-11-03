@@ -2,12 +2,13 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { and, eq } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { db } from "@/db";
-import { collectionModels, collections, models } from "@/db/schema";
+import { collections } from "@/db/schema";
 import { getSession } from "@/lib/auth";
 import { canActAsOwner } from "@/lib/roles";
 import { parseRuleTree, type RuleGroup } from "@/lib/collection-rules";
+import { setCollectionMembership } from "@/lib/collection-mutations";
 
 // Validates the smart/rules pair of a create/update input. Smart collections
 // must carry a valid rule tree; manual ones store none (a stale tree left
@@ -129,41 +130,10 @@ export async function toggleModelInCollection(input: {
   const session = await getSession();
   if (!session) return { error: "You must be signed in" };
 
-  const collection = await db.query.collections.findFirst({
-    where: eq(collections.id, input.collectionId),
+  const result = await setCollectionMembership(session.user, {
+    collectionId: input.collectionId,
+    modelId: input.modelId,
+    member: input.inCollection,
   });
-  if (!collection) return { error: "Collection not found" };
-  // Adding/removing models is an edit — open to any signed-in user, like the
-  // rest of collection editing. Only deletion is owner-gated.
-  // Smart membership is computed from the rules; there are no rows to toggle.
-  if (collection.smart) {
-    return { error: "Smart collections manage their models by rules" };
-  }
-
-  const model = await db.query.models.findFirst({
-    where: eq(models.id, input.modelId),
-    columns: { id: true, deletedAt: true },
-  });
-  if (!model || model.deletedAt) return { error: "Model not found" };
-
-  if (input.inCollection) {
-    await db
-      .insert(collectionModels)
-      .values({ collectionId: input.collectionId, modelId: input.modelId })
-      .onConflictDoNothing();
-  } else {
-    await db
-      .delete(collectionModels)
-      .where(
-        and(
-          eq(collectionModels.collectionId, input.collectionId),
-          eq(collectionModels.modelId, input.modelId),
-        ),
-      );
-  }
-
-  revalidatePath(`/models/${input.modelId}`);
-  revalidatePath(`/collections/${input.collectionId}`);
-  revalidatePath("/");
-  return {};
+  return "error" in result ? { error: result.error } : {};
 }

@@ -115,6 +115,12 @@ For a Prusa MK4S, for example: `Prusa MK4S 0.4 nozzle`, `0.20mm SPEED @MK4S
 |---|---|---|
 | `DISABLE_PUBLIC_SHARING` | unset (on) | Set to `true` to turn off [public share links](/features/sharing) instance-wide: the option disappears from the Share dialog and **existing public links stop working** (they are kept, so unsetting the variable brings them back). Use it when nothing in the catalog may ever leave the instance. |
 
+## REST API (optional)
+
+| Variable | Default | Description |
+|---|---|---|
+| `ENABLE_API` | unset (off) | Set to `true` to serve the [REST API](/api-reference#rest-api-v1) at `/api/v1` and let users create personal API keys under **Settings → API keys**. A key is a long-lived bearer credential acting as its user (limited to the scopes picked for it) that bypasses SSO and its MFA — weigh that on an instance that relies on `DISABLE_PASSWORD_LOGIN`. |
+
 ## MCP server (optional)
 
 | Variable | Default | Description |

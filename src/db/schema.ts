@@ -9,6 +9,7 @@ import {
   real,
   text,
   timestamp,
+  unique,
   uniqueIndex,
   uuid,
   type AnyPgColumn,
@@ -76,66 +77,246 @@ export const verification = pgTable("verification", {
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
 
-// --- OAuth provider tables (BetterAuth `mcp` plugin, issue #96) ---
+// --- OAuth provider tables (BetterAuth `jwt` + `@better-auth/mcp`, issue #96) ---
 //
 // The MCP server (/api/mcp) authenticates LLM clients with OAuth 2.1 bearer
 // tokens instead of session cookies, so the instance acts as an authorization
-// server for them. These three tables are BetterAuth's own (shared with its
-// oidc-provider plugin) — the property names must stay exactly as spelled
-// here, because the drizzle adapter looks each model/field up by name (see the
-// `schema` map in src/lib/auth.ts). Only used while ENABLE_MCP is set.
-//
-// Clients register themselves (RFC 7591 dynamic client registration), so an
-// oauthApplication row is created by whoever connects a client, not by an
-// admin — hence the whole surface being opt-in per instance.
+// server for them (see docs/architecture/mcp.md). These tables belong to the
+// plugins — transcribed from @better-auth/oauth-provider's and the jwt
+// plugin's schema definitions, so property names must stay exactly as spelled
+// (the adapter looks them up by name, and BetterAuth checks the `schema` map in
+// src/lib/auth.ts against them at startup). Only written while ENABLE_MCP is
+// set. Re-check them against the plugin schema when bumping better-auth.
 
-export const oauthApplication = pgTable("oauth_application", {
+// Signing keys for the access tokens (the private key is encrypted at rest
+// with BETTER_AUTH_SECRET). /api/auth/jwks publishes the public halves.
+export const jwks = pgTable("jwks", {
   id: text("id").primaryKey(),
-  name: text("name").notNull(),
-  icon: text("icon"),
-  metadata: text("metadata"),
+  publicKey: text("public_key").notNull(),
+  privateKey: text("private_key").notNull(),
+  createdAt: timestamp("created_at").notNull(),
+  expiresAt: timestamp("expires_at"),
+  alg: text("alg"),
+  crv: text("crv"),
+});
+
+// Clients register themselves (RFC 7591 dynamic client registration), so a
+// row is created by whatever connects, not by an admin — hence the whole
+// surface being opt-in per instance.
+export const oauthClient = pgTable("oauth_client", {
+  id: text("id").primaryKey(),
   clientId: text("client_id").notNull().unique(),
   clientSecret: text("client_secret"),
-  // Comma-joined list; an authorize request must match one exactly.
-  redirectUrls: text("redirect_urls").notNull(),
-  type: text("type").notNull(),
-  disabled: boolean("disabled").notNull().default(false),
-  // The user who registered the client, when it was registered from a session.
+  clientDiscoveryId: text("client_discovery_id"),
+  disabled: boolean("disabled").default(false),
+  skipConsent: boolean("skip_consent"),
+  enableEndSession: boolean("enable_end_session"),
+  subjectType: text("subject_type"),
+  scopes: text("scopes").array(),
+  clientCredentialsScopes: text("client_credentials_scopes").array().default([]),
   userId: text("user_id").references(() => user.id, { onDelete: "cascade" }),
-  createdAt: timestamp("created_at").notNull().defaultNow(),
-  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  createdAt: timestamp("created_at"),
+  updatedAt: timestamp("updated_at"),
+  name: text("name"),
+  uri: text("uri"),
+  icon: text("icon"),
+  contacts: text("contacts").array(),
+  tos: text("tos"),
+  policy: text("policy"),
+  softwareId: text("software_id"),
+  softwareVersion: text("software_version"),
+  softwareStatement: text("software_statement"),
+  redirectUris: text("redirect_uris").array().notNull(),
+  postLogoutRedirectUris: text("post_logout_redirect_uris").array(),
+  backchannelLogoutUri: text("backchannel_logout_uri"),
+  backchannelLogoutSessionRequired: boolean("backchannel_logout_session_required"),
+  tokenEndpointAuthMethod: text("token_endpoint_auth_method"),
+  applicationType: text("application_type"),
+  jwks: text("jwks"),
+  jwksUri: text("jwks_uri"),
+  grantTypes: text("grant_types").array(),
+  responseTypes: text("response_types").array(),
+  requirePKCE: boolean("require_pkce"),
+  dpopBoundAccessTokens: boolean("dpop_bound_access_tokens").default(false),
+  referenceId: text("reference_id"),
+  metadata: jsonb("metadata"),
+}, (t) => [index("oauth_client_user_idx").on(t.userId)]);
+
+export const oauthResource = pgTable("oauth_resource", {
+  id: text("id").primaryKey(),
+  identifier: text("identifier").notNull().unique(),
+  name: text("name").notNull(),
+  accessTokenTtl: integer("access_token_ttl"),
+  refreshTokenTtl: integer("refresh_token_ttl"),
+  signingAlgorithm: text("signing_algorithm"),
+  signingKeyId: text("signing_key_id"),
+  allowedScopes: text("allowed_scopes").array(),
+  customClaims: jsonb("custom_claims"),
+  dpopBoundAccessTokensRequired: boolean("dpop_bound_access_tokens_required").default(false),
+  disabled: boolean("disabled").default(false),
+  createdAt: timestamp("created_at"),
+  updatedAt: timestamp("updated_at"),
+  policyVersion: integer("policy_version").default(1),
+  metadata: jsonb("metadata"),
 });
 
-export const oauthAccessToken = pgTable("oauth_access_token", {
+export const oauthClientResource = pgTable(
+  "oauth_client_resource",
+  {
+    id: text("id").primaryKey(),
+    clientId: text("client_id")
+      .notNull()
+      .references(() => oauthClient.clientId, { onDelete: "cascade" }),
+    resourceId: text("resource_id")
+      .notNull()
+      .references(() => oauthResource.identifier, { onDelete: "cascade" }),
+    metadata: jsonb("metadata"),
+    createdAt: timestamp("created_at"),
+  },
+  (t) => [
+    unique("oauth_client_resource_pair").on(t.clientId, t.resourceId),
+    index("oauth_client_resource_client_idx").on(t.clientId),
+    index("oauth_client_resource_resource_idx").on(t.resourceId),
+  ],
+);
+
+// Refresh tokens are what keep a client connected without the user in the
+// loop; Settings → MCP deletes them to disconnect a client.
+export const oauthRefreshToken = pgTable(
+  "oauth_refresh_token",
+  {
+    id: text("id").primaryKey(),
+    token: text("token").notNull().unique(),
+    clientId: text("client_id")
+      .notNull()
+      .references(() => oauthClient.clientId, { onDelete: "cascade" }),
+    sessionId: text("session_id").references(() => session.id, { onDelete: "set null" }),
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    referenceId: text("reference_id"),
+    authorizationCodeId: text("authorization_code_id"),
+    resources: text("resources").array(),
+    requestedUserInfoClaims: text("requested_user_info_claims").array(),
+    expiresAt: timestamp("expires_at").notNull(),
+    createdAt: timestamp("created_at").notNull(),
+    revoked: timestamp("revoked"),
+    rotatedAt: timestamp("rotated_at"),
+    rotationReplayResponse: text("rotation_replay_response"),
+    rotationReplayExpiresAt: timestamp("rotation_replay_expires_at"),
+    authTime: timestamp("auth_time"),
+    confirmation: jsonb("confirmation"),
+    scopes: text("scopes").array().notNull(),
+  },
+  (t) => [
+    index("oauth_refresh_token_client_idx").on(t.clientId),
+    index("oauth_refresh_token_user_idx").on(t.userId),
+    index("oauth_refresh_token_session_idx").on(t.sessionId),
+    index("oauth_refresh_token_auth_code_idx").on(t.authorizationCodeId),
+  ],
+);
+
+export const oauthAccessToken = pgTable(
+  "oauth_access_token",
+  {
+    id: text("id").primaryKey(),
+    token: text("token").notNull().unique(),
+    clientId: text("client_id")
+      .notNull()
+      .references(() => oauthClient.clientId, { onDelete: "cascade" }),
+    sessionId: text("session_id").references(() => session.id, { onDelete: "set null" }),
+    userId: text("user_id").references(() => user.id, { onDelete: "cascade" }),
+    referenceId: text("reference_id"),
+    authorizationCodeId: text("authorization_code_id"),
+    resources: text("resources").array(),
+    requestedUserInfoClaims: text("requested_user_info_claims").array(),
+    refreshId: text("refresh_id").references(() => oauthRefreshToken.id, { onDelete: "cascade" }),
+    expiresAt: timestamp("expires_at").notNull(),
+    createdAt: timestamp("created_at").notNull(),
+    revoked: timestamp("revoked"),
+    confirmation: jsonb("confirmation"),
+    scopes: text("scopes").array().notNull(),
+  },
+  (t) => [
+    index("oauth_access_token_client_idx").on(t.clientId),
+    index("oauth_access_token_user_idx").on(t.userId),
+    index("oauth_access_token_refresh_idx").on(t.refreshId),
+    index("oauth_access_token_session_idx").on(t.sessionId),
+    index("oauth_access_token_auth_code_idx").on(t.authorizationCodeId),
+  ],
+);
+
+export const oauthConsent = pgTable(
+  "oauth_consent",
+  {
+    id: text("id").primaryKey(),
+    clientId: text("client_id")
+      .notNull()
+      .references(() => oauthClient.clientId, { onDelete: "cascade" }),
+    userId: text("user_id").references(() => user.id, { onDelete: "cascade" }),
+    referenceId: text("reference_id"),
+    resources: text("resources").array(),
+    requestedUserInfoClaims: text("requested_user_info_claims").array(),
+    scopes: text("scopes").array().notNull(),
+    createdAt: timestamp("created_at").notNull(),
+    updatedAt: timestamp("updated_at").notNull(),
+  },
+  (t) => [
+    index("oauth_consent_client_idx").on(t.clientId),
+    index("oauth_consent_user_idx").on(t.userId),
+  ],
+);
+
+// Single-use tracking of private_key_jwt client assertions (the id is the jti).
+export const oauthClientAssertion = pgTable("oauth_client_assertion", {
   id: text("id").primaryKey(),
-  accessToken: text("access_token").notNull().unique(),
-  refreshToken: text("refresh_token").notNull().unique(),
-  accessTokenExpiresAt: timestamp("access_token_expires_at").notNull(),
-  refreshTokenExpiresAt: timestamp("refresh_token_expires_at").notNull(),
-  clientId: text("client_id")
-    .notNull()
-    .references(() => oauthApplication.clientId, { onDelete: "cascade" }),
-  // Null after the user account is deleted — the token is then unusable
-  // (getMcpSession resolves the user), so revocation comes for free.
-  userId: text("user_id").references(() => user.id, { onDelete: "cascade" }),
-  scopes: text("scopes").notNull(),
-  createdAt: timestamp("created_at").notNull().defaultNow(),
-  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  expiresAt: timestamp("expires_at").notNull(),
 });
 
-export const oauthConsent = pgTable("oauth_consent", {
-  id: text("id").primaryKey(),
-  clientId: text("client_id")
-    .notNull()
-    .references(() => oauthApplication.clientId, { onDelete: "cascade" }),
-  userId: text("user_id")
-    .notNull()
-    .references(() => user.id, { onDelete: "cascade" }),
-  scopes: text("scopes").notNull(),
-  consentGiven: boolean("consent_given").notNull().default(false),
-  createdAt: timestamp("created_at").notNull().defaultNow(),
-  updatedAt: timestamp("updated_at").notNull().defaultNow(),
-});
+// --- API keys (@better-auth/api-key, docs/architecture/api.md) ---
+//
+// Personal access tokens for /api/v1. The table belongs to the plugin — field
+// names transcribed from its schema like the OAuth tables above. The key is
+// stored hashed (SHA-256); `start` keeps the first characters so Settings can
+// tell keys apart. `permissions` is the plugin's JSON-encoded
+// { resource: actions[] } map, which src/lib/api/scopes.ts reads as scopes.
+// `reference_id` is the owning user: the plugin declares it as a plain string,
+// but the migration adds a cascading FK so deleting a user kills their keys.
+export const apikey = pgTable(
+  "apikey",
+  {
+    id: text("id").primaryKey(),
+    configId: text("config_id").notNull().default("default"),
+    name: text("name"),
+    start: text("start"),
+    referenceId: text("reference_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    prefix: text("prefix"),
+    key: text("key").notNull(),
+    refillInterval: integer("refill_interval"),
+    refillAmount: integer("refill_amount"),
+    lastRefillAt: timestamp("last_refill_at"),
+    enabled: boolean("enabled").default(true),
+    rateLimitEnabled: boolean("rate_limit_enabled").default(true),
+    // Defaults mirror the plugin config in src/lib/auth.ts (600/min).
+    rateLimitTimeWindow: integer("rate_limit_time_window").default(60000),
+    rateLimitMax: integer("rate_limit_max").default(600),
+    requestCount: integer("request_count").default(0),
+    remaining: integer("remaining"),
+    lastRequest: timestamp("last_request"),
+    expiresAt: timestamp("expires_at"),
+    createdAt: timestamp("created_at").notNull(),
+    updatedAt: timestamp("updated_at").notNull(),
+    permissions: text("permissions"),
+    metadata: text("metadata"),
+  },
+  (t) => [
+    index("apikey_config_id_idx").on(t.configId),
+    index("apikey_reference_id_idx").on(t.referenceId),
+    index("apikey_key_idx").on(t.key),
+  ],
+);
 
 // --- Application tables ---
 
@@ -163,10 +344,12 @@ export const models = pgTable("models", {
   // Onshape it is the canonical document pin
   // (…/documents/{did}/w|v/{wvmid}[/e/{eid}]) that sync re-exports from.
   sourceUrl: text("source_url"),
-  // Microversion of the Onshape workspace at the last import/sync; null for
-  // models not imported from Onshape (and for version-pinned imports, which
-  // are immutable snapshots).
-  onshapeMicroversion: text("onshape_microversion"),
+  // Opaque upstream revision token at the last import/sync, for sources that
+  // version a whole design (src/lib/sources/registry.ts, isRevisionToken):
+  // today the Onshape workspace microversion, sync's coarse "did anything
+  // change" gate. Null for sources without one and for Onshape version-pinned
+  // imports, which are immutable snapshots. Was `onshape_microversion`.
+  sourceRevision: text("source_revision"),
   // YouTube links woven into the gallery carousel, each carrying its slot in
   // the combined image+video order (see orderGalleryItems). Stored
   // canonicalized (https://www.youtube.com/watch?v=<id>[&t=<s>]) and always
@@ -758,11 +941,18 @@ export const categoriesRelations = relations(categories, ({ many }) => ({
 }));
 
 // Joined on client_id rather than the primary key — that is the column the
-// token row carries (and it is unique). Only used by the "connected apps"
+// token rows carry (and it is unique). Only used by the "connected clients"
 // list in Settings; BetterAuth reaches these tables through its own adapter.
-export const oauthAccessTokenRelations = relations(oauthAccessToken, ({ one }) => ({
-  client: one(oauthApplication, {
-    fields: [oauthAccessToken.clientId],
-    references: [oauthApplication.clientId],
+export const oauthRefreshTokenRelations = relations(oauthRefreshToken, ({ one }) => ({
+  client: one(oauthClient, {
+    fields: [oauthRefreshToken.clientId],
+    references: [oauthClient.clientId],
+  }),
+}));
+
+export const oauthConsentRelations = relations(oauthConsent, ({ one }) => ({
+  client: one(oauthClient, {
+    fields: [oauthConsent.clientId],
+    references: [oauthClient.clientId],
   }),
 }));

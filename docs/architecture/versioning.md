@@ -36,7 +36,9 @@ migration.
 **When adding a model mutation path**: run it in one transaction with
 `ensureBaselineVersion` first and `recordVersion` last, S3-delete only the keys
 those helpers return, and never delete a non-variant model file's S3 object
-directly.
+directly. The create/edit/trash/restore/purge/revert paths live in
+`src/lib/model-mutations.ts`, shared by the server actions and the REST API
+([api.md](./api.md)) — add new ones there, not in a route or an action.
 
 **When adding a `model_files` column that a revert must restore**, add it to
 `VersionFileSnapshot`, `buildSnapshot` and `restoreSnapshot`'s insert together —

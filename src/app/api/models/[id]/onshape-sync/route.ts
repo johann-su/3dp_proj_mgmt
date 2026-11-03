@@ -114,7 +114,7 @@ export async function POST(
       wvmId,
     );
     const microversionChanged =
-      !microversion || microversion !== model.onshapeMicroversion;
+      !microversion || microversion !== model.sourceRevision;
 
     // The tabs this model was imported with, each with the per-element
     // microversion stored on its file (sourceModifiedAt). One entry per element
@@ -218,10 +218,10 @@ export async function POST(
         // the stored workspace microversion so the next sync short-circuits on
         // the coarse gate, but record no version and touch no files (mirrors
         // the source-sync "toStamp" bookkeeping).
-        if (microversion !== model.onshapeMicroversion) {
+        if (microversion !== model.sourceRevision) {
           await db
             .update(models)
-            .set({ onshapeMicroversion: microversion })
+            .set({ sourceRevision: microversion })
             .where(eq(models.id, model.id));
         }
         return NextResponse.json({
@@ -323,7 +323,7 @@ export async function POST(
       }
       await tx
         .update(models)
-        .set({ onshapeMicroversion: microversion, updatedAt: new Date() })
+        .set({ sourceRevision: microversion, updatedAt: new Date() })
         .where(eq(models.id, model.id));
 
       // The replaced exports keep their S3 objects — the pre-sync version

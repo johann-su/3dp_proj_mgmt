@@ -22,6 +22,7 @@ these only stay useful if they move in lockstep with the code.
 | OpenSCAD customizer / parametric models | [`openscad.md`](./openscad.md) |
 | Search, homepage listing, categories | [`search-and-catalog.md`](./search-and-catalog.md) |
 | MCP server, its tools, the OAuth provider wiring | [`mcp.md`](./mcp.md) |
+| REST API (`/api/v1`), API keys, the shared mutation core | [`api.md`](./api.md) |
 | OpenTelemetry, logging, metrics | [`observability.md`](./observability.md) |
 | Icon-only buttons & other UI conventions | [`ui-conventions.md`](./ui-conventions.md) |
 

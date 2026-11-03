@@ -67,7 +67,7 @@ export type ArchiveImport = {
   // (ids don't survive the trip between instances).
   categories: string[];
   sourceUrl: string;
-  onshapeMicroversion: string | null;
+  sourceRevision: string | null;
   // Gallery videos off the manifest, with the slots they held in the
   // exporting instance's carousel; createModel re-validates every link.
   videos: ModelVideo[];
@@ -359,7 +359,13 @@ export function readModelArchive(
     // it originally came from; createModel re-validates the host and drops
     // anything else.
     sourceUrl: asString(model?.sourceUrl, 2000) ?? "",
-    onshapeMicroversion: asString(model?.onshapeMicroversion, 100),
+    // `onshapeMicroversion` is the field's name in archives exported before
+    // it was generalized; an older reader simply ignores `sourceRevision`
+    // (the cost is one re-export on the restored model's first sync).
+    sourceRevision: asString(
+      model?.sourceRevision ?? (model as Record<string, unknown> | null)?.onshapeMicroversion,
+      100,
+    ),
     videos: manifestVideos(model?.videos),
     bom,
     files,

@@ -159,13 +159,32 @@ the operator out is worse than the door it closes; the resolution lives in
 module because `@/lib/auth` opens a DB pool at import time. Setting it without
 OIDC logs a warning at boot.
 
-**One surface authenticates without a session cookie**: the MCP server
-(`/api/mcp`, issue #96) takes an OAuth bearer token instead, minted by
-BetterAuth's `mcp` plugin, and a token carries the same whole-catalog read
-access its user has. The whole thing — plugin, endpoint, discovery documents,
-consent page — is off unless `ENABLE_MCP` is set, because enabling it also
-opens an unauthenticated client-registration endpoint. See
-[mcp.md](./mcp.md) before touching any of it.
+**Two surfaces authenticate without a session cookie**, each off unless the
+operator opts in:
+
+- **The MCP server** (`/api/mcp`, issue #96) takes an OAuth bearer token
+  (a short-lived JWT) minted by `@better-auth/mcp`; a token carries the same
+  whole-catalog read access its user has. `ENABLE_MCP` gates it because
+  enabling it also opens an unauthenticated client-registration endpoint. See
+  [mcp.md](./mcp.md).
+- **The REST API** (`/api/v1`) takes a personal API key
+  (`@better-auth/api-key`) limited to scopes the user picked, acting as that
+  user — so editing is collaborative and deletion owner-gated exactly as in the
+  browser, because both paths call the same mutation core
+  (`src/lib/model-mutations.ts`). Keys never double as sessions
+  (`enableSessionForAPIKeys: false`), and cookie-authenticated routes don't
+  accept them. `ENABLE_API` gates it because a key bypasses SSO and its MFA.
+  See [api.md](./api.md).
+
+**OIDC callback path.** BetterAuth 1.7 serves generic OAuth providers on the
+core `/api/auth/callback/<id>` route; the provider is configured with
+`redirectURI` = the pre-1.7 `/api/auth/oauth2/callback/oidc`, and
+`src/app/api/auth/oauth2/callback/[providerId]/route.ts` forwards that path to
+the new handler, so operators' IdP registrations survive the upgrade (with
+`DISABLE_PASSWORD_LOGIN` a broken callback would lock everyone out). 1.7 also
+verifies ID tokens against the IdP's JWKS and uses PKCE — an IdP signing with
+HS256 fails sign-in. Verified end to end against a mock OIDC provider
+(navikt `mock-oauth2-server`).
 
 Because signing in grants read access to the *whole* catalog, these two flags
 plus `TRUSTED_PROXY_CIDRS` are the perimeter for any internet-facing instance —

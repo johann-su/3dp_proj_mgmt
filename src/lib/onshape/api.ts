@@ -10,38 +10,18 @@
 // Endpoint shapes verified against cad.onshape.com/api/openapi and
 // https://onshape-public.github.io/docs/api-adv/translation/.
 
-export const ONSHAPE_HOST = "cad.onshape.com";
+import { isOnshapeId, ONSHAPE_HOST } from "@/lib/sources/registry";
+
+// The URL shapes (document pins, ids) live with the source registry so client
+// components can parse them too; re-exported for this module's callers.
+export {
+  isOnshapeId,
+  ONSHAPE_HOST,
+  parseOnshapeUrl,
+  type OnshapePin,
+} from "@/lib/sources/registry";
+
 const API_BASE = `https://${ONSHAPE_HOST}/api/v6`;
-
-const ID_RE = /^[0-9a-f]{24}$/;
-
-export function isOnshapeId(value: unknown): value is string {
-  return typeof value === "string" && ID_RE.test(value);
-}
-
-// A parsed document URL: cad.onshape.com/documents/{did}[/w|v|m/{wvmid}][/e/{eid}].
-// w = workspace (branch, syncable), v = version (immutable snapshot),
-// m = microversion (rejected at import — not exportable via the wv endpoints).
-export type OnshapePin = {
-  documentId: string;
-  wvm: "w" | "v" | "m" | null;
-  wvmId: string | null;
-  elementId: string | null;
-};
-
-export function parseOnshapeUrl(url: URL): OnshapePin | null {
-  if (url.hostname !== ONSHAPE_HOST) return null;
-  const match = url.pathname.match(
-    /^\/documents\/([0-9a-f]{24})(?:\/(w|v|m)\/([0-9a-f]{24}))?(?:\/e\/([0-9a-f]{24}))?/,
-  );
-  if (!match) return null;
-  return {
-    documentId: match[1],
-    wvm: (match[2] as "w" | "v" | "m" | undefined) ?? null,
-    wvmId: match[3] ?? null,
-    elementId: match[4] ?? null,
-  };
-}
 
 // The canonical URL stored as a model's sourceUrl; it doubles as the
 // "Edit in Onshape" link and carries everything sync needs except the

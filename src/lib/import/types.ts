@@ -1,4 +1,5 @@
 import type { BomItemInput } from "@/lib/bom";
+import type { SourcePlatform } from "@/lib/sources/registry";
 
 export type RemoteAsset = {
   url: string;
@@ -25,7 +26,7 @@ export type RemoteAsset = {
 };
 
 export type ImportedProject = {
-  source: "makerworld" | "printables" | "onshape";
+  source: SourcePlatform;
   sourceUrl: string;
   title: string;
   description: string;
@@ -41,9 +42,10 @@ export type ImportedProject = {
   // that don't expose one.
   bom: BomItemInput[];
   warnings: string[];
-  // Workspace microversion at export time (Onshape only, workspace pins only);
-  // stored on the model so sync can tell whether the document changed.
-  onshapeMicroversion?: string | null;
+  // Opaque upstream revision token at import time (models.source_revision):
+  // the Onshape workspace microversion, workspace pins only. Stored on the
+  // model so sync can tell whether the design changed.
+  sourceRevision?: string | null;
   // Single-model import only: set when the projected number of downloadable
   // model files is large enough to warrant a Continue/Cancel prompt and the
   // caller hasn't confirmed yet. No download links were resolved and nothing

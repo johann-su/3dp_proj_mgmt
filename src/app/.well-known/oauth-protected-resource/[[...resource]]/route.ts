@@ -4,23 +4,19 @@ import { auth, mcpEnabled } from "@/lib/auth";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-// RFC 9728 protected-resource metadata: "this resource is guarded by that
-// authorization server". An MCP client reads it before its first authenticated
-// call, so it must be reachable without a token (the proxy skips /.well-known).
+// RFC 9728 protected-resource metadata: "/api/mcp is guarded by that
+// authorization server". A client reads it — from the URL in the 401's
+// `WWW-Authenticate` header, /.well-known/oauth-protected-resource/api/mcp —
+// before it holds any credential, so the proxy skips /.well-known.
 //
-// The optional catch-all serves it at both spellings a client may try: the
-// RFC-derived location for our resource identifier
-// (/.well-known/oauth-protected-resource/api/mcp) and the bare well-known path.
-// BetterAuth serves a third copy under its own base path, which is the one its
-// 401 `WWW-Authenticate: resource_metadata=…` header points at; all three
-// return the same document, so whichever a client picks agrees with the others.
-export async function GET() {
+// The @better-auth/mcp plugin builds this document in its request hook, which
+// only sees requests routed through the BetterAuth handler; forwarding the
+// request unchanged lets it answer at the path it expects.
+export async function GET(request: Request) {
   if (!mcpEnabled) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
-
-  const metadata = await auth.api.getMCPProtectedResource();
-  return NextResponse.json(metadata, {
-    headers: { "Access-Control-Allow-Origin": "*" },
-  });
+  return auth.handler(request);
 }
+
+export const HEAD = GET;

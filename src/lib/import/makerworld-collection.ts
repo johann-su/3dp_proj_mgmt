@@ -19,11 +19,8 @@ export const MAX_COLLECTION_DESIGNS = 200;
 
 const PAGE_SIZE = 50;
 
-export function parseMakerworldCollectionUrl(url: URL): string | null {
-  if (!/(^|\.)makerworld\.com$/.test(url.hostname)) return null;
-  const match = url.pathname.match(/\/collections\/(\d+)/);
-  return match ? match[1] : null;
-}
+// Lives with the source registry (src/lib/sources/registry.ts).
+export { parseMakerworldCollectionUrl } from "@/lib/sources/registry";
 
 export type MakerworldCollection = {
   id: number;

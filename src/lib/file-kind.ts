@@ -42,6 +42,18 @@ export function fileExtension(filename: string) {
   return dot === -1 ? "" : filename.slice(dot).toLowerCase();
 }
 
+// The kind a filename belongs to. The allowlists above don't overlap, so the
+// extension alone decides; null when no kind allows it.
+export function fileKindForFilename(
+  filename: string,
+): "model" | "image" | "pdf" | "video" | null {
+  const ext = fileExtension(filename);
+  for (const kind of ["model", "image", "pdf", "video"] as const) {
+    if (allowedExtensions(kind).includes(ext)) return kind;
+  }
+  return null;
+}
+
 // Content types are always derived from the (allowlisted) extension — never
 // from a client-supplied header or value. /api/files serves images inline on
 // our origin, so a stored type of e.g. text/html would be stored XSS.
