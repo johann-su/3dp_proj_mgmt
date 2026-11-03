@@ -1,20 +1,15 @@
-// MakerWorld collection reader. Collections are "favorites lists" in the
-// Bambu design API: the anonymous api.bambulab.com endpoints
+// MakerWorld collection reader. Collections are "favorites lists" in the Bambu design API: the anonymous api.bambulab.com endpoints
 //
 //   GET /v1/design-service/favorites/{collectionId}            (metadata)
 //   GET /v1/design-service/favorites/{collectionId}/designs    (contents,
 //       paginated with limit/offset, hidden designs excluded)
 //
-// return them without auth — discovered from MakerWorld's own frontend, which
-// calls getFavorites() for its /collections/{id} pages. Used by the
-// collection import job (see src/lib/import/collection-job.ts).
+// return them without auth — discovered from MakerWorld's own frontend, which calls getFavorites() for its /collections/{id} pages. Used by the collection import job (see src/lib/import/collection-job.ts).
 
 import { apiBase, type BambuRegion } from "@/lib/bambu/cloud";
 import { ImportError, IMPORT_USER_AGENT } from "./types";
 
-// Upper bound on designs imported from one collection — keeps a runaway job
-// (someone pastes a 5000-model mega-list) from filling the library and the
-// job from running for days.
+// Upper bound on designs imported from one collection — keeps a runaway job (someone pastes a 5000-model mega-list) from filling the library and the job from running for days.
 export const MAX_COLLECTION_DESIGNS = 200;
 
 const PAGE_SIZE = 50;
@@ -71,9 +66,7 @@ export async function fetchMakerworldCollection(
   };
 }
 
-// Lists the designs of a collection (id + title only — the import job fetches
-// full metadata per design). Pages until the API stops returning hits; capped
-// at MAX_COLLECTION_DESIGNS.
+// Lists the designs of a collection (id + title only — the import job fetches full metadata per design). Pages until the API stops returning hits; capped at MAX_COLLECTION_DESIGNS.
 export async function listMakerworldCollectionDesigns(
   collectionId: string,
   region: BambuRegion = "global",

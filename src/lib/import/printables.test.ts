@@ -25,10 +25,7 @@ test("parsePrintablesUrl rejects non-printables or non-model URLs", () => {
 });
 
 test("importFromPrintables imports .scad from otherFiles and skips unknown types", async (t) => {
-  // Parametric OpenSCAD sources live in Printables' "other files" group and
-  // download anonymously like stls; anything outside MODEL_EXTENSIONS (.zip
-  // here) is skipped. Documents the extension gate that makes .scad import
-  // work with no importer-specific code.
+  // Parametric OpenSCAD sources live in Printables' "other files" group and download anonymously like stls; anything outside MODEL_EXTENSIONS (.zip here) is skipped. Documents the extension gate that makes .scad import work with no importer-specific code.
   const print = {
     name: "Servo Horn",
     description: "d",
@@ -66,9 +63,7 @@ test("importFromPrintables imports .scad from otherFiles and skips unknown types
 });
 
 test("importFromPrintables asks to confirm before importing a model with many files", async (t) => {
-  // A model with a lot of files stops for a Continue/Cancel confirmation before
-  // any download link is resolved; it reports the projected count and, once the
-  // caller confirms, imports them all (no cap).
+  // A model with a lot of files stops for a Continue/Cancel confirmation before any download link is resolved; it reports the projected count and, once the caller confirms, imports them all (no cap).
   const print = {
     name: "Big Set",
     description: "d",
@@ -114,8 +109,7 @@ test("importFromPrintables asks to confirm before importing a model with many fi
 });
 
 test("listPrintablesUpstreamFiles maps files to ids + modified tokens for sync", () => {
-  // The ids must match what importFromPrintables stamps on its assets
-  // ("file:<id>") — the sync planner joins the two worlds on them.
+  // The ids must match what importFromPrintables stamps on its assets ("file:<id>") — the sync planner joins the two worlds on them.
   const files = listPrintablesUpstreamFiles({
     name: "Benchy",
     description: null,

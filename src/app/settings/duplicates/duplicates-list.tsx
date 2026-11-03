@@ -143,8 +143,7 @@ export function DuplicatesList({
   );
 }
 
-// One side of the pair. Null once that model has been trashed or purged — the
-// flag stays listed so a moderator can still clear it.
+// One side of the pair. Null once that model has been trashed or purged — the flag stays listed so a moderator can still clear it.
 function ModelChip({
   model,
   label,

@@ -1,15 +1,8 @@
-// Scopes for the public REST API (/api/v1, docs/architecture/api.md) and how
-// they map onto the api-key plugin's storage. Pure — no DB or auth imports —
-// so the rules are unit-tested and src/lib/auth.ts can import the prefix.
+// Scopes for the public REST API (/api/v1, docs/architecture/api.md) and how they map onto the api-key plugin's storage. Pure — no DB or auth imports — so the rules are unit-tested and src/lib/auth.ts can import the prefix.
 //
-// The plugin stores a key's grants as BetterAuth "permissions", a
-// `{ resource: actions[] }` map (`{ models: ["read", "write"] }`). The API and
-// its docs speak in OAuth-style scope strings ("models:write") instead, since
-// that is what a future OAuth client or plugin manifest would request; this
-// module is the only place the two spellings meet.
+// The plugin stores a key's grants as BetterAuth "permissions", a `{ resource: actions[] }` map (`{ models: ["read", "write"] }`). The API and its docs speak in OAuth-style scope strings ("models:write") instead, since that is what a future OAuth client or plugin manifest would request; this module is the only place the two spellings meet.
 
-// Every key starts with this, so a leaked one is recognisable (secret
-// scanners, logs) and can't be mistaken for another app's token.
+// Every key starts with this, so a leaked one is recognisable (secret scanners, logs) and can't be mistaken for another app's token.
 export const API_KEY_PREFIX = "pv_";
 
 export const API_SCOPES = [
@@ -23,10 +16,7 @@ export const API_SCOPES = [
 
 export type ApiScope = (typeof API_SCOPES)[number];
 
-// Shown on Settings → API keys and in the OpenAPI document. `files:read` is
-// spelled out as the one that hands out the bytes: metadata (BOM, estimates,
-// tags) is enough for most integrations, while model files on an instance
-// can be paid content.
+// Shown on Settings → API keys and in the OpenAPI document. `files:read` is spelled out as the one that hands out the bytes: metadata (BOM, estimates, tags) is enough for most integrations, while model files on an instance can be paid content.
 export const API_SCOPE_DESCRIPTIONS: Record<ApiScope, string> = {
   "models:read": "List and read models: metadata, tags, BOMs, print estimates",
   "models:write": "Create, edit and trash models",
@@ -48,9 +38,7 @@ export function isApiScope(value: unknown): value is ApiScope {
   return typeof value === "string" && (API_SCOPES as readonly string[]).includes(value);
 }
 
-// Untrusted input (a form submission) → a deduped, ordered scope list, or an
-// error. An empty list is rejected: a key that can do nothing is a mistake,
-// not a configuration.
+// Untrusted input (a form submission) → a deduped, ordered scope list, or an error. An empty list is rejected: a key that can do nothing is a mistake, not a configuration.
 export function parseScopes(input: unknown): ApiScope[] | { error: string } {
   if (!Array.isArray(input)) return { error: "Scopes must be a list" };
   const unknown = input.filter((s) => !isApiScope(s));
@@ -69,10 +57,7 @@ export function scopesToPermissions(scopes: readonly ApiScope[]): Record<string,
   return out;
 }
 
-// The plugin hands permissions back parsed (or null for a key created without
-// any, e.g. straight through /api/auth/api-key/create). Anything not in our
-// vocabulary is dropped rather than trusted — a key can't gain a scope we
-// don't know how to enforce.
+// The plugin hands permissions back parsed (or null for a key created without any, e.g. straight through /api/auth/api-key/create). Anything not in our vocabulary is dropped rather than trusted — a key can't gain a scope we don't know how to enforce.
 export function permissionsToScopes(permissions: unknown): ApiScope[] {
   if (!permissions || typeof permissions !== "object") return [];
   const granted = new Set<string>();
@@ -83,20 +68,15 @@ export function permissionsToScopes(permissions: unknown): ApiScope[] {
   return API_SCOPES.filter((s) => granted.has(s));
 }
 
-// Write implies read on the same resource: every write endpoint answers with
-// the resource it changed, and a key that may edit a model but not look at it
-// would be a contradiction nobody means to configure.
+// Write implies read on the same resource: every write endpoint answers with the resource it changed, and a key that may edit a model but not look at it would be a contradiction nobody means to configure.
 export function hasScope(granted: readonly ApiScope[], required: ApiScope): boolean {
   if (granted.includes(required)) return true;
   const [resource, action] = required.split(":");
   return action === "read" && granted.includes(`${resource}:write` as ApiScope);
 }
 
-// The key a request presents: `Authorization: Bearer pv_…` (what HTTP clients
-// and n8n's "Header Auth" send) or the plugin's own `x-api-key` header.
-// Only our prefix is accepted from the Authorization header, so an unrelated
-// bearer token (an MCP JWT sent to the wrong endpoint) fails as "no key"
-// instead of costing a hashed DB lookup.
+// The key a request presents: `Authorization: Bearer pv_…` (what HTTP clients and n8n's "Header Auth" send) or the plugin's own `x-api-key` header.
+// Only our prefix is accepted from the Authorization header, so an unrelated bearer token (an MCP JWT sent to the wrong endpoint) fails as "no key" instead of costing a hashed DB lookup.
 export function apiKeyFromHeaders(headers: Headers): string | null {
   const auth = headers.get("authorization");
   if (auth) {

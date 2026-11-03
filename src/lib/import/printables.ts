@@ -1,5 +1,4 @@
-// Printables importer — uses the same public GraphQL API the printables.com
-// SPA talks to. Metadata and download links are available anonymously.
+// Printables importer — uses the same public GraphQL API the printables.com SPA talks to. Metadata and download links are available anonymously.
 
 import { htmlishToMarkdown } from "@/lib/html";
 import { MODEL_EXTENSIONS, fileExtension } from "@/lib/file-kind";
@@ -15,8 +14,7 @@ const GRAPHQL_URL = "https://api.printables.com/graphql/";
 const MEDIA_BASE = "https://media.printables.com/";
 
 export type PrintablesOptions = {
-  // Skip the "a lot of files" confirmation and download every model file. Set
-  // by the route once the user has agreed to import them all.
+  // Skip the "a lot of files" confirmation and download every model file. Set by the route once the user has agreed to import them all.
   confirmManyFiles?: boolean;
 };
 
@@ -27,9 +25,7 @@ type PrintablesFile = {
   id: string;
   name: string;
   fileSize: number;
-  // Per-file last-modified timestamp — the change signal for source sync
-  // (verified live; introspection is disabled but the field exists on all
-  // three file groups).
+  // Per-file last-modified timestamp — the change signal for source sync (verified live; introspection is disabled but the field exists on all three file groups).
   modified: string | null;
 };
 
@@ -38,8 +34,7 @@ export type PrintablesPrint = {
   description: string | null;
   summary: string | null;
   tags: { name: string }[];
-  // Printables' own taxonomy; `path` is root-first (["3D Printers", "Test
-  // Models"]).
+  // Printables' own taxonomy; `path` is root-first (["3D Printers", "Test Models"]).
   category: { path: { name: string }[] } | null;
   images: { filePath: string }[];
   stls: PrintablesFile[] | null;
@@ -110,8 +105,7 @@ export async function downloadLink(
   }
 }
 
-// Fetches + validates the anonymous print metadata. Shared by the importer
-// and the source-sync route.
+// Fetches + validates the anonymous print metadata. Shared by the importer and the source-sync route.
 export async function fetchPrintablesPrint(printId: string): Promise<PrintablesPrint> {
   const data = await graphql<{ print: PrintablesPrint | null }>(PRINT_QUERY, {
     id: printId,
@@ -120,16 +114,13 @@ export async function fetchPrintablesPrint(printId: string): Promise<PrintablesP
   return data.print;
 }
 
-// One entry of the print's current downloadable model files, with what the
-// download mutation needs to resolve it.
+// One entry of the print's current downloadable model files, with what the download mutation needs to resolve it.
 export type PrintablesUpstreamFile = UpstreamFile & {
   fileId: string;
   fileType: PrintablesFileType;
 };
 
-// Pure listing of the print's downloadable model files with the ids/tokens
-// the sync planner diffs against model_files. Must stay in lockstep with the
-// ids importFromPrintables stamps on its assets.
+// Pure listing of the print's downloadable model files with the ids/tokens the sync planner diffs against model_files. Must stay in lockstep with the ids importFromPrintables stamps on its assets.
 export function listPrintablesUpstreamFiles(
   print: PrintablesPrint,
 ): PrintablesUpstreamFile[] {
@@ -195,8 +186,7 @@ export async function importFromPrintables(
       .map((f) => ({ file: f, fileType })),
   );
 
-  // Stop before resolving any download link when there are a lot of files, so
-  // the user can confirm (or cancel) first.
+  // Stop before resolving any download link when there are a lot of files, so the user can confirm (or cancel) first.
   if (!options.confirmManyFiles && modelFiles.length >= IMPORT_CONFIRM_FILE_THRESHOLD) {
     return { ...project, needsConfirmation: true, fileCount: modelFiles.length };
   }

@@ -14,10 +14,7 @@ export const dynamic = "force-dynamic";
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-// Full-page customizer for a parametric .scad model file: parameter rail on
-// the left, live 3D preview (rendered by the openscad service) on the right.
-// Open to any signed-in user (generated variants land on the owner's model) —
-// only sent back to the model page when the openscad service is unconfigured.
+// Full-page customizer for a parametric .scad model file: parameter rail on the left, live 3D preview (rendered by the openscad service) on the right. Open to any signed-in user (generated variants land on the owner's model) — only sent back to the model page when the openscad service is unconfigured.
 export default async function CustomizePage({
   params,
 }: {

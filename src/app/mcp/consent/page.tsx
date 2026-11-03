@@ -18,16 +18,9 @@ import { ConsentButtons } from "./consent-buttons";
 
 export const dynamic = "force-dynamic";
 
-// The OAuth `consentPage`: BetterAuth redirects here, with a signed query
-// naming the client, once the user is signed in and hasn't approved that
-// client yet. It shows who is asking and what they get.
+// The OAuth `consentPage`: BetterAuth redirects here, with a signed query naming the client, once the user is signed in and hasn't approved that client yet. It shows who is asking and what they get.
 //
-// Approving grants the client the *same read access the user has in the
-// browser* — the catalog is private but not further partitioned (see
-// docs/architecture/auth-and-access.md), so there is nothing finer to consent
-// to. It is a transparency screen, not a permission boundary; the real
-// control is that the whole MCP surface is off unless the operator sets
-// ENABLE_MCP.
+// Approving grants the client the *same read access the user has in the browser* — the catalog is private but not further partitioned (see docs/architecture/auth-and-access.md), so there is nothing finer to consent to. It is a transparency screen, not a permission boundary; the real control is that the whole MCP surface is off unless the operator sets ENABLE_MCP.
 export default async function McpConsentPage({
   searchParams,
 }: {
@@ -57,8 +50,7 @@ export default async function McpConsentPage({
   }
 
   const name = client.name || "An MCP client";
-  // Registration is self-asserted (anyone can call the register endpoint), so
-  // the name proves nothing; where the code goes is the part worth showing.
+  // Registration is self-asserted (anyone can call the register endpoint), so the name proves nothing; where the code goes is the part worth showing.
   const destinations = [
     ...new Set(client.redirectUris.map((uri) => URL.parse(uri)?.origin ?? uri)),
   ];

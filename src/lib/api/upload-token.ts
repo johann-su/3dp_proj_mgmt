@@ -1,20 +1,11 @@
-// The handle POST /api/v1/uploads returns for a staged file, which a later
-// create/update call attaches to a model. The browser flow echoes the staged
-// descriptor (key, size, content hash) back through the client and the
-// mutation core re-validates what it can; the API instead hands out a signed
-// token over that descriptor, so an API client can't claim another size or
-// hash (the hash drives duplicate detection), can't attach somebody else's
-// staged upload, and gets one opaque string to pass around.
+// The handle POST /api/v1/uploads returns for a staged file, which a later create/update call attaches to a model. The browser flow echoes the staged descriptor (key, size, content hash) back through the client and the mutation core re-validates what it can; the API instead hands out a signed token over that descriptor, so an API client can't claim another size or hash (the hash drives duplicate detection), can't attach somebody else's staged upload, and gets one opaque string to pass around.
 //
-// Format: base64url(JSON claims) "." base64url(HMAC-SHA256), keyed separately
-// from the file tokens (src/lib/file-token.ts) but from the same secret. Pure
-// apart from reading the secret, so the rules are unit-tested with a fixed key.
+// Format: base64url(JSON claims) "." base64url(HMAC-SHA256), keyed separately from the file tokens (src/lib/file-token.ts) but from the same secret. Pure apart from reading the secret, so the rules are unit-tested with a fixed key.
 
 import { createHmac, scryptSync, timingSafeEqual } from "node:crypto";
 import type { FileKind } from "@/db/schema";
 
-// Long enough to upload a batch of files and then create the model; short
-// enough that a leaked handle is soon worthless.
+// Long enough to upload a batch of files and then create the model; short enough that a leaked handle is soon worthless.
 export const UPLOAD_TOKEN_TTL_SECONDS = 24 * 3600;
 
 export type StagedUpload = {
@@ -45,8 +36,7 @@ export function signUploadToken(
   return { token: `${payload}.${mac(payload, key)}`, expiresAt: new Date(exp * 1000) };
 }
 
-// The descriptor, or null when the token is malformed, tampered with, expired
-// or was issued to another user.
+// The descriptor, or null when the token is malformed, tampered with, expired or was issued to another user.
 export function verifyUploadToken(
   token: string,
   userId: string,
@@ -88,8 +78,7 @@ export function verifyUploadToken(
 
 let cachedKey: Buffer | null = null;
 
-// Derived lazily so importing this module never throws on an instance
-// without a secret (the API is off there anyway).
+// Derived lazily so importing this module never throws on an instance without a secret (the API is off there anyway).
 export function uploadTokenKey(): Buffer {
   if (cachedKey) return cachedKey;
   const secret =

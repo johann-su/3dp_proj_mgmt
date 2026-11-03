@@ -68,18 +68,13 @@ export default async function ModelPage({
 
   after(() => incrementModelViewCount(model.id));
 
-  // Edit history for the History panel: version rows in insertion order (the
-  // identity id — rows written in one transaction share a created_at), each
-  // summarized against its predecessor.
+  // Edit history for the History panel: version rows in insertion order (the identity id — rows written in one transaction share a created_at), each summarized against its predecessor.
   const versionRows = await db.query.modelVersions.findMany({
     where: eq(modelVersions.modelId, model.id),
     orderBy: asc(modelVersions.id),
     with: { editor: { columns: { name: true } } },
   });
-  // Models predating versioning have no rows until their first mutation
-  // backfills one (ensureBaselineVersion). Until then, synthesize a display-
-  // only v1 from the current state so History always shows the original
-  // version — current, so no revert button, and nothing is written on GET.
+  // Models predating versioning have no rows until their first mutation backfills one (ensureBaselineVersion). Until then, synthesize a display-only v1 from the current state so History always shows the original version — current, so no revert button, and nothing is written on GET.
   const history: ModelHistoryEntry[] =
     versionRows.length === 0
       ? [
@@ -108,15 +103,13 @@ export default async function ModelPage({
           }))
           .reverse();
 
-  // Photos and uploaded videos in one list — they share the carousel and
-  // the `position` sequence, and either can be the cover.
+  // Photos and uploaded videos in one list — they share the carousel and the `position` sequence, and either can be the cover.
   const media = model.files.filter(
     (f) => f.kind === "image" || f.kind === "video",
   );
   const printFiles = model.files.filter((f) => f.kind === "model");
   const pdfFiles = model.files.filter((f) => f.kind === "pdf");
-  // Owner-equivalent for the destructive bits (delete the model, delete any
-  // variant): the owner themselves or a moderator/admin.
+  // Owner-equivalent for the destructive bits (delete the model, delete any variant): the owner themselves or a moderator/admin.
   const canManage = canActAsOwner(session.user, model.userId);
   const platform = platformFromSourceUrl(model.sourceUrl);
   const makerworldUrl = model.sourceUrl?.includes("makerworld")
@@ -147,10 +140,7 @@ export default async function ModelPage({
     printFiles.map((f, index) => [f.id, sliceInfos[index]]),
   );
 
-  // Parametric .scad files: parse the customizer schema from the source so
-  // any signed-in viewer gets the parameter form (customizing is open to
-  // non-owners too). Only worth the S3 read when the OpenSCAD service is
-  // configured and the viewer could actually render.
+  // Parametric .scad files: parse the customizer schema from the source so any signed-in viewer gets the parameter form (customizing is open to non-owners too). Only worth the S3 read when the OpenSCAD service is configured and the viewer could actually render.
   const scadConfigured = openscadConfigured();
   const scadGroupsByFileId = new Map<
     string,
@@ -168,9 +158,7 @@ export default async function ModelPage({
     );
   }
 
-  // Files can be left pending when the slicer service was unreachable (or
-  // unconfigured) at upload time — retry them in the background so estimates
-  // eventually appear on refresh.
+  // Files can be left pending when the slicer service was unreachable (or unconfigured) at upload time — retry them in the background so estimates eventually appear on refresh.
   const slicerConfigured = !!process.env.SLICER_URL;
   if (slicerConfigured && printFiles.some((f) => f.sliceStatus === "pending")) {
     after(() => processPendingSlices(model.id));
@@ -178,8 +166,7 @@ export default async function ModelPage({
 
   let collectionOptions: CollectionOption[] = [];
   if (session) {
-    // Smart collections are excluded: their membership is rule-defined, so
-    // there is nothing to add a model to (see toggleModelInCollection).
+    // Smart collections are excluded: their membership is rule-defined, so there is nothing to add a model to (see toggleModelInCollection).
     const own = await db.query.collections.findMany({
       where: and(eq(collections.userId, session.user.id), eq(collections.smart, false)),
       orderBy: asc(collections.title),
@@ -207,8 +194,7 @@ export default async function ModelPage({
     }));
   }
 
-  // Whether the current viewer has liked this model (Like button) and whether
-  // anyone has pinned it to the shared homepage section (Pin button).
+  // Whether the current viewer has liked this model (Like button) and whether anyone has pinned it to the shared homepage section (Pin button).
   const [likeRow, pinned, shareToken] = await Promise.all([
     db.query.modelLikes.findFirst({
       where: and(
@@ -242,8 +228,7 @@ export default async function ModelPage({
       kind: f.kind === "video" ? ("video" as const) : ("image" as const),
     })),
     videos: model.videos,
-    // Every stored .3mf can be previewed interactively in the gallery; .step
-    // and .scad geometry can't be rendered client-side, so they're excluded.
+    // Every stored .3mf can be previewed interactively in the gallery; .step and .scad geometry can't be rendered client-side, so they're excluded.
     modelFiles: printFiles
       .filter((f) => f.filename.toLowerCase().endsWith(".3mf"))
       .map((f) => ({
@@ -262,8 +247,7 @@ export default async function ModelPage({
           id: file.id,
           filename: file.filename,
           imported: file.imported,
-          // Signed URL prefix for the slicer deep links, which download the
-          // file without the session cookie (see file-download-menu.tsx).
+          // Signed URL prefix for the slicer deep links, which download the file without the session cookie (see file-download-menu.tsx).
           slicerPath: slicerFileBase(file.id),
           size: file.size,
           printTime:
@@ -286,15 +270,12 @@ export default async function ModelPage({
                 .map(([key, value]) => `${key} = ${value}`)
                 .join(", ") || "default parameters"
             : null,
-          // Owner and moderators/admins may delete any variant; anyone else
-          // only the ones they generated (generatedBy). Matches the DELETE
-          // route's check.
+          // Owner and moderators/admins may delete any variant; anyone else only the ones they generated (generatedBy). Matches the DELETE route's check.
           deletableByViewer:
             canManage || file.generatedBy === session.user.id,
         };
       };
-      // Generated .3mf variants render nested under their .scad source
-      // instead of cluttering the top-level file list.
+      // Generated .3mf variants render nested under their .scad source instead of cluttering the top-level file list.
       return printFiles
         .filter((f) => f.generatedFromId === null)
         .map((file) => ({

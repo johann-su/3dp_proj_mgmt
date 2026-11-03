@@ -21,23 +21,14 @@ export const dynamic = "force-dynamic";
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-// Whole days until the lazy sweep purges a trashed model for good (same as the
-// trash list; kept local to avoid coupling the two pages).
+// Whole days until the lazy sweep purges a trashed model for good (same as the trash list; kept local to avoid coupling the two pages).
 function daysUntilPurge(deletedAt: Date): number {
   const purgeAt =
     deletedAt.getTime() + TRASH_RETENTION_DAYS * 24 * 60 * 60 * 1000;
   return Math.max(0, Math.ceil((purgeAt - Date.now()) / (24 * 60 * 60 * 1000)));
 }
 
-// Read-only preview of a trashed model, so it can be inspected before restoring
-// or purging — the model page itself notFounds trashed models. Soft delete only
-// sets deleted_at, so the live model_files rows still serve their bytes; this
-// renders the same ModelView as the model page, fed from those live rows, with
-// every mutating affordance disabled via modelId: null (edit, collections,
-// sync, customize, per-file/variant delete, history) and only Restore / Delete
-// permanently / Back as actions. Access is scoped like the trash list: the
-// owner, or a moderator/admin (canActAsOwner) — a plain user can't peek at
-// someone else's trashed model, and we notFound rather than leak its existence.
+// Read-only preview of a trashed model, so it can be inspected before restoring or purging — the model page itself notFounds trashed models. Soft delete only sets deleted_at, so the live model_files rows still serve their bytes; this renders the same ModelView as the model page, fed from those live rows, with every mutating affordance disabled via modelId: null (edit, collections, sync, customize, per-file/variant delete, history) and only Restore / Delete permanently / Back as actions. Access is scoped like the trash list: the owner, or a moderator/admin (canActAsOwner) — a plain user can't peek at someone else's trashed model, and we notFound rather than leak its existence.
 export default async function TrashPreviewPage({
   params,
 }: {
@@ -71,8 +62,7 @@ export default async function TrashPreviewPage({
   const printFiles = model.files.filter((f) => f.kind === "model");
   const pdfFiles = model.files.filter((f) => f.kind === "pdf");
 
-  // Same estimate sourcing as the model page: embedded Bambu slice_info read
-  // live from S3 (ranged GETs), falling back to the persisted values.
+  // Same estimate sourcing as the model page: embedded Bambu slice_info read live from S3 (ranged GETs), falling back to the persisted values.
   const sliceInfos = await Promise.all(
     printFiles.map((f) => get3mfSliceInfo(f.s3Key, f.size)),
   );
@@ -112,8 +102,7 @@ export default async function TrashPreviewPage({
       approx: isApproxEstimate(file),
       plateCount: info?.plateCount ?? null,
       printer: file.printerInfo ?? null,
-      // Never show the "estimating…" pulse in a read-only preview — pending
-      // rows never advance here (nothing re-runs the slicer for trash).
+      // Never show the "estimating…" pulse in a read-only preview — pending rows never advance here (nothing re-runs the slicer for trash).
       sliceStatus: file.sliceStatus === "failed" ? "failed" : null,
       sliceError: file.sliceError ?? null,
       sliceEngine: file.sliceEngine ?? null,
@@ -137,8 +126,7 @@ export default async function TrashPreviewPage({
     parametric: printFiles.some((f) => fileExtension(f.filename) === ".scad"),
     sourceUrl: model.sourceUrl ?? null,
     sourceName,
-    // Suppress sync rows — syncing a trashed model makes no sense, and both
-    // gates already require modelId anyway.
+    // Suppress sync rows — syncing a trashed model makes no sense, and both gates already require modelId anyway.
     onshapeWvm: null,
     makerworldUrl: null,
     media: media.map((f) => ({
@@ -154,8 +142,7 @@ export default async function TrashPreviewPage({
         bed: resolveBedSizeMm(f.printerInfo),
       })),
     bom: model.bomItems,
-    // Generated variants nest under their .scad source, like the model page —
-    // they come back with the model on restore, so a preview should show them.
+    // Generated variants nest under their .scad source, like the model page — they come back with the model on restore, so a preview should show them.
     printFiles: printFiles
       .filter((f) => f.generatedFromId === null)
       .map((file) => ({

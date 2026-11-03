@@ -29,9 +29,7 @@ export const user = pgTable("user", {
   email: text("email").notNull().unique(),
   emailVerified: boolean("email_verified").notNull().default(false),
   image: text("image"),
-  // Instance-wide role (issue #54): moderators/admins pass the owner-only
-  // gates on all models/collections, admins additionally manage users under
-  // Settings → Users. See src/lib/roles.ts; first admin via src/lib/admin.ts.
+  // Instance-wide role (issue #54): moderators/admins pass the owner-only gates on all models/collections, admins additionally manage users under Settings → Users. See src/lib/roles.ts; first admin via src/lib/admin.ts.
   role: text("role").$type<UserRole>().notNull().default("user"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
@@ -79,17 +77,9 @@ export const verification = pgTable("verification", {
 
 // --- OAuth provider tables (BetterAuth `jwt` + `@better-auth/mcp`, issue #96) ---
 //
-// The MCP server (/api/mcp) authenticates LLM clients with OAuth 2.1 bearer
-// tokens instead of session cookies, so the instance acts as an authorization
-// server for them (see docs/architecture/mcp.md). These tables belong to the
-// plugins — transcribed from @better-auth/oauth-provider's and the jwt
-// plugin's schema definitions, so property names must stay exactly as spelled
-// (the adapter looks them up by name, and BetterAuth checks the `schema` map in
-// src/lib/auth.ts against them at startup). Only written while ENABLE_MCP is
-// set. Re-check them against the plugin schema when bumping better-auth.
+// The MCP server (/api/mcp) authenticates LLM clients with OAuth 2.1 bearer tokens instead of session cookies, so the instance acts as an authorization server for them (see docs/architecture/mcp.md). These tables belong to the plugins — transcribed from @better-auth/oauth-provider's and the jwt plugin's schema definitions, so property names must stay exactly as spelled (the adapter looks them up by name, and BetterAuth checks the `schema` map in src/lib/auth.ts against them at startup). Only written while ENABLE_MCP is set. Re-check them against the plugin schema when bumping better-auth.
 
-// Signing keys for the access tokens (the private key is encrypted at rest
-// with BETTER_AUTH_SECRET). /api/auth/jwks publishes the public halves.
+// Signing keys for the access tokens (the private key is encrypted at rest with BETTER_AUTH_SECRET). /api/auth/jwks publishes the public halves.
 export const jwks = pgTable("jwks", {
   id: text("id").primaryKey(),
   publicKey: text("public_key").notNull(),
@@ -100,9 +90,7 @@ export const jwks = pgTable("jwks", {
   crv: text("crv"),
 });
 
-// Clients register themselves (RFC 7591 dynamic client registration), so a
-// row is created by whatever connects, not by an admin — hence the whole
-// surface being opt-in per instance.
+// Clients register themselves (RFC 7591 dynamic client registration), so a row is created by whatever connects, not by an admin — hence the whole surface being opt-in per instance.
 export const oauthClient = pgTable("oauth_client", {
   id: text("id").primaryKey(),
   clientId: text("client_id").notNull().unique(),
@@ -180,8 +168,7 @@ export const oauthClientResource = pgTable(
   ],
 );
 
-// Refresh tokens are what keep a client connected without the user in the
-// loop; Settings → MCP deletes them to disconnect a client.
+// Refresh tokens are what keep a client connected without the user in the loop; Settings → MCP deletes them to disconnect a client.
 export const oauthRefreshToken = pgTable(
   "oauth_refresh_token",
   {
@@ -275,13 +262,7 @@ export const oauthClientAssertion = pgTable("oauth_client_assertion", {
 
 // --- API keys (@better-auth/api-key, docs/architecture/api.md) ---
 //
-// Personal access tokens for /api/v1. The table belongs to the plugin — field
-// names transcribed from its schema like the OAuth tables above. The key is
-// stored hashed (SHA-256); `start` keeps the first characters so Settings can
-// tell keys apart. `permissions` is the plugin's JSON-encoded
-// { resource: actions[] } map, which src/lib/api/scopes.ts reads as scopes.
-// `reference_id` is the owning user: the plugin declares it as a plain string,
-// but the migration adds a cascading FK so deleting a user kills their keys.
+// Personal access tokens for /api/v1. The table belongs to the plugin — field names transcribed from its schema like the OAuth tables above. The key is stored hashed (SHA-256); `start` keeps the first characters so Settings can tell keys apart. `permissions` is the plugin's JSON-encoded { resource: actions[] } map, which src/lib/api/scopes.ts reads as scopes. `reference_id` is the owning user: the plugin declares it as a plain string, but the migration adds a cascading FK so deleting a user kills their keys.
 export const apikey = pgTable(
   "apikey",
   {
@@ -324,9 +305,7 @@ export const categories = pgTable("categories", {
   id: uuid("id").primaryKey().defaultRandom(),
   name: text("name").notNull().unique(),
   slug: text("slug").notNull().unique(),
-  // Match keywords for category suggestion (src/lib/category-suggest.ts) —
-  // compared against a model's title, tags and, on import, the source
-  // platform's category names. Defaults live in src/lib/category-defaults.ts.
+  // Match keywords for category suggestion (src/lib/category-suggest.ts) — compared against a model's title, tags and, on import, the source platform's category names. Defaults live in src/lib/category-defaults.ts.
   keywords: text("keywords").array().notNull().default([]),
 });
 
@@ -340,37 +319,21 @@ export const models = pgTable("models", {
   userId: text("user_id")
     .notNull()
     .references(() => user.id, { onDelete: "cascade" }),
-  // makerworld/printables/onshape URL this model was imported from. For
-  // Onshape it is the canonical document pin
-  // (…/documents/{did}/w|v/{wvmid}[/e/{eid}]) that sync re-exports from.
+  // makerworld/printables/onshape URL this model was imported from. For Onshape it is the canonical document pin (…/documents/{did}/w|v/{wvmid}[/e/{eid}]) that sync re-exports from.
   sourceUrl: text("source_url"),
-  // Opaque upstream revision token at the last import/sync, for sources that
-  // version a whole design (src/lib/sources/registry.ts, isRevisionToken):
-  // today the Onshape workspace microversion, sync's coarse "did anything
-  // change" gate. Null for sources without one and for Onshape version-pinned
-  // imports, which are immutable snapshots. Was `onshape_microversion`.
+  // Opaque upstream revision token at the last import/sync, for sources that version a whole design (src/lib/sources/registry.ts, isRevisionToken): today the Onshape workspace microversion, sync's coarse "did anything change" gate. Null for sources without one and for Onshape version-pinned imports, which are immutable snapshots. Was `onshape_microversion`.
   sourceRevision: text("source_revision"),
-  // YouTube links woven into the gallery carousel, each carrying its slot in
-  // the combined image+video order (see orderGalleryItems). Stored
-  // canonicalized (https://www.youtube.com/watch?v=<id>[&t=<s>]) and always
-  // re-parsed before anything is embedded — see src/lib/video.ts. A column
-  // rather than a table: no per-video metadata to hang off a row.
+  // YouTube links woven into the gallery carousel, each carrying its slot in the combined image+video order (see orderGalleryItems). Stored canonicalized (https://www.youtube.com/watch?v=<id>[&t=<s>]) and always re-parsed before anything is embedded — see src/lib/video.ts. A column rather than a table: no per-video metadata to hang off a row.
   videos: jsonb("videos").$type<ModelVideo[]>().notNull().default([]),
-  // Page view count, incremented on each model detail page load — see
-  // src/lib/metrics.ts. Not surfaced in the UI yet.
+  // Page view count, incremented on each model detail page load — see src/lib/metrics.ts. Not surfaced in the UI yet.
   viewCount: integer("view_count").notNull().default(0),
-  // Soft delete ("trash"): a trashed model is hidden from every listing (the
-  // queries add `deleted_at IS NULL`) but keeps its rows, versions and S3
-  // objects so the owner can restore it from /models/trash. Purged for real
-  // (rows + S3) after TRASH_RETENTION_DAYS — see src/lib/model-versions.ts.
+  // Soft delete ("trash"): a trashed model is hidden from every listing (the queries add `deleted_at IS NULL`) but keeps its rows, versions and S3 objects so the owner can restore it from /models/trash. Purged for real (rows + S3) after TRASH_RETENTION_DAYS — see src/lib/model-versions.ts.
   deletedAt: timestamp("deleted_at"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
 
-// Per-user Bambu Cloud credential, used to download MakerWorld .3mf files
-// (which require an authenticated Bambu account). The access token is stored
-// encrypted at rest — see src/lib/crypto.ts.
+// Per-user Bambu Cloud credential, used to download MakerWorld .3mf files (which require an authenticated Bambu account). The access token is stored encrypted at rest — see src/lib/crypto.ts.
 export const bambuCredentials = pgTable("bambu_credentials", {
   userId: text("user_id")
     .primaryKey()
@@ -378,21 +341,15 @@ export const bambuCredentials = pgTable("bambu_credentials", {
   account: text("account").notNull(),
   region: text("region").$type<"global" | "china">().notNull().default("global"),
   tokenCipher: text("token_cipher").notNull(),
-  // When the token stops working, from the login response (~90 days) or the
-  // token's JWT claim; null when unknown. Drives the renewal reminder — see
-  // src/lib/bambu/token-expiry.ts.
+  // When the token stops working, from the login response (~90 days) or the token's JWT claim; null when unknown. Drives the renewal reminder — see src/lib/bambu/token-expiry.ts.
   expiresAt: timestamp("expires_at"),
-  // Set when Bambu rejected the token during an import/sync (401); cleared on
-  // reconnect. Overrides expiresAt.
+  // Set when Bambu rejected the token during an import/sync (401); cleared on reconnect. Overrides expiresAt.
   invalidAt: timestamp("invalid_at"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
 
-// Per-user Onshape OAuth2 tokens ("Sign in with Onshape", see
-// src/lib/onshape/oauth.ts), used to import and sync models from Onshape.
-// Both tokens are stored encrypted at rest — see src/lib/crypto.ts. The
-// refresh token is rotated on every access-token refresh.
+// Per-user Onshape OAuth2 tokens ("Sign in with Onshape", see src/lib/onshape/oauth.ts), used to import and sync models from Onshape. Both tokens are stored encrypted at rest — see src/lib/crypto.ts. The refresh token is rotated on every access-token refresh.
 export const onshapeCredentials = pgTable("onshape_credentials", {
   userId: text("user_id")
     .primaryKey()
@@ -406,70 +363,35 @@ export const onshapeCredentials = pgTable("onshape_credentials", {
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
 
-// "image" and "video" are both gallery media and share one position sequence
-// (see GALLERY_KINDS in src/lib/file-kind.ts) — the carousel shows them as one
-// list, and either can be the model's cover.
+// "image" and "video" are both gallery media and share one position sequence (see GALLERY_KINDS in src/lib/file-kind.ts) — the carousel shows them as one list, and either can be the model's cover.
 export type FileKind = "model" | "image" | "pdf" | "video";
 
-// Print-estimate lifecycle of a .3mf model file (see src/lib/slicer.ts):
-// pending  queued for the slicer service (or the service is unreachable)
-// ok       estimates present — read from embedded Bambu slice_info metadata
+// Print-estimate lifecycle of a .3mf model file (see src/lib/slicer.ts): pending  queued for the slicer service (or the service is unreachable) ok       estimates present — read from embedded Bambu slice_info metadata
 //          ("embedded") or produced by the headless slicer ("slicer")
-// failed   the slicer could not slice the file (sliceError has the reason)
-// null     not applicable (images, pdfs, .step files, uploads that predate
+// failed   the slicer could not slice the file (sliceError has the reason) null     not applicable (images, pdfs, .step files, uploads that predate
 //          the slicer feature)
 export type SliceStatus = "pending" | "ok" | "failed";
 export type SliceSource = "embedded" | "slicer";
 export type FilamentChanges = "none" | "color" | "material";
 
-// The hardware a .3mf project was set up for, extracted from its embedded
-// slicer config (Bambu/Orca project_settings.config or PrusaSlicer
-// Slic3r_PE.config) — see get3mfPrinterInfo in src/lib/threemf-remote.ts.
-// Deliberately not the full process settings (layer height, infill, …): only
-// what a visitor needs to judge "can I print this on my setup". The filament
-// arrays cover the slots the objects actually use, not every AMS slot.
+// The hardware a .3mf project was set up for, extracted from its embedded slicer config (Bambu/Orca project_settings.config or PrusaSlicer Slic3r_PE.config) — see get3mfPrinterInfo in src/lib/threemf-remote.ts. Deliberately not the full process settings (layer height, infill, …): only what a visitor needs to judge "can I print this on my setup". The filament arrays cover the slots the objects actually use, not every AMS slot.
 export type PrinterInfo = {
   model?: string; // "Bambu Lab P1S"
   nozzleDiameterMm?: number;
   bedType?: string; // "Textured PEI Plate"
-  // One entry per filament *slot* the objects print from, in slot order, and
-  // deliberately not deduped: red PLA in slot 1 plus black PLA in slot 2 is a
-  // two-colour print, and ["PLA"] would read as a single-colour one.
+  // One entry per filament *slot* the objects print from, in slot order, and deliberately not deduped: red PLA in slot 1 plus black PLA in slot 2 is a two-colour print, and ["PLA"] would read as a single-colour one.
   filamentTypes?: string[]; // ["PLA", "PLA"]
-  // Hex colours index-parallel to filamentTypes (Bambu/PrusaSlicer
-  // `filament_colour`). Absent — rather than padded — when the config doesn't
-  // give every used slot a colour, so the two arrays always zip 1:1.
+  // Hex colours index-parallel to filamentTypes (Bambu/PrusaSlicer `filament_colour`). Absent — rather than padded — when the config doesn't give every used slot a colour, so the two arrays always zip 1:1.
   filamentColors?: string[]; // ["#e02020", "#000000"]
-  // Slots (1-based) the objects are assigned to that the project defines no
-  // filament for — e.g. everything left on AMS slot 5 after the filament list
-  // was cut down to one. Surfaced as a warning, never remapped: the slicer's
-  // fallback may be a different material entirely (ASA → nylon).
+  // Slots (1-based) the objects are assigned to that the project defines no filament for — e.g. everything left on AMS slot 5 after the filament list was cut down to one. Surfaced as a warning, never remapped: the slicer's fallback may be a different material entirely (ASA → nylon).
   missingFilamentSlots?: number[]; // [5]
-  // Whether the used slots sit on more than one *physical* extruder, i.e. the
-  // print needs a dual-nozzle/toolchanger machine (H2D, Prusa XL, IDEX) rather
-  // than many filaments multiplexed through one nozzle by an AMS/MMU — a
-  // materially different answer to "can I print this". Undefined when the
-  // config doesn't say, like usesSupport.
+  // Whether the used slots sit on more than one *physical* extruder, i.e. the print needs a dual-nozzle/toolchanger machine (H2D, Prusa XL, IDEX) rather than many filaments multiplexed through one nozzle by an AMS/MMU — a materially different answer to "can I print this". Undefined when the config doesn't say, like usesSupport.
   requiresMultiNozzle?: boolean;
-  // Whether the project was set up to print support material (Bambu/Orca
-  // `enable_support`, PrusaSlicer `support_material`). Undefined when the
-  // config doesn't say — "does this need supports?" is one of the first
-  // questions about a print, and the answer is already in the file.
+  // Whether the project was set up to print support material (Bambu/Orca `enable_support`, PrusaSlicer `support_material`). Undefined when the config doesn't say — "does this need supports?" is one of the first questions about a print, and the answer is already in the file.
   usesSupport?: boolean;
-  // Whether printing one plate means changing filament mid-print — i.e. needs
-  // an AMS/MMU (or manual swaps): "color" for the same material in several
-  // colours, "material" when a plate mixes materials, "none" when every plate
-  // prints from a single filament (plates that each use another filament are
-  // separate prints, so they don't count). Unlike the fields above this comes
-  // from the *sliced* result (slice_info.config's per-plate filament list),
-  // since painted multi-colour is only resolved by slicing. Undefined until
-  // the file was sliced with this parsed (see filamentChangesFromPlates).
+  // Whether printing one plate means changing filament mid-print — i.e. needs an AMS/MMU (or manual swaps): "color" for the same material in several colours, "material" when a plate mixes materials, "none" when every plate prints from a single filament (plates that each use another filament are separate prints, so they don't count). Unlike the fields above this comes from the *sliced* result (slice_info.config's per-plate filament list), since painted multi-colour is only resolved by slicing. Undefined until the file was sliced with this parsed (see filamentChangesFromPlates).
   filamentChanges?: FilamentChanges;
-  // Physical build-plate size in mm (bounding box of the bed shape), so the 3D
-  // preview can draw a real bed the geometry is measured against (issue #80).
-  // Parsed from the embedded config's printable area (Bambu `printable_area` /
-  // PrusaSlicer `bed_shape`), falling back to a known-model lookup when the
-  // config lacks a usable shape. { x: 256, y: 256 }
+  // Physical build-plate size in mm (bounding box of the bed shape), so the 3D preview can draw a real bed the geometry is measured against (issue #80). Parsed from the embedded config's printable area (Bambu `printable_area` / PrusaSlicer `bed_shape`), falling back to a known-model lookup when the config lacks a usable shape. { x: 256, y: 256 }
   bedSizeMm?: { x: number; y: number };
 };
 
@@ -483,116 +405,58 @@ export const modelFiles = pgTable("model_files", {
   s3Key: text("s3_key").notNull(),
   size: bigint("size", { mode: "number" }).notNull(),
   contentType: text("content_type").notNull(),
-  // Animated GIF/WebP/PNG cover? Detected from the header at insert time
-  // (content type can't tell), so browse cards freeze it to a poster frame.
+  // Animated GIF/WebP/PNG cover? Detected from the header at insert time (content type can't tell), so browse cards freeze it to a poster frame.
   animated: boolean("animated").notNull().default(false),
   position: integer("position").notNull().default(0),
   // Onshape element this file was exported from; sync replaces these files.
   onshapeElementId: text("onshape_element_id"),
-  // Provenance: the file's bytes came from the model's source platform (URL
-  // import, Onshape export, collection import) rather than a manual upload.
-  // Shown as a badge on the model page and edit form, and scopes what the
-  // MakerWorld/Printables source sync may touch; Onshape sync keeps selecting
-  // its replaceable files via onshapeElementId.
+  // Provenance: the file's bytes came from the model's source platform (URL import, Onshape export, collection import) rather than a manual upload. Shown as a badge on the model page and edit form, and scopes what the MakerWorld/Printables source sync may touch; Onshape sync keeps selecting its replaceable files via onshapeElementId.
   imported: boolean("imported").notNull().default(false),
-  // Upstream identity for MakerWorld/Printables source sync (issue-less
-  // sibling of onshapeElementId): "profile:<id>" (MakerWorld print profile),
-  // "scad:<name>" (raw-file OpenSCAD source), "doc:<name>" (attached PDF) or
-  // "file:<id>" (Printables file). Sync matches local imported files to
-  // upstream by this id, so local renames don't break the link. Null for
-  // manual uploads, Onshape exports and imports predating the feature (the
-  // first sync adopts those by filename).
+  // Upstream identity for MakerWorld/Printables source sync (issue-less sibling of onshapeElementId): "profile:<id>" (MakerWorld print profile), "scad:<name>" (raw-file OpenSCAD source), "doc:<name>" (attached PDF) or "file:<id>" (Printables file). Sync matches local imported files to upstream by this id, so local renames don't break the link. Null for manual uploads, Onshape exports and imports predating the feature (the first sync adopts those by filename).
   sourceFileId: text("source_file_id"),
-  // Opaque upstream last-modified token (an ISO date string as the platform
-  // sends it — Printables per-file `modified`, MakerWorld per-profile
-  // `publishTime` / raw-file `modelUpdateTime`). Sync compares it for
-  // equality against the current upstream value; an unchanged token skips
-  // the download. Never parsed except by the legacy-adopt heuristic —
-  // MakerWorld's design-level updateTime is deliberately NOT used (it is
-  // touched by counters, not content edits). Onshape reuses this slot for the
-  // per-element microversion (issue #70): the element's opaque change token,
-  // compared for equality so an unchanged tab is skipped by onshape-sync. The
-  // two never collide — an Onshape file has no sourceFileId and its model's
-  // sourceUrl isn't a MakerWorld/Printables URL, so source-sync never sees it.
+  // Opaque upstream last-modified token (an ISO date string as the platform sends it — Printables per-file `modified`, MakerWorld per-profile `publishTime` / raw-file `modelUpdateTime`). Sync compares it for equality against the current upstream value; an unchanged token skips the download. Never parsed except by the legacy-adopt heuristic — MakerWorld's design-level updateTime is deliberately NOT used (it is touched by counters, not content edits). Onshape reuses this slot for the per-element microversion (issue #70): the element's opaque change token, compared for equality so an unchanged tab is skipped by onshape-sync. The two never collide — an Onshape file has no sourceFileId and its model's sourceUrl isn't a MakerWorld/Printables URL, so source-sync never sees it.
   sourceModifiedAt: text("source_modified_at"),
   sliceStatus: text("slice_status").$type<SliceStatus>(),
   sliceSource: text("slice_source").$type<SliceSource>(),
   printTimeSeconds: integer("print_time_seconds"),
   filamentGrams: real("filament_grams"),
   sliceError: text("slice_error"),
-  // The slicer that produced the estimate ("OrcaSlicer 2.4.2", "Bambu Studio
-  // 02.08.02.61"), from the sliced slice_info.config header.
+  // The slicer that produced the estimate ("OrcaSlicer 2.4.2", "Bambu Studio 02.08.02.61"), from the sliced slice_info.config header.
   sliceEngine: text("slice_engine"),
-  // The printer the slicer service estimated for when the file carries no
-  // printer settings of its own (its generic profile, "Bambu Lab P1S (256 ×
-  // 256 × 250 mm)"); null when the estimate used the file's own printer.
+  // The printer the slicer service estimated for when the file carries no printer settings of its own (its generic profile, "Bambu Lab P1S (256 × 256 × 250 mm)"); null when the estimate used the file's own printer.
   slicePrinter: text("slice_printer"),
-  // Whether the stored estimate is approximate ("~" in the UI): sliced under
-  // assumptions the file didn't make (generic printer, translated PrusaSlicer
-  // settings, repaired settings). Null on rows from before it was recorded —
-  // see isApproxEstimate.
+  // Whether the stored estimate is approximate ("~" in the UI): sliced under assumptions the file didn't make (generic printer, translated PrusaSlicer settings, repaired settings). Null on rows from before it was recorded — see isApproxEstimate.
   sliceApprox: boolean("slice_approx"),
-  // The app that created the file ("Bambu Studio" + "02.08.02.61",
-  // "Onshape" + null) — see src/lib/file-creator.ts. Null when unknown.
+  // The app that created the file ("Bambu Studio" + "02.08.02.61", "Onshape" + null) — see src/lib/file-creator.ts. Null when unknown.
   creatorApp: text("creator_app"),
   creatorVersion: text("creator_version"),
   printerInfo: jsonb("printer_info").$type<PrinterInfo>(),
-  // Set on a .3mf rendered from a parametric .scad file (see
-  // src/app/api/models/[id]/customize): the source file row, the customizer
-  // values used, and a hash of those values so re-generating an identical
-  // parameter set returns the existing file instead of re-rendering. The FK
-  // cascade removes variant rows with their source, but S3 objects must be
-  // deleted explicitly (updateModel/deleteModel handle that).
+  // Set on a .3mf rendered from a parametric .scad file (see src/app/api/models/[id]/customize): the source file row, the customizer values used, and a hash of those values so re-generating an identical parameter set returns the existing file instead of re-rendering. The FK cascade removes variant rows with their source, but S3 objects must be deleted explicitly (updateModel/deleteModel handle that).
   generatedFromId: uuid("generated_from_id").references(
     (): AnyPgColumn => modelFiles.id,
     { onDelete: "cascade" },
   ),
   generatedParams: jsonb("generated_params").$type<Record<string, string>>(),
   generatedParamsHash: text("generated_params_hash"),
-  // Who generated this variant — a signed-in user, not necessarily the model
-  // owner (customizing is open to everyone). Lets a non-owner delete their own
-  // variants while the owner can delete any. Null for non-generated files and
-  // legacy variants; set null on user deletion so their variants survive.
+  // Who generated this variant — a signed-in user, not necessarily the model owner (customizing is open to everyone). Lets a non-owner delete their own variants while the owner can delete any. Null for non-generated files and legacy variants; set null on user deletion so their variants survive.
   generatedBy: text("generated_by").references(() => user.id, {
     onDelete: "set null",
   }),
-  // Incremented each time this file is served as a download (kind "model",
-  // or an image/pdf fetched with ?download=1) — see src/lib/metrics.ts.
-  // Inline image views (gallery thumbnails, next/image) don't count.
+  // Incremented each time this file is served as a download (kind "model", or an image/pdf fetched with ?download=1) — see src/lib/metrics.ts. Inline image views (gallery thumbnails, next/image) don't count.
   downloadCount: integer("download_count").notNull().default(0),
-  // Lowercase hex SHA-256 of the stored bytes, computed while streaming to S3
-  // (src/lib/storage.ts) and used to flag a re-uploaded model file as a
-  // duplicate (issue #118). Only set for kind "model": images and PDFs are
-  // legitimately shared between models. Null on generated OpenSCAD variants
-  // (they have generatedParamsHash) and on every row inserted before the
-  // column existed — a null hash simply never matches.
+  // Lowercase hex SHA-256 of the stored bytes, computed while streaming to S3 (src/lib/storage.ts) and used to flag a re-uploaded model file as a duplicate (issue #118). Only set for kind "model": images and PDFs are legitimately shared between models. Null on generated OpenSCAD variants (they have generatedParamsHash) and on every row inserted before the column existed — a null hash simply never matches.
   //
-  // A raw byte hash under-detects on purpose: the same geometry re-exported by
-  // a slicer differs in its embedded timestamp/thumbnail/project_settings, so
-  // it won't hash-equal. That catches the common "uploaded the exact same
-  // file again" case; a mesh-level fingerprint is a deliberate follow-up.
+  // A raw byte hash under-detects on purpose: the same geometry re-exported by a slicer differs in its embedded timestamp/thumbnail/project_settings, so it won't hash-equal. That catches the common "uploaded the exact same file again" case; a mesh-level fingerprint is a deliberate follow-up.
   contentHash: text("content_hash"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 }, (t) => [
-  // The duplicate lookup runs on every save; without this it seq-scans every
-  // file row in the instance.
+  // The duplicate lookup runs on every save; without this it seq-scans every file row in the instance.
   index("model_files_content_hash_idx").on(t.contentHash),
 ]);
 
 // --- Model versioning (issue #55) ---
 //
-// Every completed mutation of a model (create, edit, Onshape sync, revert)
-// appends one model_versions row holding a full JSON snapshot of the mutable
-// state. model_files stays "the live files only" — a removed file's row is
-// deleted as before, but its S3 object is kept as long as any snapshot still
-// references its s3Key, and reverting re-inserts the row from the snapshot.
-// That keeps every existing query untouched (nothing needs to filter out
-// historical rows) at the cost of file ids/download counts not surviving a
-// remove+revert round trip. Generated OpenSCAD variants are excluded from
-// snapshots on purpose: they are additive, individually deletable, and cheap
-// to regenerate. Version rows are capped per model; pruning deletes S3
-// objects no longer referenced by any remaining snapshot or live file — see
-// src/lib/model-versions.ts.
+// Every completed mutation of a model (create, edit, Onshape sync, revert) appends one model_versions row holding a full JSON snapshot of the mutable state. model_files stays "the live files only" — a removed file's row is deleted as before, but its S3 object is kept as long as any snapshot still references its s3Key, and reverting re-inserts the row from the snapshot. That keeps every existing query untouched (nothing needs to filter out historical rows) at the cost of file ids/download counts not surviving a remove+revert round trip. Generated OpenSCAD variants are excluded from snapshots on purpose: they are additive, individually deletable, and cheap to regenerate. Version rows are capped per model; pruning deletes S3 objects no longer referenced by any remaining snapshot or live file — see src/lib/model-versions.ts.
 
 export type ModelVersionReason =
   | "create"
@@ -601,8 +465,7 @@ export type ModelVersionReason =
   | "source-sync"
   | "revert";
 
-// One file as recorded in a snapshot, in display order. Everything needed to
-// re-insert the model_files row on revert; the bytes stay at s3Key.
+// One file as recorded in a snapshot, in display order. Everything needed to re-insert the model_files row on revert; the bytes stay at s3Key.
 export type VersionFileSnapshot = {
   kind: FileKind;
   filename: string;
@@ -635,15 +498,13 @@ export type ModelVersionSnapshot = {
   categoryId: string | null;
   tags: string[];
   bom: BomItemInput[];
-  // Gallery videos with their slots in the combined order. Absent in
-  // snapshots written before the feature — readers fall back to [].
+  // Gallery videos with their slots in the combined order. Absent in snapshots written before the feature — readers fall back to [].
   videos: ModelVideo[];
   files: VersionFileSnapshot[];
 };
 
 export const modelVersions = pgTable("model_versions", {
-  // Identity (not uuid): versions created in the same transaction share a
-  // now() timestamp, so insertion order is the only reliable version order.
+  // Identity (not uuid): versions created in the same transaction share a now() timestamp, so insertion order is the only reliable version order.
   id: bigint("id", { mode: "number" }).primaryKey().generatedAlwaysAsIdentity(),
   modelId: uuid("model_id")
     .notNull()
@@ -659,17 +520,9 @@ export const modelVersions = pgTable("model_versions", {
 
 // --- Duplicate detection (issue #118) ---
 //
-// One dismissed duplicate flag: the user was told `model_id` looks like a copy
-// of `duplicate_of_id` and imported/saved it anyway. Detection is flag-only —
-// nothing is blocked and nothing is merged automatically (the whole catalog is
-// collaboratively editable, so a copy is a cleanup task, not an error), so the
-// rows exist purely to give a moderator a worklist: Settings → Duplicates.
+// One dismissed duplicate flag: the user was told `model_id` looks like a copy of `duplicate_of_id` and imported/saved it anyway. Detection is flag-only — nothing is blocked and nothing is merged automatically (the whole catalog is collaboratively editable, so a copy is a cleanup task, not an error), so the rows exist purely to give a moderator a worklist: Settings → Duplicates.
 //
-// A table rather than a column on `models`: a model can accumulate several
-// dismissed matches over time, and each carries its own signal and timestamp.
-// Resolving a row means deleting it (the model is trashed, or the match is
-// dismissed as a false positive); both sides cascade, so trashing-then-purging
-// either model cleans up after itself.
+// A table rather than a column on `models`: a model can accumulate several dismissed matches over time, and each carries its own signal and timestamp. Resolving a row means deleting it (the model is trashed, or the match is dismissed as a false positive); both sides cascade, so trashing-then-purging either model cleans up after itself.
 export const modelDuplicates = pgTable(
   "model_duplicates",
   {
@@ -686,8 +539,7 @@ export const modelDuplicates = pgTable(
     createdAt: timestamp("created_at").notNull().defaultNow(),
   },
   (t) => [
-    // Re-recording the same match is a no-op (an edit that re-adds the same
-    // file shouldn't stack up rows) — writers rely on onConflictDoNothing.
+    // Re-recording the same match is a no-op (an edit that re-adds the same file shouldn't stack up rows) — writers rely on onConflictDoNothing.
     uniqueIndex("model_duplicates_pair_idx").on(
       t.modelId,
       t.duplicateOfId,
@@ -707,8 +559,7 @@ export const bomItems = pgTable("bom_items", {
   quantity: text("quantity").notNull().default("1"),
   link: text("link"),
   imageUrl: text("image_url"),
-  // Optional user-named section ("Electronics", "Screws", …); null items are
-  // ungrouped. Ordering comes from `position`; sections are contiguous runs.
+  // Optional user-named section ("Electronics", "Screws", …); null items are ungrouped. Ordering comes from `position`; sections are contiguous runs.
   section: text("section"),
   position: integer("position").notNull().default(0),
 });
@@ -731,12 +582,7 @@ export const modelTags = pgTable(
   (t) => [primaryKey({ columns: [t.modelId, t.tagId] })],
 );
 
-// Per-user "likes"/favorites: a signed-in user can like any model for quick
-// access from /models/liked. Like collection_models, membership is a join row
-// keyed by (user, model); the row's created_at orders the liked list (most
-// recently liked first). Cascades with either side, so deleting a user or a
-// model drops its likes. Trashed models keep their like rows but are hidden
-// from the listing (the /models/liked query filters deleted_at IS NULL).
+// Per-user "likes"/favorites: a signed-in user can like any model for quick access from /models/liked. Like collection_models, membership is a join row keyed by (user, model); the row's created_at orders the liked list (most recently liked first). Cascades with either side, so deleting a user or a model drops its likes. Trashed models keep their like rows but are hidden from the listing (the /models/liked query filters deleted_at IS NULL).
 export const modelLikes = pgTable(
   "model_likes",
   {
@@ -758,18 +604,12 @@ export const collections = pgTable("collections", {
   userId: text("user_id")
     .notNull()
     .references(() => user.id, { onDelete: "cascade" }),
-  // MakerWorld collection URL this collection was bulk-imported from; null
-  // for hand-made collections. "Sync" re-runs the import job against it.
+  // MakerWorld collection URL this collection was bulk-imported from; null for hand-made collections. "Sync" re-runs the import job against it.
   sourceUrl: text("source_url"),
-  // Smart collection: membership is defined by `rules` (a validated AND/OR
-  // rule tree, see src/lib/collection-rules.ts) evaluated against model
-  // metadata at read time — collection_models rows are ignored while smart.
-  // Mutually exclusive with sourceUrl (imported collections mirror an
-  // external list instead).
+  // Smart collection: membership is defined by `rules` (a validated AND/OR rule tree, see src/lib/collection-rules.ts) evaluated against model metadata at read time — collection_models rows are ignored while smart. Mutually exclusive with sourceUrl (imported collections mirror an external list instead).
   smart: boolean("smart").notNull().default(false),
   rules: jsonb("rules").$type<RuleGroup>(),
-  // Page view count, incremented on each collection page load — see
-  // src/lib/metrics.ts. Not surfaced in the UI yet.
+  // Page view count, incremented on each collection page load — see src/lib/metrics.ts. Not surfaced in the UI yet.
   viewCount: integer("view_count").notNull().default(0),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
@@ -789,12 +629,7 @@ export const collectionModels = pgTable(
   (t) => [primaryKey({ columns: [t.collectionId, t.modelId] })],
 );
 
-// Homepage pins: shared curation, not per-user metadata — any signed-in user
-// may pin or unpin a model/collection and every user sees the same "Pinned"
-// section on the homepage (src/lib/pins.ts). One table per target so each
-// keeps a cascading FK; the target id is the primary key, so pinning is
-// idempotent. Pinning is not a model mutation and is not versioned. Trashed
-// models keep their pin row but are hidden from the pinned section.
+// Homepage pins: shared curation, not per-user metadata — any signed-in user may pin or unpin a model/collection and every user sees the same "Pinned" section on the homepage (src/lib/pins.ts). One table per target so each keeps a cascading FK; the target id is the primary key, so pinning is idempotent. Pinning is not a model mutation and is not versioned. Trashed models keep their pin row but are hidden from the pinned section.
 export const modelPins = pgTable("model_pins", {
   modelId: uuid("model_id")
     .primaryKey()
@@ -811,11 +646,7 @@ export const collectionPins = pgTable("collection_pins", {
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
-// Public share links (anyone with the URL may view, no session): at most one
-// live link per model/collection, keyed by the target like the pins so it
-// cascades with it. Revoking deletes the row; re-enabling mints a fresh token,
-// so a revoked URL can never come back. See src/lib/share-links.ts and
-// docs/architecture/auth-and-access.md#public-share-links.
+// Public share links (anyone with the URL may view, no session): at most one live link per model/collection, keyed by the target like the pins so it cascades with it. Revoking deletes the row; re-enabling mints a fresh token, so a revoked URL can never come back. See src/lib/share-links.ts and docs/architecture/auth-and-access.md#public-share-links.
 export const modelShareLinks = pgTable("model_share_links", {
   modelId: uuid("model_id")
     .primaryKey()
@@ -834,11 +665,7 @@ export const collectionShareLinks = pgTable("collection_share_links", {
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
-// Lifecycle of a bulk import (MakerWorld collection import): the job runs in
-// the background after POST /api/import/collection responds (next/server
-// `after`), models land in `collectionId` as they finish, and the header
-// progress indicator polls GET /api/import-jobs. "canceled" is set by the
-// user; the runner checks for it between designs and stops.
+// Lifecycle of a bulk import (MakerWorld collection import): the job runs in the background after POST /api/import/collection responds (next/server `after`), models land in `collectionId` as they finish, and the header progress indicator polls GET /api/import-jobs. "canceled" is set by the user; the runner checks for it between designs and stops.
 export type ImportJobStatus = "running" | "done" | "failed" | "canceled";
 
 export const importJobs = pgTable("import_jobs", {
@@ -861,13 +688,11 @@ export const importJobs = pgTable("import_jobs", {
   skipped: integer("skipped").notNull().default(0),
   // Title of the design currently being imported, for the progress UI.
   currentItem: text("current_item"),
-  // Fatal error that stopped the whole job (per-design problems go to
-  // `warnings` instead).
+  // Fatal error that stopped the whole job (per-design problems go to `warnings` instead).
   error: text("error"),
   warnings: jsonb("warnings").$type<string[]>().notNull().default([]),
   createdAt: timestamp("created_at").notNull().defaultNow(),
-  // Doubles as the heartbeat: a "running" job whose updatedAt is stale was
-  // killed by a server restart and gets marked failed on the next poll.
+  // Doubles as the heartbeat: a "running" job whose updatedAt is stale was killed by a server restart and gets marked failed on the next poll.
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
 
@@ -940,9 +765,7 @@ export const categoriesRelations = relations(categories, ({ many }) => ({
   models: many(models),
 }));
 
-// Joined on client_id rather than the primary key — that is the column the
-// token rows carry (and it is unique). Only used by the "connected clients"
-// list in Settings; BetterAuth reaches these tables through its own adapter.
+// Joined on client_id rather than the primary key — that is the column the token rows carry (and it is unique). Only used by the "connected clients" list in Settings; BetterAuth reaches these tables through its own adapter.
 export const oauthRefreshTokenRelations = relations(oauthRefreshToken, ({ one }) => ({
   client: one(oauthClient, {
     fields: [oauthRefreshToken.clientId],

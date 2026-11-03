@@ -1,9 +1,4 @@
-// The OpenAPI 3.1 description of /api/v1, served at /api/v1/openapi.json.
-// Component schemas are generated from the zod schemas the routes validate
-// with (src/lib/api/schemas.ts), so the document can't drift from what the
-// API accepts; the path table below is hand-written and unit-tested to
-// reference only schemas that exist and to name every operation's scope.
-// Pure — the server URL is passed in.
+// The OpenAPI 3.1 description of /api/v1, served at /api/v1/openapi.json. Component schemas are generated from the zod schemas the routes validate with (src/lib/api/schemas.ts), so the document can't drift from what the API accepts; the path table below is hand-written and unit-tested to reference only schemas that exist and to name every operation's scope. Pure — the server URL is passed in.
 
 import * as z from "zod";
 import { API_SCOPE_DESCRIPTIONS, API_SCOPES, type ApiScope } from "./scopes";

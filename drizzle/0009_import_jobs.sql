@@ -1,6 +1,4 @@
--- Background bulk-import jobs (MakerWorld collection import). Progress is
--- polled by the header indicator; models are linked into "collection_id" as
--- they finish.
+-- Background bulk-import jobs (MakerWorld collection import). Progress is polled by the header indicator; models are linked into "collection_id" as they finish.
 CREATE TABLE "import_jobs" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"user_id" text NOT NULL,

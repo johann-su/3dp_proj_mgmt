@@ -2,9 +2,7 @@ import Link from "next/link";
 import { Globe } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
-// Strip above every public share page. Anonymous visitors get a sign-in
-// prompt; a signed-in member who opened a public link gets a way back to the
-// full catalog page (with editing, history, customizer, slicer links).
+// Strip above every public share page. Anonymous visitors get a sign-in prompt; a signed-in member who opened a public link gets a way back to the full catalog page (with editing, history, customizer, slicer links).
 export function ShareBanner({
   signedIn,
   catalogHref,

@@ -21,9 +21,7 @@ const SORT_LABELS: Record<FeedSort, string> = {
 
 const SORT_OPTIONS = Object.keys(SORT_LABELS) as FeedSort[];
 
-// Homepage sort control. Pushes ?sort= (and the active category, if any) so a
-// server re-render seeds a fresh first page — the grid below remounts on the
-// combined key to reset endless scroll.
+// Homepage sort control. Pushes ?sort= (and the active category, if any) so a server re-render seeds a fresh first page — the grid below remounts on the combined key to reset endless scroll.
 export function FeedSort({ sort, category }: { sort: FeedSort; category?: string }) {
   const router = useRouter();
 

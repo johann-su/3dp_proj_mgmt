@@ -1,10 +1,4 @@
-// Onshape importer — unlike MakerWorld/Printables there is no anonymous
-// metadata API: every call needs the user's OAuth token (Settings → Onshape).
-// Metadata comes from the document info endpoint, the preview image from the
-// document thumbnail, and the model files are asynchronous 3MF exports of the
-// tabs the user picked in the import dialog (listOnshapeImportTabs feeds it) —
-// falling back to the pinned tab (…/e/{eid} in the URL) or every Part
-// Studio/Assembly tab when no selection is given.
+// Onshape importer — unlike MakerWorld/Printables there is no anonymous metadata API: every call needs the user's OAuth token (Settings → Onshape). Metadata comes from the document info endpoint, the preview image from the document thumbnail, and the model files are asynchronous 3MF exports of the tabs the user picked in the import dialog (listOnshapeImportTabs feeds it) — falling back to the pinned tab (…/e/{eid} in the URL) or every Part Studio/Assembly tab when no selection is given.
 
 import {
   branchChoices,
@@ -25,8 +19,7 @@ import {
 } from "@/lib/onshape/api";
 import { ImportError, type ImportedProject, type RemoteAsset } from "./types";
 
-// Prefer a mid-size thumbnail; the tiny ones look bad as covers and the
-// original ("0x0") can be missing.
+// Prefer a mid-size thumbnail; the tiny ones look bad as covers and the original ("0x0") can be missing.
 const THUMBNAIL_PREFERENCE = ["600x340", "300x300", "300x170", "0x0", "70x40"];
 
 function pickThumbnail(
@@ -56,12 +49,10 @@ function requireImportablePin(
   }
 }
 
-// The branch/version the user picked in the import dialog's dropdown; it
-// overrides whatever the pasted URL pins.
+// The branch/version the user picked in the import dialog's dropdown; it overrides whatever the pasted URL pins.
 export type OnshapeBranchPick = { wvm: "w" | "v"; wvmId: string };
 
-// The dialog's dropdown pick wins, then the URL's /w|v/ pin; URLs without
-// one pin to the default workspace.
+// The dialog's dropdown pick wins, then the URL's /w|v/ pin; URLs without one pin to the default workspace.
 function resolveWorkspace(
   document: OnshapeDocument,
   pin: OnshapePin,
@@ -78,12 +69,7 @@ function resolveWorkspace(
   return { wvm: "w", wvmId: defaultWorkspace };
 }
 
-// One entry per importable tab, in document tab order — drives the import
-// form's tab-selection dialog. `pinned` marks the tab the pasted URL was
-// copied from (Onshape URLs always carry the open tab's /e/{eid}), which is
-// not a deliberate choice — the dialog preselects Part Studios instead and
-// leaves Assemblies off, since assembly exports place parts at their mated
-// positions and interlocking parts come out overlapping when sliced.
+// One entry per importable tab, in document tab order — drives the import form's tab-selection dialog. `pinned` marks the tab the pasted URL was copied from (Onshape URLs always carry the open tab's /e/{eid}), which is not a deliberate choice — the dialog preselects Part Studios instead and leaves Assemblies off, since assembly exports place parts at their mated positions and interlocking parts come out overlapping when sliced.
 export type OnshapeImportTab = {
   id: string;
   name: string;
@@ -98,9 +84,7 @@ export async function listOnshapeImportTabs(
 ): Promise<{
   title: string;
   tabs: OnshapeImportTab[];
-  // Dropdown entries (workspaces + versions) and the branch the tab list was
-  // read from — the dialog re-requests this listing when the pick changes,
-  // since each branch has its own tabs.
+  // Dropdown entries (workspaces + versions) and the branch the tab list was read from — the dialog re-requests this listing when the pick changes, since each branch has its own tabs.
   branches: OnshapeBranchChoice[];
   selected: OnshapeBranchPick;
 }> {
@@ -159,8 +143,7 @@ export async function importFromOnshape(
       });
     }
 
-    // Read the microversion before exporting: if the document changes while we
-    // export, the stored value is stale and the next sync picks the change up.
+    // Read the microversion before exporting: if the document changes while we export, the stored value is stale and the next sync picks the change up.
     const microversion =
       wvm === "w"
         ? await getCurrentMicroversion(auth, pin.documentId, wvm, wvmId)
@@ -183,9 +166,7 @@ export async function importFromOnshape(
         kind: "model",
         headers,
         onshapeElementId: file.elementId,
-        // Store the per-element microversion so the first sync can already skip
-        // tabs that haven't changed since import (issue #70). Only workspace
-        // pins carry one; version pins are immutable and never sync.
+        // Store the per-element microversion so the first sync can already skip tabs that haven't changed since import (issue #70). Only workspace pins carry one; version pins are immutable and never sync.
         ...(file.microversionId ? { sourceModifiedAt: file.microversionId } : {}),
       });
     }
@@ -201,8 +182,7 @@ export async function importFromOnshape(
       title: (document.name ?? "").trim() || "Onshape model",
       description: (document.description ?? "").trim(),
       tags: [],
-      // Onshape has no model taxonomy — the suggestion falls back to
-      // title/tag keywords, then "Other".
+      // Onshape has no model taxonomy — the suggestion falls back to title/tag keywords, then "Other".
       categories: [],
       assets,
       bom: [],

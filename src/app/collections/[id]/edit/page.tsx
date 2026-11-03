@@ -33,8 +33,7 @@ export default async function EditCollectionPage({
     getSession(),
     ruleBuilderFacets(),
   ]);
-  // Editing is open to any signed-in user (collaborative library); only
-  // deletion is owner-gated. See updateCollection / deleteCollection.
+  // Editing is open to any signed-in user (collaborative library); only deletion is owner-gated. See updateCollection / deleteCollection.
   if (!collection || !session) notFound();
 
   return (

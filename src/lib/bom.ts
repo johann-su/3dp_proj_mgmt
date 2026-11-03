@@ -1,13 +1,11 @@
-// Bill of materials helpers shared by the wizard (CSV upload), the create
-// action (validation), the model page's CSV download and the export zip.
+// Bill of materials helpers shared by the wizard (CSV upload), the create action (validation), the model page's CSV download and the export zip.
 
 export type BomItemInput = {
   name: string;
   quantity: string;
   link: string | null;
   imageUrl: string | null;
-  // Section heading the item is grouped under; null = ungrouped. CSV
-  // import/export ignores sections — the format is a flat list.
+  // Section heading the item is grouped under; null = ungrouped. CSV import/export ignores sections — the format is a flat list.
   section: string | null;
 };
 
@@ -15,18 +13,12 @@ export const MAX_BOM_ITEMS = 200;
 
 export const BOM_CSV_HEADER = ["name", "quantity", "link", "image"] as const;
 
-// BOM item images are arbitrary vendor URLs, not files we host — route them
-// through the same-origin proxy so they survive the `img-src 'self'` CSP
-// (see src/app/api/bom-image/route.ts).
+// BOM item images are arbitrary vendor URLs, not files we host — route them through the same-origin proxy so they survive the `img-src 'self'` CSP (see src/app/api/bom-image/route.ts).
 export function bomImageProxySrc(imageUrl: string): string {
   return `/api/bom-image?url=${encodeURIComponent(imageUrl)}`;
 }
 
-// Upstream content types the BOM image proxy will pass through: raster
-// formats only. The proxy serves on our own origin, so an `image/svg+xml`
-// reply (which can carry <script>) opened directly would run as the viewer —
-// the "starts with image/" check it used to do let SVG through. Returns the
-// normalized type to send, or null to reject.
+// Upstream content types the BOM image proxy will pass through: raster formats only. The proxy serves on our own origin, so an `image/svg+xml` reply (which can carry <script>) opened directly would run as the viewer — the "starts with image/" check it used to do let SVG through. Returns the normalized type to send, or null to reject.
 const BOM_IMAGE_TYPES = new Set([
   "image/png",
   "image/jpeg",
@@ -40,10 +32,7 @@ export function allowedBomImageType(contentType: string | null): string | null {
   return BOM_IMAGE_TYPES.has(type) ? type : null;
 }
 
-// Groups items under their section heading, preserving list order: ungrouped
-// items first, then each section in the order it first appears. Shared by the
-// read-only BOM list (src/app/models/bom-list.tsx) and the MCP tool, which
-// must present the same grouping the page shows.
+// Groups items under their section heading, preserving list order: ungrouped items first, then each section in the order it first appears. Shared by the read-only BOM list (src/app/models/bom-list.tsx) and the MCP tool, which must present the same grouping the page shows.
 export function groupBySection<T extends { section: string | null }>(
   items: T[],
 ): { section: string | null; items: T[] }[] {
@@ -157,8 +146,7 @@ const HEADER_ALIASES: Record<string, keyof BomItemInput> = {
   picture: "imageUrl",
 };
 
-// Parses BOM CSV content. The first row may be a header (name/item, qty/…);
-// without one, columns are taken as name,quantity,link,image.
+// Parses BOM CSV content. The first row may be a header (name/item, qty/…); without one, columns are taken as name,quantity,link,image.
 export function parseBomCsv(text: string): { items: BomItemInput[] } | { error: string } {
   const rows = parseCsv(text.replace(/^﻿/, ""));
   if (rows.length === 0) return { error: "The CSV file is empty" };

@@ -1,13 +1,6 @@
-// Request and response shapes of the public REST API (/api/v1) as zod
-// schemas — the single source for request validation, the response types the
-// serializers are checked against (src/lib/api/serialize.ts), and the OpenAPI
-// document (src/lib/api/openapi.ts). Change a shape here and all three move
-// together. Pure: no DB, no auth.
+// Request and response shapes of the public REST API (/api/v1) as zod schemas — the single source for request validation, the response types the serializers are checked against (src/lib/api/serialize.ts), and the OpenAPI document (src/lib/api/openapi.ts). Change a shape here and all three move together. Pure: no DB, no auth.
 //
-// Response schemas are documentation and types, not runtime checks: the
-// serializers build them from rows we already trust. Request schemas are the
-// gate in front of the mutation core, which still re-validates everything it
-// cares about (BOM sanitizing, sourceUrl allowlist, file kinds).
+// Response schemas are documentation and types, not runtime checks: the serializers build them from rows we already trust. Request schemas are the gate in front of the mutation core, which still re-validates everything it cares about (BOM sanitizing, sourceUrl allowlist, file kinds).
 
 import * as z from "zod";
 import { MAX_BOM_ITEMS } from "@/lib/bom";
@@ -173,8 +166,7 @@ export const ApiDuplicate = z
   ) })
   .register(apiSchemas, { id: "DuplicateConflict" });
 
-// A staged upload, attached to a model on create/update. `upload` is the
-// handle from POST /uploads.
+// A staged upload, attached to a model on create/update. `upload` is the handle from POST /uploads.
 const FileAttachment = z
   .object({
     upload: z.string().min(1).max(4096),

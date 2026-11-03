@@ -8,9 +8,7 @@ export const dynamic = "force-dynamic";
 
 type Params = { id: string; modelId: string };
 
-// Adds a model to (PUT) or removes it from (DELETE) a hand-picked collection.
-// Both are idempotent; smart collections answer 400, since their rules decide
-// membership.
+// Adds a model to (PUT) or removes it from (DELETE) a hand-picked collection. Both are idempotent; smart collections answer 400, since their rules decide membership.
 function membership(member: boolean) {
   return apiRoute<Params>("collections:write", async ({ params, principal }) => {
     if (!isUuid(params.id) || !isUuid(params.modelId)) {

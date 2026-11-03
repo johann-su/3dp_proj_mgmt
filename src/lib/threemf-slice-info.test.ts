@@ -3,8 +3,7 @@ import assert from "node:assert/strict";
 import { strToU8, zipSync } from "fflate";
 import { readSliceData, type RangeReader } from "@/lib/threemf-slice-info";
 
-// Serves an in-memory archive the way S3 serves ranged GETs (inclusive end,
-// clamped to the object size).
+// Serves an in-memory archive the way S3 serves ranged GETs (inclusive end, clamped to the object size).
 function readerFor(bytes: Uint8Array): { readRange: RangeReader; size: number } {
   return {
     size: bytes.length,
@@ -39,8 +38,7 @@ test("readSliceData sums predictions and weights across plates (sliced Bambu fil
         curr_bed_type: "Textured PEI Plate",
         filament_type: ["PLA", "PETG"],
         enable_support: "1",
-        // Bed polygon → 256×256 plate. bed_exclude_area (the Bambu logo corner)
-        // is not part of the plate size and must be ignored.
+        // Bed polygon → 256×256 plate. bed_exclude_area (the Bambu logo corner) is not part of the plate size and must be ignored.
         printable_area: ["0x0", "256x0", "256x256", "0x256"],
         bed_exclude_area: ["0x0", "18x0", "18x28", "0x28"],
       }),
@@ -67,9 +65,7 @@ test("readSliceData sums predictions and weights across plates (sliced Bambu fil
   });
 });
 
-// One plate is one print: the AMS is only needed when a single plate prints
-// from several filaments — here plate 1 (painted two-colour PLA). Plate 2
-// using PETG on its own is a separate print, not a mid-print change.
+// One plate is one print: the AMS is only needed when a single plate prints from several filaments — here plate 1 (painted two-colour PLA). Plate 2 using PETG on its own is a separate print, not a mid-print change.
 test("readSliceData derives mid-print filament changes and the engine from slice_info", async () => {
   const plate = (prediction: number, types: string[]) => `
     <plate>
@@ -104,9 +100,7 @@ test("readSliceData derives mid-print filament changes and the engine from slice
   assert.equal(unsliced?.sliceInfo?.engine, null);
 });
 
-// "Does it need supports?" is answerable from the embedded config, but only
-// when it says so: a missing key must stay undefined ("unknown") rather than
-// collapsing to false, which would read as "no supports needed".
+// "Does it need supports?" is answerable from the embedded config, but only when it says so: a missing key must stay undefined ("unknown") rather than collapsing to false, which would read as "no supports needed".
 test("readSliceData reports the support setting only when the config states it", async () => {
   const withoutSupportKey = zipSync({
     "Metadata/project_settings.config": strToU8(
@@ -131,9 +125,7 @@ test("readSliceData reports the support setting only when the config states it",
   );
 });
 
-// The AMS case: two slots of the *same* material is still a two-colour print,
-// so the slots must survive as separate entries (a deduped ["PLA"] would read
-// as single-colour) — and one nozzle on the machine means one nozzle needed.
+// The AMS case: two slots of the *same* material is still a two-colour print, so the slots must survive as separate entries (a deduped ["PLA"] would read as single-colour) — and one nozzle on the machine means one nozzle needed.
 test("readSliceData keeps one filament entry per used slot, with colours", async () => {
   const zip = zipSync({
     "Metadata/model_settings.config": strToU8(
@@ -145,8 +137,7 @@ test("readSliceData keeps one filament entry per used slot, with colours", async
         printer_model: "Bambu Lab P1S",
         nozzle_diameter: ["0.4"],
         filament_type: ["PLA", "PLA", "PETG"],
-        // Slot 2 carries Bambu's optional alpha pair; slot 3 is parked in the
-        // AMS but unused, so its colour must not show up.
+        // Slot 2 carries Bambu's optional alpha pair; slot 3 is parked in the AMS but unused, so its colour must not show up.
         filament_colour: ["#FF0000", "#000000FF", "#00FF00"],
       }),
     ),
@@ -158,8 +149,7 @@ test("readSliceData keeps one filament entry per used slot, with colours", async
   assert.equal(info?.requiresMultiNozzle, false);
 });
 
-// Colours are index-parallel to the types by contract, so a slot the config
-// never coloured drops the array rather than shifting every later swatch.
+// Colours are index-parallel to the types by contract, so a slot the config never coloured drops the array rather than shifting every later swatch.
 test("readSliceData omits filament colours unless every used slot has one", async () => {
   const zip = zipSync({
     "Metadata/model_settings.config": strToU8(
@@ -179,9 +169,7 @@ test("readSliceData omits filament colours unless every used slot has one", asyn
   assert.equal(info?.filamentColors, undefined);
 });
 
-// Objects can keep a stale assignment to a slot the project no longer has
-// (assigned to AMS slot 5, then the filament list cut down to one). That is
-// reported, never remapped: the slicer's fallback could be another material.
+// Objects can keep a stale assignment to a slot the project no longer has (assigned to AMS slot 5, then the filament list cut down to one). That is reported, never remapped: the slicer's fallback could be another material.
 test("readSliceData reports a filament slot the project doesn't define", async () => {
   const zip = zipSync({
     "Metadata/model_settings.config": strToU8(
@@ -220,11 +208,7 @@ test("readSliceData keeps resolvable slots alongside a missing one", async () =>
   assert.deepEqual(info?.missingFilamentSlots, [3]);
 });
 
-// Multi-*colour* and multi-*nozzle* are different questions: an AMS feeds many
-// slots through one nozzle. Only slots mapped to different physical extruders
-// (filament_map, written by dual-nozzle machines like the H2D) need the
-// hardware — and nozzle_diameter then has one entry per extruder, so the
-// reported nozzle is the one the objects actually print from.
+// Multi-*colour* and multi-*nozzle* are different questions: an AMS feeds many slots through one nozzle. Only slots mapped to different physical extruders (filament_map, written by dual-nozzle machines like the H2D) need the hardware — and nozzle_diameter then has one entry per extruder, so the reported nozzle is the one the objects actually print from.
 test("readSliceData flags multi-nozzle only when slots span physical extruders", async () => {
   const dualNozzle = (usedExtruders: number[]) =>
     zipSync({
@@ -262,11 +246,7 @@ test("readSliceData flags multi-nozzle only when slots span physical extruders",
   assert.equal(single?.nozzleDiameterMm, 0.6);
 });
 
-// PrusaSlicer states the distinction outright: single_extruder_multi_material
-// is an MMU multiplexing colours through one nozzle, while the same multi-slot
-// print without it is a toolchanger (XL). Its per-object extruders live in its
-// own model config — without honouring it, an MMU/XL profile's five parked
-// filament slots would all count as used.
+// PrusaSlicer states the distinction outright: single_extruder_multi_material is an MMU multiplexing colours through one nozzle, while the same multi-slot print without it is a toolchanger (XL). Its per-object extruders live in its own model config — without honouring it, an MMU/XL profile's five parked filament slots would all count as used.
 test("readSliceData tells a Prusa MMU apart from a toolchanger", async () => {
   const prusa = (semm: string) =>
     zipSync({
@@ -333,9 +313,7 @@ test("readSliceData reads printer info from a PrusaSlicer project ini", async ()
   });
 });
 
-// When the embedded config carries no usable bed shape but names a recognizable
-// printer, the bed size falls back to a known-model lookup (issue #80). Here an
-// A1 mini must resolve to its 180×180 plate, not the wider 256 A1 rule.
+// When the embedded config carries no usable bed shape but names a recognizable printer, the bed size falls back to a known-model lookup (issue #80). Here an A1 mini must resolve to its 180×180 plate, not the wider 256 A1 rule.
 test("readSliceData falls back to a known-model bed size when no shape is present", async () => {
   const zip = zipSync({
     "Metadata/project_settings.config": strToU8(
@@ -347,8 +325,7 @@ test("readSliceData falls back to a known-model bed size when no shape is presen
   assert.deepEqual(data?.printerInfo?.bedSizeMm, { x: 180, y: 180 });
 });
 
-// A malformed bed polygon must not yield a bogus size; parsing rejects it and,
-// with no recognizable model, no bed size is reported at all.
+// A malformed bed polygon must not yield a bogus size; parsing rejects it and, with no recognizable model, no bed size is reported at all.
 test("readSliceData omits bed size for a malformed bed shape", async () => {
   const zip = zipSync({
     "Metadata/project_settings.config": strToU8(

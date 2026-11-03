@@ -17,8 +17,7 @@ export default async function SettingsPage() {
   const [onshape, bambu, mcpClients] = await Promise.all([
     getOnshapeStatus(session.user.id),
     getBambuStatus(session.user.id),
-    // Nothing to list when the feature is off — and the query would read
-    // tables no row ever lands in.
+    // Nothing to list when the feature is off — and the query would read tables no row ever lands in.
     mcpEnabled ? listMcpClients(session.user.id) : Promise.resolve([]),
   ]);
 
@@ -37,8 +36,7 @@ export default async function SettingsPage() {
       description: "Download .3mf files when importing from MakerWorld.",
       status: bambu,
     },
-    // The odd one out: this is an assistant connecting *to* the catalog, not
-    // the app reaching out — so "connected" counts approved clients.
+    // The odd one out: this is an assistant connecting *to* the catalog, not the app reaching out — so "connected" counts approved clients.
     ...(mcpEnabled
       ? [
           {

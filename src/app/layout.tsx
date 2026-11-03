@@ -53,8 +53,7 @@ export default async function RootLayout({
   );
 }
 
-// The header's "renew your Bambu login" reminder, when one is due. A lookup
-// failure must never take down every page, so it degrades to no reminder.
+// The header's "renew your Bambu login" reminder, when one is due. A lookup failure must never take down every page, so it degrades to no reminder.
 async function loadBambuReminder(userId: string): Promise<BambuReminder | null> {
   try {
     const status = await getBambuStatus(userId);

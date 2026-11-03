@@ -1,15 +1,10 @@
 # Architecture notes
 
-Per-subsystem design notes and their non-obvious contracts. Each file records
-**decisions taken and why** — the gotchas that aren't visible in the code.
+Per-subsystem design notes and their non-obvious contracts. Each file records **decisions taken and why** — the gotchas that aren't visible in the code.
 
-These are loaded **on demand**: read the relevant file before editing that
-subsystem. They are deliberately *not* `@`-imported into `AGENTS.md` — that
-would pull all of them into every agent session and undo the point of the
-split. `AGENTS.md` keeps only the cross-cutting rules plus the index below.
+These are loaded **on demand**: read the relevant file before editing that subsystem. They are deliberately *not* `@`-imported into `AGENTS.md` — that would pull all of them into every agent session and undo the point of the split. `AGENTS.md` keeps only the cross-cutting rules plus the index below.
 
-**When you change a subsystem's behaviour, update its file in the same PR** —
-these only stay useful if they move in lockstep with the code.
+**When you change a subsystem's behaviour, update its file in the same PR** — these only stay useful if they move in lockstep with the code.
 
 | Editing… | Read first |
 |---|---|
@@ -26,6 +21,4 @@ these only stay useful if they move in lockstep with the code.
 | OpenTelemetry, logging, metrics | [`observability.md`](./observability.md) |
 | Icon-only buttons & other UI conventions | [`ui-conventions.md`](./ui-conventions.md) |
 
-> Operator/user-facing docs (install, self-hosting, configuration) live
-> elsewhere — see the top-level `README.md` and `docs/`. These files are for
-> developers and agents working *on* the code.
+> Operator/user-facing docs (install, self-hosting, configuration) live elsewhere — see the top-level `README.md` and `docs/`. These files are for developers and agents working *on* the code.

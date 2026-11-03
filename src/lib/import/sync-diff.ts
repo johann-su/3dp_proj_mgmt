@@ -1,26 +1,13 @@
-// Pure diff engine for the MakerWorld/Printables source sync: given the
-// model's local files and the platform's current file list, decide what to
-// import, replace, remove and re-stamp. DB-free and network-free on purpose —
-// the sync route (src/app/api/models/[id]/source-sync) does the fetching and
-// writing.
+// Pure diff engine for the MakerWorld/Printables source sync: given the model's local files and the platform's current file list, decide what to import, replace, remove and re-stamp. DB-free and network-free on purpose — the sync route (src/app/api/models/[id]/source-sync) does the fetching and writing.
 //
-// The sync contract in one line: **imported files mirror upstream, everything
-// else is local**. Manual uploads (imported = false) and generated OpenSCAD
-// variants are invisible to the planner, images are out of scope entirely,
-// and metadata (title/description/tags/BOM) is never touched — so there is no
-// merge to resolve: upstream owns the imported files, the user owns the rest.
+// The sync contract in one line: **imported files mirror upstream, everything else is local**. Manual uploads (imported = false) and generated OpenSCAD variants are invisible to the planner, images are out of scope entirely, and metadata (title/description/tags/BOM) is never touched — so there is no merge to resolve: upstream owns the imported files, the user owns the rest.
 
 export type UpstreamFile = {
-  // Stable per-file identity, prefixed by group so ids can't collide:
-  // "profile:<id>" (MakerWorld print profile), "scad:<basename>" (raw-file
-  // OpenSCAD source), "doc:<filename>" (attached PDF), "file:<id>"
-  // (Printables file). Import stamps the same ids onto model_files.
+  // Stable per-file identity, prefixed by group so ids can't collide: "profile:<id>" (MakerWorld print profile), "scad:<basename>" (raw-file OpenSCAD source), "doc:<filename>" (attached PDF), "file:<id>" (Printables file). Import stamps the same ids onto model_files.
   sourceFileId: string;
   filename: string;
   kind: "model" | "pdf";
-  // Opaque last-modified token (the platform's ISO date string), null when
-  // the platform exposes none (MakerWorld doc PDFs). Compared for equality,
-  // not order — upstream only ever moves forward.
+  // Opaque last-modified token (the platform's ISO date string), null when the platform exposes none (MakerWorld doc PDFs). Compared for equality, not order — upstream only ever moves forward.
   modifiedAt: string | null;
 };
 
@@ -39,14 +26,11 @@ export type LocalSyncFile = {
 export type SyncPlan<U extends UpstreamFile> = {
   // Upstream files with no local counterpart — download and insert.
   toImport: U[];
-  // Matched files whose upstream token moved — download and replace the row
-  // (the new row inherits the old position).
+  // Matched files whose upstream token moved — download and replace the row (the new row inherits the old position).
   toReplace: { local: LocalSyncFile; upstream: U }[];
-  // Local imported files no longer present upstream — remove the row (the
-  // bytes stay in S3 via the pre-sync version snapshot).
+  // Local imported files no longer present upstream — remove the row (the bytes stay in S3 via the pre-sync version snapshot).
   toRemove: LocalSyncFile[];
-  // Matched-and-unchanged files whose stored id/token is stale (adopted
-  // legacy imports, or a token refresh) — update the columns in place.
+  // Matched-and-unchanged files whose stored id/token is stale (adopted legacy imports, or a token refresh) — update the columns in place.
   toStamp: { localId: string; sourceFileId: string; sourceModifiedAt: string | null }[];
 };
 
@@ -58,13 +42,7 @@ export function planIsEmpty(plan: SyncPlan<UpstreamFile>): boolean {
   );
 }
 
-// Has the matched file changed upstream? With a stored token this is a plain
-// inequality. Without one (imports predating the feature, or a file adopted
-// by filename) fall back to comparing the upstream date against when the
-// local row was created: modified after we imported it means our copy is
-// stale, modified before means our copy already is that version. Unparseable
-// or missing upstream dates count as unchanged — never loop re-downloading a
-// file we can't fingerprint.
+// Has the matched file changed upstream? With a stored token this is a plain inequality. Without one (imports predating the feature, or a file adopted by filename) fall back to comparing the upstream date against when the local row was created: modified after we imported it means our copy is stale, modified before means our copy already is that version. Unparseable or missing upstream dates count as unchanged — never loop re-downloading a file we can't fingerprint.
 function hasChanged(local: LocalSyncFile, upstream: UpstreamFile): boolean {
   if (upstream.modifiedAt === null) return false;
   if (local.sourceModifiedAt !== null) {
@@ -90,8 +68,7 @@ export function computeSyncPlan<U extends UpstreamFile>(
   const byId = new Map(
     local.filter((f) => f.sourceFileId !== null).map((f) => [f.sourceFileId, f]),
   );
-  // Pre-feature imports have no stored id — adopt them by filename, first
-  // match wins.
+  // Pre-feature imports have no stored id — adopt them by filename, first match wins.
   const adoptable = new Map(
     local
       .filter((f) => f.sourceFileId === null)

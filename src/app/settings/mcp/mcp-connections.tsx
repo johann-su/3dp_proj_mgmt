@@ -11,9 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { CopyField } from "@/components/copy-field";
 
-// Dates cross the server/client boundary as ISO strings (a server component
-// can't hand a client component a Date), and render through formatDate, which
-// is pinned to UTC to keep server and client agreeing.
+// Dates cross the server/client boundary as ISO strings (a server component can't hand a client component a Date), and render through formatDate, which is pinned to UTC to keep server and client agreeing.
 export type McpClientView = {
   clientId: string;
   name: string | null;

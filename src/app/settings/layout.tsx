@@ -10,9 +10,7 @@ export default async function SettingsLayout({
 }: {
   children: React.ReactNode;
 }) {
-  // First-admin bootstrap: while no admin exists, promote the
-  // INITIAL_ADMIN_EMAIL account. Runs before getSession so the fresh role is
-  // already on the session and the Users nav entry shows on this very load.
+  // First-admin bootstrap: while no admin exists, promote the INITIAL_ADMIN_EMAIL account. Runs before getSession so the fresh role is already on the session and the Users nav entry shows on this very load.
   await ensureInitialAdmin();
 
   const session = await getSession();

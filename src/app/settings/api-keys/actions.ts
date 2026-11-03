@@ -9,10 +9,7 @@ import { reportError } from "@/lib/telemetry";
 // Offered lifetimes, in days; null = never expires.
 const EXPIRY_DAYS = [30, 90, 365, null] as const;
 
-// Creates a key for the signed-in user and returns the secret — the only time
-// it is ever readable; only its hash is stored. Called server-side without
-// request headers on purpose: that is what lets us set `permissions`, which
-// the plugin refuses to accept from a client request.
+// Creates a key for the signed-in user and returns the secret — the only time it is ever readable; only its hash is stored. Called server-side without request headers on purpose: that is what lets us set `permissions`, which the plugin refuses to accept from a client request.
 export async function createApiKey(input: {
   name: string;
   scopes: unknown;

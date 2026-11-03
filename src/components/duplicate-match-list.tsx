@@ -4,10 +4,7 @@ import { Box, ExternalLink } from "lucide-react";
 import type { DuplicateMatch } from "@/lib/duplicates";
 import { formatDate } from "@/lib/format";
 
-// The existing models a duplicate prompt is flagging, shared by the URL-import
-// dialog and the create/edit form's upload dialog (issue #118). Each row links
-// out in a new tab on purpose: the user is mid-import with staged files and a
-// half-filled form, so navigating away in place would lose it.
+// The existing models a duplicate prompt is flagging, shared by the URL-import dialog and the create/edit form's upload dialog (issue #118). Each row links out in a new tab on purpose: the user is mid-import with staged files and a half-filled form, so navigating away in place would lose it.
 export function DuplicateMatchList({ matches }: { matches: DuplicateMatch[] }) {
   return (
     <ul className="grid max-h-64 gap-2 overflow-y-auto">

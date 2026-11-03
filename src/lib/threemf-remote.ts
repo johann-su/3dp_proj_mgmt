@@ -1,6 +1,4 @@
-// Slicer metadata for .3mf files already in storage. The ZIP/config parsing
-// lives in src/lib/threemf-slice-info.ts (pure, unit-tested); this module only
-// wires it to ranged storage reads and caches the result per object key.
+// Slicer metadata for .3mf files already in storage. The ZIP/config parsing lives in src/lib/threemf-slice-info.ts (pure, unit-tested); this module only wires it to ranged storage reads and caches the result per object key.
 
 import { readBlobBytes } from "@/lib/blob-store";
 import { blobStore } from "@/lib/storage";
@@ -23,9 +21,7 @@ async function getRange(key: string, start: number, end: number) {
   return bytes;
 }
 
-// Both getters return null for archives without the relevant metadata (plain
-// core-spec 3mf, non-3mf uploads) or on any S3/parse error — callers just
-// omit the info.
+// Both getters return null for archives without the relevant metadata (plain core-spec 3mf, non-3mf uploads) or on any S3/parse error — callers just omit the info.
 async function parseCached(s3Key: string, size: number): Promise<SliceData | null> {
   const cached = cache.get(s3Key);
   if (cached !== undefined) return cached;

@@ -2,8 +2,7 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { cn } from "@/lib/utils";
 
-// Renders GitHub-flavored markdown. react-markdown never injects raw HTML
-// (it is shown as literal text), so user-supplied descriptions are safe.
+// Renders GitHub-flavored markdown. react-markdown never injects raw HTML (it is shown as literal text), so user-supplied descriptions are safe.
 export function Markdown({
   children,
   className,

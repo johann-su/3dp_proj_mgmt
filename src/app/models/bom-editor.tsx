@@ -42,9 +42,7 @@ const EMPTY_ITEM: BomItemInput = {
   section: null,
 };
 
-// Steps the leading number of a free-form quantity ("4" -> "5", "1x" -> "2x",
-// "0.5 kg" -> "1.5 kg") and leaves the unit suffix alone. Values without a
-// leading number start counting at 1; steps never go below 1's territory.
+// Steps the leading number of a free-form quantity ("4" -> "5", "1x" -> "2x", "0.5 kg" -> "1.5 kg") and leaves the unit suffix alone. Values without a leading number start counting at 1; steps never go below 1's territory.
 function stepQuantity(value: string, delta: 1 | -1): string {
   const match = value.trim().match(/^(\d+(?:[.,]\d+)?)(.*)$/);
   if (!match) return "1" + (value.trim() ? ` ${value.trim()}` : "");
@@ -63,9 +61,7 @@ function FieldLabel({ children }: { children: ReactNode }) {
   );
 }
 
-// Live preview of the item's image URL — the same thumbnail the model page
-// renders, so a working URL is visible while editing. Keyed by URL from the
-// caller so the error state resets when the URL changes.
+// Live preview of the item's image URL — the same thumbnail the model page renders, so a working URL is visible while editing. Keyed by URL from the caller so the error state resets when the URL changes.
 function Thumb({ url }: { url: string | null }) {
   const [broken, setBroken] = useState(false);
   const valid =
@@ -96,12 +92,10 @@ function Thumb({ url }: { url: string | null }) {
   );
 }
 
-// One rendered block of items: the ungrouped block (section null) or a named
-// section. `index` is the item's position in the flat `items` prop.
+// One rendered block of items: the ungrouped block (section null) or a named section. `index` is the item's position in the flat `items` prop.
 type Group = { section: string | null; items: { item: BomItemInput; index: number }[] };
 
-// Insertion slot a dragged card would land in: before the `index`-th card of
-// `section` (index === group length means "at the end").
+// Insertion slot a dragged card would land in: before the `index`-th card of `section` (index === group length means "at the end").
 type DropTarget = { section: string | null; index: number };
 
 export function BomEditor({
@@ -112,14 +106,11 @@ export function BomEditor({
   setItems: (items: BomItemInput[]) => void;
 }) {
   const csvInputRef = useRef<HTMLInputElement>(null);
-  // Section names created or edited here. Sections found on items (loaded
-  // from the server) are merged in below, so this only has to track sections
-  // the server can't know about — freshly added or currently empty ones.
+  // Section names created or edited here. Sections found on items (loaded from the server) are merged in below, so this only has to track sections the server can't know about — freshly added or currently empty ones.
   const [ownSections, setOwnSections] = useState<string[]>([]);
   const [dragIndex, setDragIndex] = useState<number | null>(null);
   const [dropTarget, setDropTarget] = useState<DropTarget | null>(null);
-  // A card is only draggable while its grip is pressed, so text in the
-  // inputs stays selectable.
+  // A card is only draggable while its grip is pressed, so text in the inputs stays selectable.
   const [armedIndex, setArmedIndex] = useState<number | null>(null);
 
   const sectionNames = useMemo(() => {
@@ -150,8 +141,7 @@ export function BomEditor({
     return next.flatMap((g) => g.items.map(({ item }) => item));
   }
 
-  // Stable-sorts the flat list into render order (ungrouped, then sections),
-  // used when an operation moves items across groups in place.
+  // Stable-sorts the flat list into render order (ungrouped, then sections), used when an operation moves items across groups in place.
   function sortBySections(list: BomItemInput[], names: string[]) {
     const rank = (s: string | null) => (s === null ? 0 : names.indexOf(s) + 1);
     return [...list].sort((a, b) => rank(a.section) - rank(b.section));
@@ -190,8 +180,7 @@ export function BomEditor({
     );
   }
 
-  // Swaps a section with its neighbour. Buttons instead of drag and drop —
-  // sections are too tall to drag comfortably.
+  // Swaps a section with its neighbour. Buttons instead of drag and drop — sections are too tall to drag comfortably.
   function moveSection(index: number, dir: -1 | 1) {
     const swap = index + dir;
     if (swap < 0 || swap >= sectionNames.length) return;
@@ -228,8 +217,7 @@ export function BomEditor({
     for (const g of next) {
       const pos = g.items.findIndex(({ index }) => index === dragIndex);
       if (pos === -1) continue;
-      // Slots were computed with the dragged card still in place; removing
-      // it shifts later slots in the same group down by one.
+      // Slots were computed with the dragged card still in place; removing it shifts later slots in the same group down by one.
       if (g === target && pos < insertAt) insertAt--;
       g.items.splice(pos, 1);
     }
@@ -431,8 +419,7 @@ export function BomEditor({
     );
   }
 
-  // dragover/drop on a group container targets the end of that group;
-  // handlers on the cards themselves stopPropagation to take precedence.
+  // dragover/drop on a group container targets the end of that group; handlers on the cards themselves stopPropagation to take precedence.
   function groupDropProps(group: Group) {
     return {
       onDragOver: (e: DragEvent) => {
@@ -496,8 +483,7 @@ export function BomEditor({
         </div>
       )}
 
-      {/* Keyed by position, not name: keying by name would remount the block
-          (and blur the name input) on every keystroke while renaming. */}
+      {/* Keyed by position, not name: keying by name would remount the block (and blur the name input) on every keystroke while renaming. */}
       {sectionGroups.map((group, i) => (
         <div
           key={i}

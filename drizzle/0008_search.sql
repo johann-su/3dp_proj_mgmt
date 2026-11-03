@@ -1,9 +1,6 @@
--- Fuzzy search infrastructure. pg_trgm powers typo-tolerant matching over
--- model/collection titles + descriptions; the model_files expression indexes
--- back the printer/filament/nozzle/print-time facets used by /search.
+-- Fuzzy search infrastructure. pg_trgm powers typo-tolerant matching over model/collection titles + descriptions; the model_files expression indexes back the printer/filament/nozzle/print-time facets used by /search.
 --
--- Note: migrations run inside a transaction (scripts/migrate.mjs), so these
--- are plain CREATE INDEX (not CONCURRENTLY).
+-- Note: migrations run inside a transaction (scripts/migrate.mjs), so these are plain CREATE INDEX (not CONCURRENTLY).
 CREATE EXTENSION IF NOT EXISTS pg_trgm;
 --> statement-breakpoint
 CREATE INDEX IF NOT EXISTS "models_title_trgm_idx" ON "models" USING gin ("title" gin_trgm_ops);

@@ -1,17 +1,14 @@
 import { ExternalLink, Wrench } from "lucide-react";
 import { bomImageProxySrc, groupBySection } from "@/lib/bom";
 
-// Read-only BOM list shared by the model detail page and the wizard preview.
-// Items are grouped under their section headings; ungrouped items come
-// first, then sections in the order they first appear.
+// Read-only BOM list shared by the model detail page and the wizard preview. Items are grouped under their section headings; ungrouped items come first, then sections in the order they first appear.
 
 type BomListItem = {
   name: string;
   quantity: string;
   link: string | null;
   imageUrl: string | null;
-  // Where to load the image from, when not the member proxy for `imageUrl`
-  // — the public share view passes a share-scoped src (sharedBomImageSrc).
+  // Where to load the image from, when not the member proxy for `imageUrl` — the public share view passes a share-scoped src (sharedBomImageSrc).
   imageSrc?: string | null;
   section: string | null;
 };

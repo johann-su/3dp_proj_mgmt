@@ -10,10 +10,7 @@ import {
 
 export const runtime = "nodejs";
 
-// Serves staged gallery media ("uploads/…") so the create form can show
-// thumbnails — and play videos — for files imported by URL before the model
-// exists. Images and videos only: staged keys are unguessable UUIDs, but this
-// must not become a general storage proxy.
+// Serves staged gallery media ("uploads/…") so the create form can show thumbnails — and play videos — for files imported by URL before the model exists. Images and videos only: staged keys are unguessable UUIDs, but this must not become a general storage proxy.
 export async function GET(req: NextRequest) {
   const session = await getSession();
   if (!session) {
@@ -42,8 +39,7 @@ export async function GET(req: NextRequest) {
   }
 
   const headers = new Headers();
-  // The key's extension is allowlisted above, so derive the type from it
-  // rather than trusting whatever ContentType the object was staged with.
+  // The key's extension is allowlisted above, so derive the type from it rather than trusting whatever ContentType the object was staged with.
   headers.set("Content-Type", contentTypeForFilename(key));
   headers.set("X-Content-Type-Options", "nosniff");
   if (object.contentLength !== undefined) {

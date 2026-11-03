@@ -3,9 +3,7 @@ import { db } from "@/db";
 import { collections, modelFiles, models } from "@/db/schema";
 import { reportError } from "@/lib/telemetry";
 
-// Fire-and-forget usage counters, meant to be called from `after()` so they
-// never add latency to the response. Errors are swallowed — a lost metrics
-// increment shouldn't surface as a broken page/download.
+// Fire-and-forget usage counters, meant to be called from `after()` so they never add latency to the response. Errors are swallowed — a lost metrics increment shouldn't surface as a broken page/download.
 
 export async function incrementModelViewCount(modelId: string): Promise<void> {
   try {

@@ -1,6 +1,4 @@
-// Collection mutations shared by the server actions
-// (src/app/collections/actions.ts) and the public API (src/app/api/v1/), so
-// both apply the same rules. Callers authenticate; these authorize.
+// Collection mutations shared by the server actions (src/app/collections/actions.ts) and the public API (src/app/api/v1/), so both apply the same rules. Callers authenticate; these authorize.
 
 import { revalidatePath } from "next/cache";
 import { and, eq } from "drizzle-orm";
@@ -8,12 +6,9 @@ import { db } from "@/db";
 import { collectionModels, collections, models } from "@/db/schema";
 import type { Actor, MutationError } from "@/lib/model-mutations";
 
-// Adds a model to, or removes it from, a hand-picked collection. Membership
-// is an edit — open to any signed-in user, like the rest of collection
-// editing; only deletion is owner-gated. Idempotent both ways.
+// Adds a model to, or removes it from, a hand-picked collection. Membership is an edit — open to any signed-in user, like the rest of collection editing; only deletion is owner-gated. Idempotent both ways.
 export async function setCollectionMembership(
-  // Unused while membership edits are open to everyone; taken so the gate can
-  // tighten here without touching every caller.
+  // Unused while membership edits are open to everyone; taken so the gate can tighten here without touching every caller.
   _actor: Actor,
   input: { collectionId: string; modelId: string; member: boolean },
 ): Promise<{ ok: true } | MutationError> {

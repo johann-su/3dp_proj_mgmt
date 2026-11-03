@@ -1,8 +1,6 @@
 "use server";
 
-// The browser's entry points for model mutations: each checks the session and
-// hands the work to src/lib/model-mutations.ts, which the public API shares —
-// validation and the versioning rules live there, not here.
+// The browser's entry points for model mutations: each checks the session and hands the work to src/lib/model-mutations.ts, which the public API shares — validation and the versioning rules live there, not here.
 
 import { redirect } from "next/navigation";
 import { getSession } from "@/lib/auth";
@@ -26,11 +24,7 @@ export type {
   UploadedFile,
 } from "@/lib/model-mutations";
 
-// A save that didn't happen. `error` is a validation failure to show as a
-// toast; `duplicates` is the flag-only duplicate prompt (issue #118) — the
-// catalog already holds these models, and re-submitting with
-// `confirmDuplicate` saves anyway. On success both actions redirect and
-// return nothing.
+// A save that didn't happen. `error` is a validation failure to show as a toast; `duplicates` is the flag-only duplicate prompt (issue #118) — the catalog already holds these models, and re-submitting with `confirmDuplicate` saves anyway. On success both actions redirect and return nothing.
 export type ModelSaveResult =
   | { error: string }
   | { duplicates: DuplicateMatch[] };

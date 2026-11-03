@@ -1,9 +1,6 @@
 "use client";
 
-// The model page layout: gallery + description on the left, metadata, file
-// cards (model-file-cards.tsx) and actions on the right. Shared by the model
-// page, the read-only version preview and the create-wizard preview — every
-// mutating affordance is disabled by `modelId: null`.
+// The model page layout: gallery + description on the left, metadata, file cards (model-file-cards.tsx) and actions on the right. Shared by the model page, the read-only version preview and the create-wizard preview — every mutating affordance is disabled by `modelId: null`.
 
 import Link from "next/link";
 import { useRef, useState } from "react";
@@ -66,33 +63,27 @@ export type ModelViewData = {
   makerworldUrl: string | null;
   // Stored gallery files — photos and uploaded videos in one order.
   media: GalleryMedia[];
-  // Linked (YouTube) gallery videos, each carrying its slot in the combined
-  // carousel order.
+  // Linked (YouTube) gallery videos, each carrying its slot in the combined carousel order.
   videos: ModelVideo[];
-  // Previewable .3mf files for the gallery's interactive 3D view (issue #35),
-  // each carrying its real bed size for the plate reference (issue #80).
+  // Previewable .3mf files for the gallery's interactive 3D view (issue #35), each carrying its real bed size for the plate reference (issue #80).
   modelFiles: ViewerFile[];
   // `imageSrc` overrides the member image proxy (public share view).
   bom: Array<BomItemInput & { imageSrc?: string | null }>;
   printFiles: PrintFileData[];
   pdfFiles: PdfFileData[];
   modelId: string | null;
-  // Viewer may delete the model and any variant: the owner or a
-  // moderator/admin (see canActAsOwner).
+  // Viewer may delete the model and any variant: the owner or a moderator/admin (see canActAsOwner).
   canManage: boolean;
   isLoggedIn: boolean;
   // Whether the current viewer has liked this model (false in the previews).
   liked?: boolean;
-  // Whether the model is pinned to the shared homepage section (false in the
-  // previews).
+  // Whether the model is pinned to the shared homepage section (false in the previews).
   pinned?: boolean;
   collectionOptions: CollectionOption[];
   slicerConfigured: boolean;
   // Edit history, newest first (absent in the create-wizard preview).
   history?: ModelHistoryEntry[];
-  // The anonymous public-share view: read-only like the previews
-  // (`modelId: null`), but what a visitor can act on stays live — BOM vendor
-  // links and the BOM CSV download.
+  // The anonymous public-share view: read-only like the previews (`modelId: null`), but what a visitor can act on stays live — BOM vendor links and the BOM CSV download.
   publicShare?: boolean;
   // Share dialog state (absent in the previews and the public share view).
   share?: {
@@ -134,8 +125,7 @@ export function ModelView({ data }: { data: ModelViewData }) {
     publicShare,
   } = data;
 
-  // The gallery's Photos/3D toggle and previewed file live here so a click on
-  // a .3mf in the Files card can open it in the viewer and highlight its row.
+  // The gallery's Photos/3D toggle and previewed file live here so a click on a .3mf in the Files card can open it in the viewer and highlight its row.
   const [show3d, setShow3d] = useState(() =>
     galleryOpensIn3d(media, videos, modelFiles),
   );
@@ -144,8 +134,7 @@ export function ModelView({ data }: { data: ModelViewData }) {
   const filePreview: FilePreviewControl | undefined =
     modelFiles.length > 0
       ? {
-          // Model-page rows carry the file id; the read-only views' rows carry
-          // the same tokened src the viewer loads.
+          // Model-page rows carry the file id; the read-only views' rows carry the same tokened src the viewer loads.
           indexOf: (file) =>
             file.filename.toLowerCase().endsWith(".3mf")
               ? modelFiles.findIndex((f) =>
@@ -156,8 +145,7 @@ export function ModelView({ data }: { data: ModelViewData }) {
           onSelect: (index) => {
             setModelFileIndex(index);
             setShow3d(true);
-            // On mobile the gallery sits above the description, out of sight
-            // of the Files card.
+            // On mobile the gallery sits above the description, out of sight of the Files card.
             galleryRef.current?.scrollIntoView({
               behavior: "smooth",
               block: "nearest",
@@ -167,10 +155,7 @@ export function ModelView({ data }: { data: ModelViewData }) {
       : undefined;
 
   return (
-    // On mobile the columns fold into a single flow reordered with `order`:
-    // header first (order-1), then the gallery (order-2), then the description
-    // that trails it, then the downloads (order-3). On `lg` the two grid
-    // columns take over and `order-none` restores document order.
+    // On mobile the columns fold into a single flow reordered with `order`: header first (order-1), then the gallery (order-2), then the description that trails it, then the downloads (order-3). On `lg` the two grid columns take over and `order-none` restores document order.
     <div className="flex flex-col gap-8 lg:grid lg:grid-cols-[1fr_400px]">
       <div className="order-2 min-w-0 lg:order-none">
         <div ref={galleryRef} className="scroll-mt-20">
@@ -248,10 +233,7 @@ export function ModelView({ data }: { data: ModelViewData }) {
         </div>
       </div>
 
-      {/* The right column on `lg`. On mobile it dissolves (display:contents)
-          so its two blocks become siblings of the gallery: the metadata
-          header floats above it (order-1) and the downloads below the
-          description (order-3). */}
+      {/* The right column on `lg`. On mobile it dissolves (display:contents) so its two blocks become siblings of the gallery: the metadata header floats above it (order-1) and the downloads below the description (order-3). */}
       <div className="contents lg:flex lg:min-w-0 lg:flex-col lg:gap-4">
         <div className="order-1 min-w-0 space-y-4 lg:order-none">
           <div>
@@ -376,8 +358,7 @@ export function ModelView({ data }: { data: ModelViewData }) {
                     Edit model
                   </Link>
                 </Button>
-                {/* Editing is open to all; deleting stays with the owner and
-                    moderators/admins (canManage). */}
+                {/* Editing is open to all; deleting stays with the owner and moderators/admins (canManage). */}
                 {canManage && <DeleteModelButton modelId={modelId} />}
               </div>
             </>

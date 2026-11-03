@@ -38,8 +38,7 @@ export default async function MyCollectionsPage() {
     },
   });
 
-  // Smart collections have no collection_models rows — their covers and count
-  // come from evaluating the stored rules (see smart-collections.ts).
+  // Smart collections have no collection_models rows — their covers and count come from evaluating the stored rules (see smart-collections.ts).
   const smartPreviews = await smartCollectionPreviews(
     results.filter((c) => c.smart).map((c) => ({ id: c.id, rules: c.rules })),
   );

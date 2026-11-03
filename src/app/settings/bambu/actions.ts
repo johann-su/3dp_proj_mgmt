@@ -18,8 +18,7 @@ function normalizeRegion(region: string): BambuRegion {
   return region === "china" ? "china" : "global";
 }
 
-// Step 1 of the login flow. Depending on the account's security settings this
-// either connects immediately, or asks the client for an email code / TOTP.
+// Step 1 of the login flow. Depending on the account's security settings this either connects immediately, or asks the client for an email code / TOTP.
 export type StartLoginResult =
   | { status: "connected" }
   | { status: "needCode" }
@@ -120,8 +119,7 @@ export async function finishBambuTfa(input: {
   }
 }
 
-// Alternative to logging in: paste the `token` cookie from a signed-in
-// MakerWorld browser session.
+// Alternative to logging in: paste the `token` cookie from a signed-in MakerWorld browser session.
 export async function saveBambuToken(input: {
   account: string;
   token: string;

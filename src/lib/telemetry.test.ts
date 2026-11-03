@@ -8,8 +8,7 @@ import {
   reportError,
 } from "@/lib/telemetry";
 
-// Telemetry is opt-in: a deploy without a collector must get zero telemetry,
-// not failing exports to @vercel/otel's localhost default.
+// Telemetry is opt-in: a deploy without a collector must get zero telemetry, not failing exports to @vercel/otel's localhost default.
 test("otlpConfigured is false when no OTLP endpoint env var is set", () => {
   assert.equal(otlpConfigured({}), false);
   assert.equal(otlpConfigured({ OTEL_SERVICE_NAME: "print-vault" }), false);
@@ -29,17 +28,14 @@ test("otlpConfigured accepts either the generic or the traces-specific endpoint"
   );
 });
 
-// reportError runs in catch blocks on every deploy, including the majority
-// with telemetry disabled — it must never throw, whatever it's handed.
+// reportError runs in catch blocks on every deploy, including the majority with telemetry disabled — it must never throw, whatever it's handed.
 test("reportError is safe without a registered OTel SDK", () => {
   reportError("plain message");
   reportError("with an Error", new Error("boom"));
   reportError("with a non-Error throw", "string reason");
 });
 
-// Same contract for the metric helpers: they sit on hot operational paths
-// (slice estimates, renders, import jobs) and must be free no-ops on deploys
-// without a collector, not a source of new failures.
+// Same contract for the metric helpers: they sit on hot operational paths (slice estimates, renders, import jobs) and must be free no-ops on deploys without a collector, not a source of new failures.
 test("metric record helpers are safe without a registered OTel SDK", () => {
   recordSliceEstimate("embedded");
   recordSliceEstimate("sliced", 12.5);

@@ -62,8 +62,7 @@ test("parseOnshapeUrl rejects other hosts", () => {
 });
 
 test("buildExportRequest sends 3MF through the generic translations route", () => {
-  // There is no …/export/3mf endpoint (only glTF/OBJ/STEP have one); the
-  // format must go in the body of …/translations instead.
+  // There is no …/export/3mf endpoint (only glTF/OBJ/STEP have one); the format must go in the body of …/translations instead.
   const { path, body } = buildExportRequest(
     "PARTSTUDIO",
     { documentId: DID, wvm: "w", wvmId: WID },
@@ -87,8 +86,7 @@ test("buildExportRequest uses the assemblies resource for assembly tabs", () => 
 });
 
 test("eligibleExportElements keeps only Part Studio and Assembly tabs", () => {
-  // Variable Studios, drawings, blobs etc. can't be exported as 3MF and must
-  // never show up in the import dialog.
+  // Variable Studios, drawings, blobs etc. can't be exported as 3MF and must never show up in the import dialog.
   const elements = eligibleExportElements([
     { id: elementId(1), name: "Part Studio 1", elementType: "PARTSTUDIO" },
     { id: elementId(2), name: "Variable Studio 1", elementType: "VARIABLESTUDIO" },
@@ -102,8 +100,7 @@ test("eligibleExportElements keeps only Part Studio and Assembly tabs", () => {
 });
 
 test("eligibleExportElements carries the per-element microversion through", () => {
-  // The sync diff reads microversionId off the eligible tabs, so the filter
-  // must not drop it (it's the token that decides "did this tab change").
+  // The sync diff reads microversionId off the eligible tabs, so the filter must not drop it (it's the token that decides "did this tab change").
   const [el] = eligibleExportElements([
     { id: elementId(1), name: "PS", elementType: "PARTSTUDIO", microversionId: "mv-1" },
   ]);
@@ -117,9 +114,7 @@ const mvTab = (n: number, microversionId: string): OnshapeExportElement => ({
 });
 
 test("planOnshapeSync: only tabs whose microversion moved re-export", () => {
-  // The whole point of issue #70: a tab whose stored token still matches its
-  // current microversion is the export we already have — skip it; a tab whose
-  // element microversion moved must be re-exported.
+  // The whole point of issue #70: a tab whose stored token still matches its current microversion is the export we already have — skip it; a tab whose element microversion moved must be re-exported.
   const { changedIds, unchangedIds, deletedIds } = planOnshapeSync(
     [
       { elementId: elementId(1), microversion: "mv-1" }, // unchanged
@@ -133,8 +128,7 @@ test("planOnshapeSync: only tabs whose microversion moved re-export", () => {
 });
 
 test("planOnshapeSync: a tab with no stored token can't be proven identical", () => {
-  // Imports predating issue #70 have no per-element token — re-export once
-  // (the fresh export stamps the token so later syncs can skip it).
+  // Imports predating issue #70 have no per-element token — re-export once (the fresh export stamps the token so later syncs can skip it).
   const { changedIds, unchangedIds } = planOnshapeSync(
     [{ elementId: elementId(1), microversion: null }],
     [mvTab(1, "mv-1")],
@@ -157,8 +151,7 @@ test("planOnshapeSync: a tab missing from the listing was deleted upstream", () 
 });
 
 test("planOnshapeSync: unknown current microversion re-exports (can't skip blind)", () => {
-  // If the listing omits microversionId we can't prove the tab is unchanged,
-  // so we conservatively re-export rather than silently keep a stale file.
+  // If the listing omits microversionId we can't prove the tab is unchanged, so we conservatively re-export rather than silently keep a stale file.
   const { changedIds } = planOnshapeSync(
     [{ elementId: elementId(1), microversion: "mv-1" }],
     [{ ...tab(1, "PARTSTUDIO") }], // no microversionId
@@ -167,8 +160,7 @@ test("planOnshapeSync: unknown current microversion re-exports (can't skip blind
 });
 
 test("selectExportElements: explicit selection wins over the pinned tab", () => {
-  // The pin is just whichever tab was open when the URL was copied — the
-  // dialog's choice (e.g. Part Studios, not the pinned Assembly) must win.
+  // The pin is just whichever tab was open when the URL was copied — the dialog's choice (e.g. Part Studios, not the pinned Assembly) must win.
   const elements = [tab(1, "PARTSTUDIO"), tab(2, "PARTSTUDIO"), tab(3, "ASSEMBLY")];
   const { selected, warnings } = selectExportElements(elements, {
     pinnedElementId: elementId(3),
@@ -180,8 +172,7 @@ test("selectExportElements: explicit selection wins over the pinned tab", () => 
 });
 
 test("selectExportElements: selected tabs deleted upstream become a warning", () => {
-  // Sync re-exports the tabs a model was imported with; a tab deleted in
-  // Onshape is skipped with a warning (its file mirrors upstream and goes).
+  // Sync re-exports the tabs a model was imported with; a tab deleted in Onshape is skipped with a warning (its file mirrors upstream and goes).
   const elements = [tab(1, "PARTSTUDIO")];
   const { selected, warnings } = selectExportElements(elements, {
     selectedElementIds: [elementId(1), elementId(9)],
@@ -235,9 +226,7 @@ test("branchChoices lists branches first, then versions newest-first", () => {
 });
 
 test("branchChoices drops the root Start version but keeps user versions named Start", () => {
-  // Every document has an implicit root version "Start" (parent null) — the
-  // empty initial state, pointless to import. A *user* version that merely
-  // shares the name has a parent and must survive.
+  // Every document has an implicit root version "Start" (parent null) — the empty initial state, pointless to import. A *user* version that merely shares the name has a parent and must survive.
   const choices = branchChoices(
     [{ id: elementId(1), name: "Main" }],
     [
@@ -252,8 +241,7 @@ test("branchChoices drops the root Start version but keeps user versions named S
 });
 
 test("a 429 is retried honoring Retry-After, then succeeds", async (t) => {
-  // One import fires dozens of API calls, so transient rate limits must not
-  // sink it. Retry-After: 0 keeps the test instant.
+  // One import fires dozens of API calls, so transient rate limits must not sink it. Retry-After: 0 keeps the test instant.
   const original = globalThis.fetch;
   t.after(() => {
     globalThis.fetch = original;

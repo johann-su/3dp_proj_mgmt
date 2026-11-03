@@ -25,8 +25,7 @@ import type { SearchFacets } from "@/lib/search";
 
 const ANY = "any";
 
-// Radix Select can't hold an empty-string value, so "Any" is a sentinel that
-// maps back to `undefined` (no filter).
+// Radix Select can't hold an empty-string value, so "Any" is a sentinel that maps back to `undefined` (no filter).
 function fromAny(v: string): string | undefined {
   return v === ANY ? undefined : v;
 }

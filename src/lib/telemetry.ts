@@ -7,16 +7,11 @@ import {
 } from "@opentelemetry/api";
 import { logger } from "@/lib/logger";
 
-// Proxies to whatever TracerProvider instrumentation.ts registers later;
-// without one every span call below is a free no-op.
+// Proxies to whatever TracerProvider instrumentation.ts registers later; without one every span call below is a free no-op.
 const tracer = trace.getTracer("print-vault");
 
 /**
- * Telemetry is opt-in: instrumentation.ts only registers the OTel SDK when an
- * OTLP endpoint is configured through the standard SDK env vars. Without this
- * gate @vercel/otel would still install itself and try to export every trace
- * to its default endpoint (http://localhost:4318) — silent failing POSTs on
- * every self-hosted deploy that doesn't run a collector.
+ * Telemetry is opt-in: instrumentation.ts only registers the OTel SDK when an OTLP endpoint is configured through the standard SDK env vars. Without this gate @vercel/otel would still install itself and try to export every trace to its default endpoint (http://localhost:4318) — silent failing POSTs on every self-hosted deploy that doesn't run a collector.
  */
 export function otlpConfigured(
   env: Record<string, string | undefined> = process.env,
@@ -28,12 +23,7 @@ export function otlpConfigured(
 }
 
 /**
- * Log a swallowed error and record it on the trace, so operational failures
- * (slicer/OpenSCAD calls, integration APIs, background jobs) surface in the
- * tracing backend instead of only in container logs. Attaches to the active
- * request span when one is still recording; background work whose request
- * span already ended (`after()` jobs) gets a standalone error span. Safe to
- * call with telemetry disabled — the span operations no-op.
+ * Log a swallowed error and record it on the trace, so operational failures (slicer/OpenSCAD calls, integration APIs, background jobs) surface in the tracing backend instead of only in container logs. Attaches to the active request span when one is still recording; background work whose request span already ended (`after()` jobs) gets a standalone error span. Safe to call with telemetry disabled — the span operations no-op.
  */
 export function reportError(message: string, err?: unknown): void {
   const exception =
@@ -56,16 +46,9 @@ export function reportError(message: string, err?: unknown): void {
 
 // --- Metrics -----------------------------------------------------------
 //
-// Instruments must be created lazily: instrumentation.ts imports this module
-// *before* registerOTel() installs the global MeterProvider, so creating them
-// at module load would bind them to the no-op meter forever. First use only
-// happens inside request handling / after() work, which Next guarantees runs
-// after register(). With telemetry disabled the no-op meter makes every
-// record call free, mirroring the tracer above.
+// Instruments must be created lazily: instrumentation.ts imports this module *before* registerOTel() installs the global MeterProvider, so creating them at module load would bind them to the no-op meter forever. First use only happens inside request handling / after() work, which Next guarantees runs after register(). With telemetry disabled the no-op meter makes every record call free, mirroring the tracer above.
 
-// Seconds-based buckets for service calls that range from sub-second STL
-// previews to multi-minute slices — the SDK default boundaries are tuned for
-// milliseconds and would lump everything into the first bucket.
+// Seconds-based buckets for service calls that range from sub-second STL previews to multi-minute slices — the SDK default boundaries are tuned for milliseconds and would lump everything into the first bucket.
 const DURATION_BUCKETS_SECONDS = [0.25, 0.5, 1, 2.5, 5, 10, 30, 60, 120, 300, 600, 900];
 
 type Instruments = {

@@ -28,8 +28,7 @@ test("every $ref in the document resolves", () => {
   }
 });
 
-// The scope is part of each endpoint's contract: a client needs to know which
-// key it needs, and the document is where it looks.
+// The scope is part of each endpoint's contract: a client needs to know which key it needs, and the document is where it looks.
 test("every operation names a real scope (or none) and a unique id", () => {
   const ids = new Set<string>();
   for (const ops of Object.values(OPERATIONS)) {
@@ -55,9 +54,7 @@ const exportedMethods = (source: string) =>
     (m) => m[1].toLowerCase(),
   );
 
-// The path table is hand-written, so it can drift from the routes; this keeps
-// the two in lockstep — an endpoint added without documentation (or
-// documentation for one that doesn't exist) fails here.
+// The path table is hand-written, so it can drift from the routes; this keeps the two in lockstep — an endpoint added without documentation (or documentation for one that doesn't exist) fails here.
 test("the documented operations are exactly the routes under src/app/api/v1", () => {
   const documented = Object.keys(OPERATIONS).map(toRouteDir).sort();
   const routes = routeFiles(ROUTES_DIR)
@@ -74,8 +71,7 @@ test("the documented operations are exactly the routes under src/app/api/v1", ()
   }
 });
 
-// Request schemas are rendered in input mode: fields with a server default are
-// optional for the client.
+// Request schemas are rendered in input mode: fields with a server default are optional for the client.
 test("defaulted request fields are not marked required", () => {
   const schemas = doc.components.schemas as Record<string, { required?: string[] }>;
   assert.deepEqual(schemas.CreateModel.required?.sort(), ["files", "title"]);

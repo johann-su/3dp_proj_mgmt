@@ -8,16 +8,14 @@ import {
 } from "@/lib/mcp/pdf-text";
 import { ToolError } from "@/lib/mcp/protocol";
 
-// pdf.js emits a text item per positioned run, so raw page text arrives full of
-// runs of spaces and blank lines that cost tokens and carry no meaning.
+// pdf.js emits a text item per positioned run, so raw page text arrives full of runs of spaces and blank lines that cost tokens and carry no meaning.
 test("normalizePageText collapses pdf.js spacing without losing paragraph breaks", () => {
   const raw = "Step  1:\t connect the   ESC\r\n\n\n\nStep 2:  arm  \n";
   assert.equal(normalizePageText(raw), "Step 1: connect the ESC\n\nStep 2: arm");
 });
 
 test("normalizePageText yields an empty string for an image-only page", () => {
-  // Wiring diagrams are pictures; the tool reports these as empty rather than
-  // pretending the page is missing.
+  // Wiring diagrams are pictures; the tool reports these as empty rather than pretending the page is missing.
   assert.equal(normalizePageText("   \n\n \t \n"), "");
 });
 
@@ -34,8 +32,7 @@ test("pickDocument resolves a partial name, which is how models refer to files",
   assert.equal(pickDocument(docs, "wiring").filename, "wiring-diagram.pdf");
 });
 
-// Defaulting instead of erroring is deliberate: the response names what it read
-// and lists the alternatives, so only a wrong guess costs an extra call.
+// Defaulting instead of erroring is deliberate: the response names what it read and lists the alternatives, so only a wrong guess costs an extra call.
 test("pickDocument defaults to the first document when none is named", () => {
   assert.equal(pickDocument(docs, undefined).filename, docs[0].filename);
 });
@@ -77,8 +74,7 @@ test("selectPages signals the end of the document with a null nextStartPage", ()
   assert.equal(slice.nextStartPage, null);
 });
 
-// Without this branch a page bigger than the whole budget would return zero
-// pages, leaving the caller with nothing to read and nowhere to advance to.
+// Without this branch a page bigger than the whole budget would return zero pages, leaving the caller with nothing to read and nowhere to advance to.
 test("selectPages cuts a single oversized page and resumes on that same page", () => {
   const slice = selectPages(["x".repeat(500)], { startPage: 1, budget: 100 });
 
@@ -104,8 +100,7 @@ test("selectPages handles a PDF that yielded no pages", () => {
   });
 });
 
-// The budget is halved by toolResult serializing every payload twice (text
-// block + structuredContent), and must clear Claude Code's 25k-token cap.
+// The budget is halved by toolResult serializing every payload twice (text block + structuredContent), and must clear Claude Code's 25k-token cap.
 test("the default budget leaves headroom under both client result caps", () => {
   assert.ok(MAX_RESPONSE_CHARS * 2 < 100_000);
 });

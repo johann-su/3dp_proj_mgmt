@@ -106,9 +106,7 @@ test("mergeTags dedupes case-insensitively", () => {
   assert.equal(mergeTags("", "PLA"), "PLA");
 });
 
-// Baseline for the dirty tests: an edit view opened and left untouched. The
-// gallery holds two images with a video sitting between them, which is the
-// arrangement the media list exists to preserve.
+// Baseline for the dirty tests: an edit view opened and left untouched. The gallery holds two images with a video sitting between them, which is the arrangement the media list exists to preserve.
 const VIDEO = "https://www.youtube.com/watch?v=dQw4w9WgXcQ";
 const VIDEO_ENTRY = linkedVideoEntry(VIDEO, parseYouTubeUrl(VIDEO)!);
 
@@ -163,8 +161,7 @@ test("formIsDirty: reordering images reads as dirty (first image is the cover)",
   assert.equal(formIsDirty(current, initial), true);
 });
 
-// Videos live on the model row, not in the file lists — leaving without saving
-// would drop an added or removed link just as silently as a removed image.
+// Videos live on the model row, not in the file lists — leaving without saving would drop an added or removed link just as silently as a removed image.
 test("formIsDirty: adding or removing a gallery video reads as dirty", () => {
   const { current, initial } = pristineEditState();
   const other = "https://www.youtube.com/watch?v=aBcDeFgHiJk";
@@ -176,17 +173,14 @@ test("formIsDirty: adding or removing a gallery video reads as dirty", () => {
   assert.equal(formIsDirty(cleared.current, cleared.initial), true);
 });
 
-// Neither list changed on its own — only the video's slot among the images
-// did, and that slot is what gets saved as its position.
+// Neither list changed on its own — only the video's slot among the images did, and that slot is what gets saved as its position.
 test("formIsDirty: moving a video between images reads as dirty", () => {
   const { current, initial } = pristineEditState();
   current.media = [existingImageEntry("i1"), existingImageEntry("i2"), VIDEO_ENTRY];
   assert.equal(formIsDirty(current, initial), true);
 });
 
-// What the save actually writes: uploaded files keep their own relative
-// order, and each linked video's index in the media list is the position
-// stored with it.
+// What the save actually writes: uploaded files keep their own relative order, and each linked video's index in the media list is the position stored with it.
 test("mediaFiles/mediaLinkedVideos split the one list back into what each save needs", () => {
   const media = [existingImageEntry("i1"), VIDEO_ENTRY, existingImageEntry("i2")];
   assert.deepEqual(
@@ -196,8 +190,7 @@ test("mediaFiles/mediaLinkedVideos split the one list back into what each save n
   assert.deepEqual(mediaLinkedVideos(media), [{ url: VIDEO, position: 1 }]);
 });
 
-// Reopening the edit form has to rebuild exactly the list the last save
-// flattened — otherwise a no-op edit would silently reshuffle the gallery.
+// Reopening the edit form has to rebuild exactly the list the last save flattened — otherwise a no-op edit would silently reshuffle the gallery.
 test("mediaFromInitial rebuilds the saved arrangement", () => {
   const media = mediaFromInitial(
     [existingImageEntry("i1"), existingImageEntry("i2")],
@@ -210,8 +203,7 @@ test("mediaFromInitial rebuilds the saved arrangement", () => {
 });
 
 test("buildUpdateFileOrders: newIndex counter skips the PDF block", () => {
-  // Uploads are ordered model files, then PDFs, then gallery media — media
-  // newIndex values must land past the PDFs.
+  // Uploads are ordered model files, then PDFs, then gallery media — media newIndex values must land past the PDFs.
   const { modelFileOrder, mediaOrder } = buildUpdateFileOrders(
     [newModelEntry("a.3mf"), existingModelEntry("f1", "clip.3mf")],
     2,
@@ -259,9 +251,7 @@ test("orderFilesForCreate interleaves staged and new files in arranged order", (
   );
 });
 
-// The two sides of the wizard want opposite defaults: a file being added is
-// sliced (that's what an upload does), one already on the model is not — its
-// estimates exist, so re-slicing is a deliberate ask.
+// The two sides of the wizard want opposite defaults: a file being added is sliced (that's what an upload does), one already on the model is not — its estimates exist, so re-slicing is a deliberate ask.
 test("isQueuedForSlicing: new .3mf files default in, stored ones default out", () => {
   assert.equal(isQueuedForSlicing(newModelEntry("a.3mf"), {}), true);
   assert.equal(isQueuedForSlicing(existingModelEntry("f1", "clip.3mf"), {}), false);
@@ -276,8 +266,7 @@ test("isQueuedForSlicing: new .3mf files default in, stored ones default out", (
   );
 });
 
-// Overrides record only what differs from the default, so toggling twice
-// leaves no trace — otherwise an untouched form would prompt "discard changes?"
+// Overrides record only what differs from the default, so toggling twice leaves no trace — otherwise an untouched form would prompt "discard changes?"
 test("toggleSliceQueue: flipping back to the default clears the override", () => {
   const existing = existingModelEntry("f1", "clip.3mf");
   const queued = toggleSliceQueue({}, existing);
@@ -290,9 +279,7 @@ test("toggleSliceQueue: flipping back to the default clears the override", () =>
   assert.deepEqual(toggleSliceQueue(skipped, added), {});
 });
 
-// The skip list is keyed by S3 key, which a new file only gets at upload time:
-// the entries and the uploads are matched by walking both in wizard order (as
-// orderFilesForCreate does), so an unqueued file must not shift the pairing.
+// The skip list is keyed by S3 key, which a new file only gets at upload time: the entries and the uploads are matched by walking both in wizard order (as orderFilesForCreate does), so an unqueued file must not shift the pairing.
 test("skippedSliceKeys pairs unqueued entries with their uploaded keys", () => {
   const stagedModel = uploadedFile("model", "imported.3mf");
   const firstUpload = uploadedFile("model", "one.3mf");
@@ -316,17 +303,14 @@ test("skippedSliceKeys pairs unqueued entries with their uploaded keys", () => {
     ]),
     [stagedModel.key, secondUpload.key],
   );
-  // Queueing a file already on the model is an id, not a key — it belongs to
-  // resliceFileIds and must stay out of the skip list.
+  // Queueing a file already on the model is an id, not a key — it belongs to resliceFileIds and must stay out of the skip list.
   assert.deepEqual(
     skippedSliceKeys(entries, { f1: true }, [firstUpload, secondUpload]),
     [],
   );
 });
 
-// The picker classifies a picked file by extension, agreeing with the
-// server's contentTypeForFilename — if the two disagreed, the wizard could
-// upload something under a kind the save then rejects.
+// The picker classifies a picked file by extension, agreeing with the server's contentTypeForFilename — if the two disagreed, the wizard could upload something under a kind the save then rejects.
 test("mediaKindForFilename tells videos from photos by extension", () => {
   assert.equal(mediaKindForFilename("timelapse.mp4"), "video");
   assert.equal(mediaKindForFilename("CLIP.MOV"), "video");
@@ -336,9 +320,7 @@ test("mediaKindForFilename tells videos from photos by extension", () => {
   assert.equal(mediaKindForFilename("video-of-the-print.jpg"), "image");
 });
 
-// Photos and videos are one order group, so a video's slot among the photos
-// has to survive the round-trip through the save. It would not if videos were
-// ordered separately: the newIndex values are positions in one upload list.
+// Photos and videos are one order group, so a video's slot among the photos has to survive the round-trip through the save. It would not if videos were ordered separately: the newIndex values are positions in one upload list.
 test("buildUpdateFileOrders keeps a video's slot between two photos", () => {
   const videoFile: MediaFileEntry = {
     key: "v1",
@@ -361,9 +343,7 @@ test("buildUpdateFileOrders keeps a video's slot between two photos", () => {
   ]);
 });
 
-// Create mode: the same interleaving, but the new files arrive as one
-// uploaded list (models, then PDFs, then gallery media in picker order), so
-// photos and videos must be consumed from a single queue.
+// Create mode: the same interleaving, but the new files arrive as one uploaded list (models, then PDFs, then gallery media in picker order), so photos and videos must be consumed from a single queue.
 test("orderFilesForCreate interleaves new photos and videos in arranged order", () => {
   const uploadedModel = uploadedFile("model", "part.3mf");
   const uploadedVideo = uploadedFile("video", "clip.mp4");

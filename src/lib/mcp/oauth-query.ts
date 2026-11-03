@@ -1,20 +1,10 @@
-// The OAuth authorize request as it reaches /mcp/authorize, our `loginPage`.
-// BetterAuth's /oauth2/authorize sends the browser there with the client's
-// query plus its own signature fields when it has no session for the request.
-// Once the user has signed in (the proxy bounces through /sign-in and back),
-// the page re-issues the original request to /oauth2/authorize, which now
-// finds the session and carries on to consent. Pure, so the stripping rules
-// are unit-tested.
+// The OAuth authorize request as it reaches /mcp/authorize, our `loginPage`. BetterAuth's /oauth2/authorize sends the browser there with the client's query plus its own signature fields when it has no session for the request. Once the user has signed in (the proxy bounces through /sign-in and back), the page re-issues the original request to /oauth2/authorize, which now finds the session and carries on to consent. Pure, so the stripping rules are unit-tested.
 
 // Added by BetterAuth when it signs the query (src/signed-query.ts there).
 const SIGNATURE_PARAMS = ["sig", "exp", "ba_iat", "ba_pl", "ba_param"];
 
 /**
- * The client's original authorize query, without BetterAuth's signature
- * fields and without what would send the user straight back to the login
- * page: `prompt=login` and `max_age` both ask for a fresh sign-in, which the
- * user has just been through (or, with an existing session, the proxy let
- * through) — forwarding them unchanged would loop.
+ * The client's original authorize query, without BetterAuth's signature fields and without what would send the user straight back to the login page: `prompt=login` and `max_age` both ask for a fresh sign-in, which the user has just been through (or, with an existing session, the proxy let through) — forwarding them unchanged would loop.
  */
 export function resumeAuthorizeQuery(search: URLSearchParams): URLSearchParams {
   const out = new URLSearchParams();

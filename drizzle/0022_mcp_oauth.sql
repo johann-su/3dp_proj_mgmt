@@ -1,9 +1,4 @@
--- OAuth 2.1 provider tables for the MCP server (issue #96): LLM clients
--- (Claude Desktop/Code, …) authenticate against /api/mcp with a bearer token
--- instead of a session cookie, so the instance issues those tokens itself.
--- Owned and written by BetterAuth's `mcp` plugin — the column set mirrors its
--- oidc-provider schema; see the OAuth provider tables in src/db/schema.ts.
--- Inert on instances that leave ENABLE_MCP unset (no rows are ever created).
+-- OAuth 2.1 provider tables for the MCP server (issue #96): LLM clients (Claude Desktop/Code, …) authenticate against /api/mcp with a bearer token instead of a session cookie, so the instance issues those tokens itself. Owned and written by BetterAuth's `mcp` plugin — the column set mirrors its oidc-provider schema; see the OAuth provider tables in src/db/schema.ts. Inert on instances that leave ENABLE_MCP unset (no rows are ever created).
 CREATE TABLE "oauth_application" (
 	"id" text PRIMARY KEY NOT NULL,
 	"name" text NOT NULL,

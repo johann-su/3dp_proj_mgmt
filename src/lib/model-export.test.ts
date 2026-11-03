@@ -43,8 +43,7 @@ function manifestOf(entries: Record<string, Uint8Array>): ModelExportManifest {
 }
 
 test("files are grouped into folders by kind", () => {
-  // The whole point of the export: one predictable tree per model, so a user
-  // can find the printable, the manual and the photos without the app.
+  // The whole point of the export: one predictable tree per model, so a user can find the printable, the manual and the photos without the app.
   const entries = exportZip({
     files: [
       file("model", "part.3mf"),
@@ -63,9 +62,7 @@ test("files are grouped into folders by kind", () => {
 });
 
 test("README.md carries the title, the version and the description verbatim", () => {
-  // The description is Markdown source already, so it must not be reformatted
-  // or escaped on the way into the file. The version line says which snapshot
-  // of the model this copy is — the same number as the zip's filename.
+  // The description is Markdown source already, so it must not be reformatted or escaped on the way into the file. The version line says which snapshot of the model this copy is — the same number as the zip's filename.
   const entries = exportZip({
     title: "Widget",
     description: "## Parts\n\n- one\n- two",
@@ -83,16 +80,13 @@ test("the zip is named after the model title and the exported version", () => {
 });
 
 test("version numbering matches the History panel, including pre-versioning models", () => {
-  // History numbers the retained rows 1..n (the cap prunes the oldest, so the
-  // count *is* the current number), and a model with no rows shows as v1.
+  // History numbers the retained rows 1..n (the cap prunes the oldest, so the count *is* the current number), and a model with no rows shows as v1.
   assert.equal(exportedVersionNumber(5), 5);
   assert.equal(exportedVersionNumber(0), 1);
 });
 
 test("bom.csv is written only when the model has BOM items", () => {
-  // "Nothing to include → include nothing", matching the model page's BOM
-  // section (hidden, CSV download included, when empty),
-  // rather than shipping a header-only file that looks like a real BOM.
+  // "Nothing to include → include nothing", matching the model page's BOM section (hidden, CSV download included, when empty), rather than shipping a header-only file that looks like a real BOM.
   assert.ok(!("bom.csv" in exportZip({})));
   const entries = exportZip({
     bomItems: [
@@ -106,9 +100,7 @@ test("bom.csv is written only when the model has BOM items", () => {
 });
 
 test("files sharing a name within a folder are suffixed, case-insensitively", () => {
-  // model_files.filename isn't unique, and the zip is extracted onto
-  // case-insensitive filesystems — so "Part.3mf" collides with "part.3mf" and
-  // neither may overwrite the other. Same name in a different folder is fine.
+  // model_files.filename isn't unique, and the zip is extracted onto case-insensitive filesystems — so "Part.3mf" collides with "part.3mf" and neither may overwrite the other. Same name in a different folder is fine.
   const entries = exportZip({
     files: [
       file("model", "part.3mf", "first"),
@@ -124,9 +116,7 @@ test("files sharing a name within a folder are suffixed, case-insensitively", ()
 });
 
 test("metadata.json carries what the folder tree can't", () => {
-  // The manifest is the whole reason an export can be re-imported: tags, the
-  // category and BOM sections have no place in the tree, and the file entries
-  // pin down each file's kind rather than leaving it to be guessed.
+  // The manifest is the whole reason an export can be re-imported: tags, the category and BOM sections have no place in the tree, and the file entries pin down each file's kind rather than leaving it to be guessed.
   const manifest = manifestOf(
     exportZip({
       title: "Widget",
@@ -160,8 +150,7 @@ test("metadata.json carries what the folder tree can't", () => {
 });
 
 test("the manifest publishes only BOM fields, never the rows' database ids", () => {
-  // Callers hand over whole bom_items rows, and the zip is a file users pass
-  // around — this instance's row/model ids have no business travelling in it.
+  // Callers hand over whole bom_items rows, and the zip is a file users pass around — this instance's row/model ids have no business travelling in it.
   const manifest = manifestOf(
     exportZip({
       bomItems: [
@@ -196,8 +185,7 @@ test("tags are sorted so an unchanged model exports an identical manifest", () =
 });
 
 test("the manifest records a file's real name even when the zip entry was renamed", () => {
-  // Two files can share a name, so the entry gets a "-2" suffix — but the
-  // model's own filename is the one to restore on import, so both are kept.
+  // Two files can share a name, so the entry gets a "-2" suffix — but the model's own filename is the one to restore on import, so both are kept.
   const manifest = manifestOf(
     exportZip({ files: [file("model", "part.3mf"), file("model", "part.3mf")] }),
   );
@@ -211,8 +199,7 @@ test("the manifest records a file's real name even when the zip entry was rename
 });
 
 test("customizer-generated variants are flagged in the manifest", () => {
-  // They stay in the zip (an offline copy holds everything the model page
-  // offers) but an import must be able to tell them from real source files.
+  // They stay in the zip (an offline copy holds everything the model page offers) but an import must be able to tell them from real source files.
   const manifest = manifestOf(
     exportZip({
       files: [
@@ -228,8 +215,7 @@ test("customizer-generated variants are flagged in the manifest", () => {
 });
 
 test("filenames can't escape their folder (zip slip)", () => {
-  // Filenames are user-controlled (upload + rename), so a "../" in one must
-  // not make an extractor write outside the destination directory.
+  // Filenames are user-controlled (upload + rename), so a "../" in one must not make an extractor write outside the destination directory.
   const entries = exportZip({
     files: [
       file("model", "../../etc/passwd"),

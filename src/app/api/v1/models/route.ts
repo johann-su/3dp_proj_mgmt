@@ -20,8 +20,7 @@ export const dynamic = "force-dynamic";
 
 const url = (path: string) => appUrl(path).toString();
 
-// The catalog, newest first by default. Filters combine with AND; see the
-// OpenAPI document (GET /api/v1/openapi.json) for the parameters.
+// The catalog, newest first by default. Filters combine with AND; see the OpenAPI document (GET /api/v1/openapi.json) for the parameters.
 export const GET = apiRoute("models:read", async ({ request, principal }) => {
   const query = parseModelListQuery(request.nextUrl.searchParams);
   if ("error" in query) return invalidRequest(query.error);
@@ -40,8 +39,7 @@ export const GET = apiRoute("models:read", async ({ request, principal }) => {
   return apiJson({ data: rows.map((row) => serializeModelSummary(row, url)), nextCursor });
 });
 
-// Creates a model from files staged with POST /api/v1/uploads. Attributed to
-// the key's owner, versioned and sliced like a model saved in the browser.
+// Creates a model from files staged with POST /api/v1/uploads. Attributed to the key's owner, versioned and sliced like a model saved in the browser.
 export const POST = apiRoute("models:write", async ({ request, principal }) => {
   const body = CreateModelBody.parse(await readJson(request));
   const files = resolveAttachments(body.files, "files", principal.user.id, uploadTokenKey());

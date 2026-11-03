@@ -11,8 +11,7 @@ const items = [
   { href: "/settings/bambu", label: "Bambu Cloud", icon: Cloud },
 ];
 
-// These hide unless the instance offers them; the pages enforce it
-// server-side (404 / admin check) rather than trusting the nav.
+// These hide unless the instance offers them; the pages enforce it server-side (404 / admin check) rather than trusting the nav.
 const mcpItem = { href: "/settings/mcp", label: "AI access", icon: Bot };
 const apiKeysItem = { href: "/settings/api-keys", label: "API keys", icon: KeyRound };
 const usersItem = { href: "/settings/users", label: "Users", icon: Users };
@@ -33,8 +32,7 @@ export function SettingsNav({
   showApiKeys: boolean;
   showUsers: boolean;
   showDuplicates: boolean;
-  // Open flags, shown as a count next to the entry so a moderator doesn't have
-  // to open the page to find out there's nothing to do.
+  // Open flags, shown as a count next to the entry so a moderator doesn't have to open the page to find out there's nothing to do.
   duplicateCount: number;
 }) {
   const pathname = usePathname();

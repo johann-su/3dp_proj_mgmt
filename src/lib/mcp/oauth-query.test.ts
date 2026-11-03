@@ -2,9 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { resumeAuthorizeQuery, toSearchParams } from "@/lib/mcp/oauth-query";
 
-// What BetterAuth appends when it redirects to the login page. Forwarding
-// the signature fields would make /oauth2/authorize see unknown params; the
-// client's own params (PKCE challenge, state, resource) must pass untouched.
+// What BetterAuth appends when it redirects to the login page. Forwarding the signature fields would make /oauth2/authorize see unknown params; the client's own params (PKCE challenge, state, resource) must pass untouched.
 test("resumeAuthorizeQuery drops the signature fields and keeps the client's request", () => {
   const out = resumeAuthorizeQuery(
     new URLSearchParams(
@@ -19,8 +17,7 @@ test("resumeAuthorizeQuery drops the signature fields and keeps the client's req
   );
 });
 
-// The user has just signed in; asking for a fresh login again would bounce
-// them back to the login page forever.
+// The user has just signed in; asking for a fresh login again would bounce them back to the login page forever.
 test("resumeAuthorizeQuery removes prompt=login and max_age but keeps other prompts", () => {
   assert.equal(resumeAuthorizeQuery(new URLSearchParams("client_id=a&prompt=login&max_age=0")).toString(), "client_id=a");
   assert.equal(

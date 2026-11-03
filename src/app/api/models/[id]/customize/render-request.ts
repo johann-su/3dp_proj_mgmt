@@ -1,6 +1,4 @@
-// Shared validation for the customize endpoints (generate + preview): checks
-// the viewer is signed in, locates the .scad file, fetches its source from storage
-// and coerces the submitted customizer values against the parsed schema.
+// Shared validation for the customize endpoints (generate + preview): checks the viewer is signed in, locates the .scad file, fetches its source from storage and coerces the submitted customizer values against the parsed schema.
 
 import { eq } from "drizzle-orm";
 import { db } from "@/db";
@@ -24,8 +22,7 @@ export type ScadRenderRequest = {
   source: FileRow;
   scadSource: string;
   values: Record<string, string>;
-  // The signed-in user driving the render — stored as the variant's generator
-  // so a non-owner can later delete the variants they created.
+  // The signed-in user driving the render — stored as the variant's generator so a non-owner can later delete the variants they created.
   userId: string;
 };
 
@@ -41,9 +38,7 @@ export async function prepareScadRender(
     with: { files: true },
   })) as ModelWithFiles | undefined;
   if (!model || model.deletedAt) return { error: "Model not found", status: 404 };
-  // Customizing (preview + generating a stored variant) is open to any
-  // signed-in user, not just the owner — generated variants land on the
-  // owner's model like a shared render. Deleting variants stays owner-only.
+  // Customizing (preview + generating a stored variant) is open to any signed-in user, not just the owner — generated variants land on the owner's model like a shared render. Deleting variants stays owner-only.
 
   const parsed = body as { fileId?: string; values?: Record<string, unknown> } | null;
   if (!parsed?.fileId || typeof parsed.values !== "object" || parsed.values === null) {

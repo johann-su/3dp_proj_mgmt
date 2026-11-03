@@ -1,7 +1,4 @@
-// DB-backed helpers around category suggestion (the pure logic lives in
-// src/lib/category-suggest.ts). Every model should end up with a category —
-// "Other" at worst — so both helpers only return null on an unseeded database
-// (categories.category_id stays nullable for exactly that case).
+// DB-backed helpers around category suggestion (the pure logic lives in src/lib/category-suggest.ts). Every model should end up with a category — "Other" at worst — so both helpers only return null on an unseeded database (categories.category_id stays nullable for exactly that case).
 
 import { eq } from "drizzle-orm";
 import { db } from "@/db";
@@ -17,8 +14,7 @@ export async function otherCategoryId(): Promise<string | null> {
   return other?.id ?? null;
 }
 
-// Suggests a category from title/tags/source-categories, falling back to
-// "Other". Used where models are created without a form (collection import).
+// Suggests a category from title/tags/source-categories, falling back to "Other". Used where models are created without a form (collection import).
 export async function pickCategoryId(
   signals: CategorySignals,
 ): Promise<string | null> {

@@ -5,12 +5,7 @@ import { auth, getSession, mcpEnabled } from "@/lib/auth";
 import { logger } from "@/lib/logger";
 
 /**
- * Answers the consent screen. BetterAuth checks the signed `oauthQuery`
- * (it came from its own redirect to /mcp/consent), records the consent and
- * returns where to send the browser: back to the client's redirect URI with
- * an authorization code, or with `error=access_denied`. The browser follows it
- * client-side — it is another origin, which the CSP's form-action 'self'
- * would block as a form redirect.
+ * Answers the consent screen. BetterAuth checks the signed `oauthQuery` (it came from its own redirect to /mcp/consent), records the consent and returns where to send the browser: back to the client's redirect URI with an authorization code, or with `error=access_denied`. The browser follows it client-side — it is another origin, which the CSP's form-action 'self' would block as a form redirect.
  */
 export async function answerConsent(input: {
   oauthQuery: string;

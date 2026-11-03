@@ -5,19 +5,11 @@ export type FilamentSlot = { type: string; color?: string };
 export type FilamentSummary = {
   // One entry per filament slot the print uses, in slot order.
   slots: FilamentSlot[];
-  // Whether a plate changes filament mid-print: "material" when it mixes
-  // materials, "color" when it's the same material in several colours, null
-  // when no plate does. Worth telling apart: one needs a second material on
-  // hand, the other only a swap.
+  // Whether a plate changes filament mid-print: "material" when it mixes materials, "color" when it's the same material in several colours, null when no plate does. Worth telling apart: one needs a second material on hand, the other only a swap.
   multi: "color" | "material" | null;
 };
 
-// "Does printing a plate mean changing filament mid-print?" from the filament
-// types each sliced plate prints from (slice_info.config). One plate is one
-// print, so a project whose plates each use a different filament needs no
-// AMS — only a plate listing several does. Null when nothing was sliced, or
-// when no plate lists its filaments (older slicers omit them): unknown, not
-// "none".
+// "Does printing a plate mean changing filament mid-print?" from the filament types each sliced plate prints from (slice_info.config). One plate is one print, so a project whose plates each use a different filament needs no AMS — only a plate listing several does. Null when nothing was sliced, or when no plate lists its filaments (older slicers omit them): unknown, not "none".
 export function filamentChangesFromPlates(
   plateFilaments: string[][] | null | undefined,
 ): FilamentChanges | null {
@@ -29,14 +21,7 @@ export function filamentChangesFromPlates(
     : "color";
 }
 
-// Zips a file's stored per-slot filament arrays into something renderable, and
-// answers "does this need filament changes mid-print?". That comes from the
-// sliced per-plate result (`filamentChanges`); rows sliced before it was
-// recorded fall back to guessing from the used slots — which over-reports a
-// project whose plates each print one different filament. Returns null when
-// the file records no filaments (a .step upload, or a row written before this
-// was parsed; such rows also have no colours and were deduped, so they can
-// under-report `multi`).
+// Zips a file's stored per-slot filament arrays into something renderable, and answers "does this need filament changes mid-print?". That comes from the sliced per-plate result (`filamentChanges`); rows sliced before it was recorded fall back to guessing from the used slots — which over-reports a project whose plates each print one different filament. Returns null when the file records no filaments (a .step upload, or a row written before this was parsed; such rows also have no colours and were deduped, so they can under-report `multi`).
 export function filamentSummary(
   info: PrinterInfo | null | undefined,
 ): FilamentSummary | null {
@@ -57,10 +42,7 @@ export function filamentSummary(
   return { slots, multi };
 }
 
-// What to tell the user about a file the slicer service couldn't slice. A
-// model too big for the printer it was sliced for is a fact about that
-// printer, not a broken file, so it gets its own message naming the printer
-// ("plate 2: doesn't fit on the Bambu Lab P1S (256 × 256 × 250 mm)").
+// What to tell the user about a file the slicer service couldn't slice. A model too big for the printer it was sliced for is a fact about that printer, not a broken file, so it gets its own message naming the printer ("plate 2: doesn't fit on the Bambu Lab P1S (256 × 256 × 250 mm)").
 export function sliceFailureMessage(error: string | null | undefined): string {
   const fit = error?.match(/^(?:plate (\d+): )?doesn't fit on the (.+)$/);
   if (fit) {
@@ -71,12 +53,7 @@ export function sliceFailureMessage(error: string | null | undefined): string {
   return "Couldn't be sliced — the file may not be printable";
 }
 
-// Whether a file's stored estimate is shown as approximate ("~"). The slicer
-// service records it per slice (`sliceApprox`): a Bambu/Orca project sliced
-// natively is as exact as the file's own slicer, while the generic printer,
-// translated PrusaSlicer settings and repaired settings are assumptions.
-// Estimates read from the file itself are exact. Rows sliced before the flag
-// existed fall back to the old rule: anything the slicer service produced.
+// Whether a file's stored estimate is shown as approximate ("~"). The slicer service records it per slice (`sliceApprox`): a Bambu/Orca project sliced natively is as exact as the file's own slicer, while the generic printer, translated PrusaSlicer settings and repaired settings are assumptions. Estimates read from the file itself are exact. Rows sliced before the flag existed fall back to the old rule: anything the slicer service produced.
 export function isApproxEstimate(file: {
   sliceStatus: string | null;
   sliceSource: SliceSource | null;
@@ -86,11 +63,7 @@ export function isApproxEstimate(file: {
   return file.sliceApprox ?? file.sliceSource === "slicer";
 }
 
-// printer_info as API consumers see it (the MCP tools and /api/v1): the
-// hardware a project was set up for, with the "absent" cases spelled as null
-// so clients can tell "the config didn't say" from false. The whole payload is
-// null when the file was never parsed (a .step file, an upload that predates
-// the slicer, an instance with no SLICER_URL).
+// printer_info as API consumers see it (the MCP tools and /api/v1): the hardware a project was set up for, with the "absent" cases spelled as null so clients can tell "the config didn't say" from false. The whole payload is null when the file was never parsed (a .step file, an upload that predates the slicer, an instance with no SLICER_URL).
 export function printerInfoPayload(info: PrinterInfo | null) {
   if (!info) return null;
   return {
@@ -98,21 +71,16 @@ export function printerInfoPayload(info: PrinterInfo | null) {
     nozzleDiameterMm: info.nozzleDiameterMm ?? null,
     bedType: info.bedType ?? null,
     bedSizeMm: info.bedSizeMm ?? null,
-    // One entry per filament slot in use, so the same material twice reads as a
-    // two-colour print; colors is index-parallel when the file records it.
+    // One entry per filament slot in use, so the same material twice reads as a two-colour print; colors is index-parallel when the file records it.
     filamentTypes: info.filamentTypes ?? [],
     filamentColors: info.filamentColors ?? [],
-    // Whether a single plate changes filament mid-print (needs an AMS/MMU);
-    // plates that each print one different filament don't count.
+    // Whether a single plate changes filament mid-print (needs an AMS/MMU); plates that each print one different filament don't count.
     multiFilament: filamentSummary(info)?.multi ?? null,
-    // Slots objects are assigned to that the project defines no filament for;
-    // the printed material is then unknown, so check before printing.
+    // Slots objects are assigned to that the project defines no filament for; the printed material is then unknown, so check before printing.
     missingFilamentSlots: info.missingFilamentSlots ?? [],
-    // undefined = the embedded config didn't say, which is not the same as "no
-    // supports" — keep the distinction instead of defaulting it to false.
+    // undefined = the embedded config didn't say, which is not the same as "no supports" — keep the distinction instead of defaulting it to false.
     usesSupport: info.usesSupport ?? null,
-    // True only for hardware with more than one nozzle (toolchanger/IDEX); an
-    // AMS/MMU feeding many filaments through one nozzle is false.
+    // True only for hardware with more than one nozzle (toolchanger/IDEX); an AMS/MMU feeding many filaments through one nozzle is false.
     requiresMultiNozzle: info.requiresMultiNozzle ?? null,
   };
 }

@@ -1,16 +1,10 @@
-// Pure helpers for the OpenSCAD render service — no I/O, unit-tested from the
-// repo root via `npm test` (like slicer/lib.mjs).
+// Pure helpers for the OpenSCAD render service — no I/O, unit-tested from the repo root via `npm test` (like slicer/lib.mjs).
 
 const NAME_PATTERN = /^[A-Za-z_$][A-Za-z0-9_$]*$/;
 const MAX_PARAMETERS = 200;
 const MAX_VALUE_LENGTH = 200;
 
-// Builds the JSON body for OpenSCAD's `-p params.json -P app` parameter-set
-// mechanism. Values only ever travel through this JSON — never through -D or
-// any other command-line interpolation — so a hostile value can at worst be a
-// weird parameter value, not an extra CLI flag. Throws on input the app
-// should never send (invalid names, non-string values, absurd counts); the
-// server maps that to a 400.
+// Builds the JSON body for OpenSCAD's `-p params.json -P app` parameter-set mechanism. Values only ever travel through this JSON — never through -D or any other command-line interpolation — so a hostile value can at worst be a weird parameter value, not an extra CLI flag. Throws on input the app should never send (invalid names, non-string values, absurd counts); the server maps that to a 400.
 export function toParameterSetJson(parameters) {
   if (
     parameters === null ||
@@ -39,9 +33,7 @@ export function toParameterSetJson(parameters) {
   return JSON.stringify({ parameterSets: { app: set }, fileFormatVersion: "1" });
 }
 
-// Last meaningful line of the OpenSCAD output for failure messages. Temp
-// paths mean nothing to the caller; ECHO lines are the model talking, not the
-// error.
+// Last meaningful line of the OpenSCAD output for failure messages. Temp paths mean nothing to the caller; ECHO lines are the model talking, not the error.
 export function scrubErrorOutput(output) {
   const lines = output
     .split("\n")

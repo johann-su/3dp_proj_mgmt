@@ -1,14 +1,6 @@
-// Query-string parsing and keyset cursors for the API's list endpoints
-// (GET /api/v1/models, /collections). Pure, so the rules are unit-tested; the
-// SQL that consumes them lives in src/lib/api/queries.ts.
+// Query-string parsing and keyset cursors for the API's list endpoints (GET /api/v1/models, /collections). Pure, so the rules are unit-tested; the SQL that consumes them lives in src/lib/api/queries.ts.
 //
-// Listings are keyset-paginated on (sort timestamp, id): a stable total
-// order, so paging never skips or repeats a row while models are added. The
-// cursor records which sort it belongs to, and one from another sort is
-// rejected rather than silently misread. The timestamp travels as Postgres'
-// own text form (microseconds): a JS Date would round it to milliseconds, and
-// rows created within the same millisecond as a page boundary would then be
-// skipped.
+// Listings are keyset-paginated on (sort timestamp, id): a stable total order, so paging never skips or repeats a row while models are added. The cursor records which sort it belongs to, and one from another sort is rejected rather than silently misread. The timestamp travels as Postgres' own text form (microseconds): a JS Date would round it to milliseconds, and rows created within the same millisecond as a page boundary would then be skipped.
 
 import { isSourcePlatform, type SourcePlatform } from "@/lib/sources/registry";
 
@@ -108,8 +100,7 @@ export function parseModelListQuery(
     return { error: "collection must be a collection id" };
   }
 
-  // Repeatable (?tag=a&tag=b), matching models with any of them — the same
-  // "any" the app's saved searches use.
+  // Repeatable (?tag=a&tag=b), matching models with any of them — the same "any" the app's saved searches use.
   const tags = sp
     .getAll("tag")
     .map((t) => t.trim().toLowerCase())

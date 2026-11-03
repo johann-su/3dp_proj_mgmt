@@ -79,9 +79,7 @@ export default async function CollectionPage({
     getShareToken("collection", collection.id),
   ]);
 
-  // Smart collections evaluate their rule tree live (nothing is stored in
-  // collection_models); manual ones render their hand-picked rows. Trashed
-  // members stay linked (restoring brings them back) but are not shown.
+  // Smart collections evaluate their rule tree live (nothing is stored in collection_models); manual ones render their hand-picked rows. Trashed members stay linked (restoring brings them back) but are not shown.
   const modelCards: ModelCardData[] = isSmart
     ? await smartCollectionModelCards(collection.rules)
     : collection.collectionModels
@@ -136,9 +134,7 @@ export default async function CollectionPage({
             </Markdown>
           )}
         </div>
-        {/* Editing (edit + sync) is open to any signed-in user; deletion
-            stays with the owner and moderators/admins. The page already
-            redirects signed-out visitors. */}
+        {/* Editing (edit + sync) is open to any signed-in user; deletion stays with the owner and moderators/admins. The page already redirects signed-out visitors. */}
         <div className="flex items-center gap-2">
           <PinButton kind="collection" id={collection.id} initialPinned={pinned} />
           <ShareButton

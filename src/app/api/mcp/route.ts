@@ -11,20 +11,14 @@ export const dynamic = "force-dynamic";
 
 // The MCP endpoint (issue #96): read-only catalog tools for LLM clients.
 //
-// Authentication is an OAuth bearer token (a JWT signed by the jwt plugin and
-// audience-bound to this URL), not a session cookie. requireMcpAuth verifies
-// it against our JWKS and answers 401 with the `WWW-Authenticate:
-// resource_metadata=…` header a client needs to discover where to get one. A
-// token grants exactly what its user (`sub`) can see in the browser: the whole
-// catalog, read-only (see auth-and-access.md).
+// Authentication is an OAuth bearer token (a JWT signed by the jwt plugin and audience-bound to this URL), not a session cookie. requireMcpAuth verifies it against our JWKS and answers 401 with the `WWW-Authenticate: resource_metadata=…` header a client needs to discover where to get one. A token grants exactly what its user (`sub`) can see in the browser: the whole catalog, read-only (see auth-and-access.md).
 //
 // Transport shape and why it is hand-rolled: see src/lib/mcp/protocol.ts.
 
 const serverInfo = {
   name: "print-vault",
   title: "Print Vault",
-  // Set when the app is started through npm; the Docker image runs server.js
-  // directly, where it isn't — hence the package.json version as a fallback.
+  // Set when the app is started through npm; the Docker image runs server.js directly, where it isn't — hence the package.json version as a fallback.
   version: process.env.npm_package_version ?? "0.1.0",
 };
 
@@ -69,8 +63,7 @@ export async function POST(req: Request) {
   return handler(req);
 }
 
-// This server never initiates messages, so it offers no event stream to open
-// (the spec's answer for that is 405, not 404 — the endpoint exists).
+// This server never initiates messages, so it offers no event stream to open (the spec's answer for that is 405, not 404 — the endpoint exists).
 export async function GET() {
   return NextResponse.json(
     { error: "Method not allowed" },

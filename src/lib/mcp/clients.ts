@@ -1,12 +1,6 @@
-// The user-facing side of the MCP OAuth tables (issue #96): which LLM clients
-// a user has approved, and how to cut one off again. The OAuth flow can only
-// ever grant, so without this an approval would be permanent short of editing
-// the database.
+// The user-facing side of the MCP OAuth tables (issue #96): which LLM clients a user has approved, and how to cut one off again. The OAuth flow can only ever grant, so without this an approval would be permanent short of editing the database.
 //
-// The tables belong to the BetterAuth plugins (@better-auth/mcp on
-// oauth-provider) — this module only reads and deletes rows, never writes
-// tokens. Grouping is by client, not by token row: every refresh adds a row,
-// and a person thinks "Claude is connected", not in tokens.
+// The tables belong to the BetterAuth plugins (@better-auth/mcp on oauth-provider) — this module only reads and deletes rows, never writes tokens. Grouping is by client, not by token row: every refresh adds a row, and a person thinks "Claude is connected", not in tokens.
 
 import { and, eq } from "drizzle-orm";
 import { db } from "@/db";
@@ -61,9 +55,7 @@ export async function listMcpClients(
   for (const consent of consents) {
     entry(consent.clientId, consent.client?.name, consent.createdAt);
   }
-  // A refresh token still in date is what keeps a client working without the
-  // user in the loop, so that — not the 15-minute access token — is what
-  // "still connected" means here.
+  // A refresh token still in date is what keeps a client working without the user in the loop, so that — not the 15-minute access token — is what "still connected" means here.
   for (const token of tokens) {
     const found = entry(token.clientId, token.client?.name, token.createdAt);
     found.active ||= !token.revoked && token.expiresAt > now;
@@ -75,15 +67,9 @@ export async function listMcpClients(
 }
 
 /**
- * Revokes one client's access for one user: its refresh tokens go (so it
- * can't get new access tokens), and so does the consent, so reconnecting asks
- * again. An access token already issued is a self-contained JWT and keeps
- * working until it expires — at most accessTokenExpiresIn (15 min, see
- * src/lib/auth.ts).
+ * Revokes one client's access for one user: its refresh tokens go (so it can't get new access tokens), and so does the consent, so reconnecting asks again. An access token already issued is a self-contained JWT and keeps working until it expires — at most accessTokenExpiresIn (15 min, see src/lib/auth.ts).
  *
- * The client's registration row is deliberately left alone — dynamic
- * registration is not per-user, so another user may still be connected
- * through it.
+ * The client's registration row is deliberately left alone — dynamic registration is not per-user, so another user may still be connected through it.
  */
 export async function revokeMcpClient(
   userId: string,

@@ -14,8 +14,7 @@ export default async function SignInPage({
 }: {
   searchParams: Promise<{ callbackUrl?: string | string[] }>;
 }) {
-  // Where to land after login (set by the proxy when a signed-out visitor
-  // opens a shared link). User-controlled — validated down to an in-app path.
+  // Where to land after login (set by the proxy when a signed-out visitor opens a shared link). User-controlled — validated down to an in-app path.
   const { callbackUrl } = await searchParams;
   const callbackPath = safeCallbackPath(callbackUrl);
   return (

@@ -1,16 +1,6 @@
-// The upstream sources a model can be imported from and synced against —
-// MakerWorld, Printables, Onshape — described in one place. Everything that
-// used to carry its own list of platforms (the cover badge, the smart-
-// collection "source" rule, duplicate detection's design identity, the
-// sourceUrl allowlist on save) reads it from here, so adding a source is one
-// descriptor plus an importer (src/lib/sources/importers.ts) instead of a
-// hunt through a dozen files. This is the in-process seam a future plugin
-// system would register sources through (docs/architecture/import.md).
+// The upstream sources a model can be imported from and synced against — MakerWorld, Printables, Onshape — described in one place. Everything that used to carry its own list of platforms (the cover badge, the smart-collection "source" rule, duplicate detection's design identity, the sourceUrl allowlist on save) reads it from here, so adding a source is one descriptor plus an importer (src/lib/sources/importers.ts) instead of a hunt through a dozen files. This is the in-process seam a future plugin system would register sources through (docs/architecture/import.md).
 //
-// Pure and client-safe on purpose: the model page and the rule builder are
-// client components that render source labels, so nothing here may import
-// server-only modules. The URL parsers live here for that reason and are
-// re-exported from the importer modules that historically owned them.
+// Pure and client-safe on purpose: the model page and the rule builder are client components that render source labels, so nothing here may import server-only modules. The URL parsers live here for that reason and are re-exported from the importer modules that historically owned them.
 
 export type SourcePlatform = "makerworld" | "printables" | "onshape";
 
@@ -19,24 +9,16 @@ export type SourceDescriptor = {
   label: string;
   // Shown in the "unsupported URL" message so a user knows what to paste.
   exampleUrl: string;
-  // Which URLs belong to the source at all (any page on its site). Decides the
-  // cover badge and the smart-collection "source" rule; must agree with
-  // hostSqlRegex, which is the same test expressed for Postgres' `~`.
+  // Which URLs belong to the source at all (any page on its site). Decides the cover badge and the smart-collection "source" rule; must agree with hostSqlRegex, which is the same test expressed for Postgres' `~`.
   matchesHost(hostname: string): boolean;
   hostSqlRegex: string;
-  // Whether a URL may be stored as a model's sourceUrl — stricter than the
-  // host check: https only, and for Onshape the CAD host only.
+  // Whether a URL may be stored as a model's sourceUrl — stricter than the host check: https only, and for Onshape the CAD host only.
   acceptsSourceUrl(url: URL): boolean;
-  // The stable id of the upstream design a URL names, or null when the URL
-  // isn't a design page. Duplicate detection compares these, never the URL
-  // string (print-profile hashes, branch pins and tabs all vary per import).
+  // The stable id of the upstream design a URL names, or null when the URL isn't a design page. Duplicate detection compares these, never the URL string (print-profile hashes, branch pins and tabs all vary per import).
   designId(url: URL): string | null;
-  // A substring every sourceUrl naming that design contains — a cheap SQL
-  // prefilter that over-matches on purpose (see duplicate-key.ts).
+  // A substring every sourceUrl naming that design contains — a cheap SQL prefilter that over-matches on purpose (see duplicate-key.ts).
   designUrlFragment(designId: string): string;
-  // Format check for the opaque upstream revision token stored on the model
-  // (models.source_revision), for sources that have one. Values that fail it
-  // are dropped on save, since they ride in through the client draft.
+  // Format check for the opaque upstream revision token stored on the model (models.source_revision), for sources that have one. Values that fail it are dropped on save, since they ride in through the client draft.
   isRevisionToken?(value: string): boolean;
 };
 
@@ -68,9 +50,7 @@ export function isOnshapeId(value: unknown): value is string {
   return typeof value === "string" && ONSHAPE_ID_RE.test(value);
 }
 
-// A parsed document URL: cad.onshape.com/documents/{did}[/w|v|m/{wvmid}][/e/{eid}].
-// w = workspace (branch, syncable), v = version (immutable snapshot),
-// m = microversion (rejected at import — not exportable via the wv endpoints).
+// A parsed document URL: cad.onshape.com/documents/{did}[/w|v|m/{wvmid}][/e/{eid}]. w = workspace (branch, syncable), v = version (immutable snapshot), m = microversion (rejected at import — not exportable via the wv endpoints).
 export type OnshapePin = {
   documentId: string;
   wvm: "w" | "v" | "m" | null;
@@ -132,9 +112,7 @@ export const SOURCES: readonly SourceDescriptor[] = [
     matchesHost: subdomainOf("onshape.com"),
     hostSqlRegex: hostSql("onshape.com"),
     acceptsSourceUrl: (url) => url.protocol === "https:" && url.hostname === ONSHAPE_HOST,
-    // The document id alone is the identity: a version-pinned (/v/) import, a
-    // different branch and another tab of the same document are all the same
-    // upstream design, so wvm/wvmId/elementId are deliberately ignored.
+    // The document id alone is the identity: a version-pinned (/v/) import, a different branch and another tab of the same document are all the same upstream design, so wvm/wvmId/elementId are deliberately ignored.
     designId: (url) => parseOnshapeUrl(url)?.documentId ?? null,
     designUrlFragment: (id) => `/documents/${id}`,
     // The workspace microversion at the last import/sync.
@@ -175,11 +153,7 @@ export function sourceForUrl(raw: string | URL | null | undefined): SourceDescri
   return SOURCES.find((s) => s.matchesHost(url.hostname)) ?? null;
 }
 
-// Validates a sourceUrl about to be stored on a model and returns its
-// canonical form: null when none was given, undefined when it is not a link
-// to a known source (the caller rejects the save). Tracking params
-// (?from=recommend etc.) are dropped; the hash stays, since on MakerWorld it
-// identifies the print profile.
+// Validates a sourceUrl about to be stored on a model and returns its canonical form: null when none was given, undefined when it is not a link to a known source (the caller rejects the save). Tracking params (?from=recommend etc.) are dropped; the hash stays, since on MakerWorld it identifies the print profile.
 export function canonicalSourceUrl(raw: string | null | undefined): string | null | undefined {
   if (!raw) return null;
   const url = toUrl(raw);

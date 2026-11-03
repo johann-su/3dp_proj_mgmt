@@ -10,8 +10,7 @@ import {
 
 export const runtime = "nodejs";
 
-// Starts the "Sign in with Onshape" flow: remembers a CSRF state in a cookie
-// and sends the user to Onshape's consent screen. Onshape redirects back to
+// Starts the "Sign in with Onshape" flow: remembers a CSRF state in a cookie and sends the user to Onshape's consent screen. Onshape redirects back to
 // /api/onshape/callback.
 export async function GET() {
   const session = await getSession();
@@ -27,8 +26,7 @@ export async function GET() {
   res.cookies.set(OAUTH_STATE_COOKIE, state, {
     httpOnly: true,
     sameSite: "lax",
-    // Based on the public origin, not the request: TLS is terminated at the
-    // proxy so the internal request is plain http.
+    // Based on the public origin, not the request: TLS is terminated at the proxy so the internal request is plain http.
     secure: appUrl("/").protocol === "https:",
     path: "/api/onshape",
     maxAge: 600,

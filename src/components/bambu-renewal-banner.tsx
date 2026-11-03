@@ -1,9 +1,6 @@
 "use client";
 
-// App-wide reminder that the user's Bambu Cloud login is about to expire (or
-// already has), so MakerWorld downloads don't fail by surprise mid-import.
-// The root layout only passes a reminder when one is due. Dismissing hides it
-// for that exact state — an "expiring" dismissal comes back once it expires.
+// App-wide reminder that the user's Bambu Cloud login is about to expire (or already has), so MakerWorld downloads don't fail by surprise mid-import. The root layout only passes a reminder when one is due. Dismissing hides it for that exact state — an "expiring" dismissal comes back once it expires.
 
 import { useSyncExternalStore } from "react";
 import Link from "next/link";
@@ -51,8 +48,7 @@ function reminderKey(reminder: BambuReminder): string {
 export function BambuRenewalBanner({ reminder }: { reminder: BambuReminder }) {
   const pathname = usePathname();
   const key = reminderKey(reminder);
-  // The server snapshot reads as dismissed, so the banner renders only after
-  // hydration — whether it was dismissed lives in localStorage.
+  // The server snapshot reads as dismissed, so the banner renders only after hydration — whether it was dismissed lives in localStorage.
   const dismissedKey = useSyncExternalStore(subscribe, readDismissed, () => key);
   const dismissed = dismissedKey === key;
 

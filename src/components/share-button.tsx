@@ -17,12 +17,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
 
-// The model/collection "Share" dialog. The members link (the page's own URL,
-// sign-in required) is always there; below it, owners can switch on a public
-// link that works without an account, and anyone signed in can switch it off
-// again — see setPublicShare for why that's asymmetric. URLs are built from
-// window.location.origin, like the old copy-only button, so they match the
-// host the viewer is on without threading the origin down from the server.
+// The model/collection "Share" dialog. The members link (the page's own URL, sign-in required) is always there; below it, owners can switch on a public link that works without an account, and anyone signed in can switch it off again — see setPublicShare for why that's asymmetric. URLs are built from window.location.origin, like the old copy-only button, so they match the host the viewer is on without threading the origin down from the server.
 export function ShareButton({
   kind,
   id,
@@ -39,8 +34,7 @@ export function ShareButton({
   canEnable: boolean;
   // False when the operator set DISABLE_PUBLIC_SHARING.
   publicSharingAvailable: boolean;
-  // Smart collections gain members by rule — worth a warning before going
-  // public.
+  // Smart collections gain members by rule — worth a warning before going public.
   smart?: boolean;
 }) {
   const [token, setToken] = useState(initialToken);
@@ -62,8 +56,7 @@ export function ShareButton({
   }
 
   const isPublic = token !== null;
-  // Non-owners can see the option (and revoke a live link) but not create
-  // one — say so where they're looking, not in a footnote.
+  // Non-owners can see the option (and revoke a live link) but not create one — say so where they're looking, not in a footnote.
   const locked = !isPublic && !canEnable;
 
   return (
@@ -160,8 +153,7 @@ export function ShareButton({
   );
 }
 
-// Read-only URL with a copy button. Rendered only inside the open dialog, so
-// reading window.location here can't cause a hydration mismatch.
+// Read-only URL with a copy button. Rendered only inside the open dialog, so reading window.location here can't cause a hydration mismatch.
 function CopyField({ path, label }: { path: string; label: string }) {
   const [copied, setCopied] = useState(false);
   const url = `${window.location.origin}${path}`;

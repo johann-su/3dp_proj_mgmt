@@ -6,8 +6,7 @@ import path from "node:path";
 import { readBlobBytes, type BlobStore } from "@/lib/blob-store";
 import { FsBlobStore } from "@/lib/blob-store-fs";
 
-// Each test gets its own scratch root, removed afterwards. Typed as the
-// interface: these tests pin the BlobStore contract, not the class.
+// Each test gets its own scratch root, removed afterwards. Typed as the interface: these tests pin the BlobStore contract, not the class.
 async function withStore(fn: (store: BlobStore, root: string) => Promise<void>) {
   const root = await mkdtemp(path.join(tmpdir(), "blob-store-"));
   try {
@@ -45,8 +44,7 @@ test("reading a key that was never stored yields null", async () => {
   });
 });
 
-// Video seeking and the 3MF ZIP-tail reader both depend on exact ranges; the
-// reported length is what becomes the 206 response's Content-Length.
+// Video seeking and the 3MF ZIP-tail reader both depend on exact ranges; the reported length is what becomes the 206 response's Content-Length.
 test("ranged reads are inclusive and report their own length", async () => {
   await withStore(async (store) => {
     await store.put("k/f", bytes("0123456789"), "application/octet-stream");
@@ -67,8 +65,7 @@ test("a range past the end is clamped to the object", async () => {
   });
 });
 
-// A failed upload must not leave a truncated file readable under the key, nor
-// a stray temp file in the volume.
+// A failed upload must not leave a truncated file readable under the key, nor a stray temp file in the volume.
 test("an upload whose stream errors leaves nothing behind", async () => {
   await withStore(async (store, root) => {
     const failing = new ReadableStream<Uint8Array>({
@@ -83,9 +80,7 @@ test("an upload whose stream errors leaves nothing behind", async () => {
   });
 });
 
-// Deleting is idempotent (versioning may delete a key twice), and the
-// per-upload directories it empties are pruned so the volume doesn't fill
-// up with empty "uploads/<uuid>/" folders — but the root itself stays.
+// Deleting is idempotent (versioning may delete a key twice), and the per-upload directories it empties are pruned so the volume doesn't fill up with empty "uploads/<uuid>/" folders — but the root itself stays.
 test("delete removes objects, tolerates missing keys and prunes empty dirs", async () => {
   await withStore(async (store, root) => {
     await store.put("uploads/a/one", bytes("1"), "text/plain");

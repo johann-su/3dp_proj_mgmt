@@ -25,36 +25,23 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 
-// In-browser 3D preview of stored .3mf files, built on the same on-demand
-// three.js pattern as the parametric customizer's <ScadPreview>: the scene is
-// static between interactions, so it renders on orbit/resize/selection change
-// rather than a rAF loop (keeps laptops cool). Each .3mf ships as one zip
-// through the tokened /api/files route, so we fetch + parse it entirely
-// client-side — consistent with how .3mf import already works — and fall back
-// to the model's thumbnail images (via onError) if it can't be rendered.
+// In-browser 3D preview of stored .3mf files, built on the same on-demand three.js pattern as the parametric customizer's <ScadPreview>: the scene is static between interactions, so it renders on orbit/resize/selection change rather than a rAF loop (keeps laptops cool). Each .3mf ships as one zip through the tokened /api/files route, so we fetch + parse it entirely client-side — consistent with how .3mf import already works — and fall back to the model's thumbnail images (via onError) if it can't be rendered.
 //
-// Multi-plate Bambu projects place every plate's objects across one huge
-// virtual bed; we split them back into per-plate groups (see threemf-plates.ts)
-// and show one plate at a time, like MakerWorld.
+// Multi-plate Bambu projects place every plate's objects across one huge virtual bed; we split them back into per-plate groups (see threemf-plates.ts) and show one plate at a time, like MakerWorld.
 
 export type ViewerFile = {
   filename: string;
   src: string;
-  // Physical build-plate size in mm from the file's embedded slicer config
-  // (PrinterInfo.bedSizeMm, issue #80). When present the preview draws a real
-  // bed instead of a square sized to the geometry, giving a "will it fit"
-  // reference; absent for files with no printer info.
+  // Physical build-plate size in mm from the file's embedded slicer config (PrinterInfo.bedSizeMm, issue #80). When present the preview draws a real bed instead of a square sized to the geometry, giving a "will it fit" reference; absent for files with no printer info.
   bed?: { x: number; y: number } | null;
-  // The model_files row id, so the model page's Files card can match its rows
-  // to viewer files (other views match on `src`, which their rows share).
+  // The model_files row id, so the model page's Files card can match its rows to viewer files (other views match on `src`, which their rows share).
   fileId?: string;
 };
 
 type Plate = {
   name: string;
   group: THREE.Group;
-  // The plate's true extents (mm) in the .3mf's Z-up space — X/Y are the bed
-  // axes, Z is height — measured from the geometry once at load time.
+  // The plate's true extents (mm) in the .3mf's Z-up space — X/Y are the bed axes, Z is height — measured from the geometry once at load time.
   size: THREE.Vector3;
 };
 
@@ -76,9 +63,7 @@ const GRID_WARN_COLOR = 0xdc2626;
 // Guard against a giant project hanging the tab.
 const MAX_BYTES = 50 * 1024 * 1024;
 
-// Plate-name rail width (px). Draggable like the OpenSCAD customizer's parameter
-// panel, clamped so a long plate name stays readable without swallowing the
-// preview. Persisted so the choice sticks across files and page loads.
+// Plate-name rail width (px). Draggable like the OpenSCAD customizer's parameter panel, clamped so a long plate name stays readable without swallowing the preview. Persisted so the choice sticks across files and page loads.
 const RAIL_DEFAULT_WIDTH = 112; // matches the previous fixed w-28 (7rem)
 const RAIL_MIN_WIDTH = 80;
 const RAIL_MAX_WIDTH = 320;
@@ -88,16 +73,12 @@ function clampRailWidth(width: number) {
   return Math.min(RAIL_MAX_WIDTH, Math.max(RAIL_MIN_WIDTH, width));
 }
 
-// Builds a build-plate grid of `bedX` × `bedZ` mm (world XZ) centred on the
-// origin — a translucent plane plus grid lines at ~10 mm cells. Unlike
-// THREE.GridHelper (square only) this handles rectangular beds like the Prusa
-// MK-series 250×210, so the drawn plate matches the printer's real dimensions.
+// Builds a build-plate grid of `bedX` × `bedZ` mm (world XZ) centred on the origin — a translucent plane plus grid lines at ~10 mm cells. Unlike THREE.GridHelper (square only) this handles rectangular beds like the Prusa MK-series 250×210, so the drawn plate matches the printer's real dimensions.
 function makeBedGrid(bedX: number, bedZ: number, color: number) {
   const group = new THREE.Group();
   const halfX = bedX / 2;
   const halfZ = bedZ / 2;
-  // ~10 mm cells, coarser on big beds so the line count stays modest. Even
-  // division keeps both outer edges on a line regardless of the bed size.
+  // ~10 mm cells, coarser on big beds so the line count stays modest. Even division keeps both outer edges on a line regardless of the bed size.
   const target = Math.max(bedX, bedZ) > 400 ? 20 : 10;
   const divX = Math.max(1, Math.round(bedX / target));
   const divZ = Math.max(1, Math.round(bedZ / target));
@@ -157,19 +138,16 @@ export function ModelViewer({
 }: {
   // Every previewable .3mf on the model (tokened fileSrc URLs).
   files: ViewerFile[];
-  // Which file to show. Optional: when set, the parent owns the selection
-  // (the model page's Files card picks it); otherwise the switcher does.
+  // Which file to show. Optional: when set, the parent owns the selection (the model page's Files card picks it); otherwise the switcher does.
   fileIndex?: number;
   onFileIndexChange?: (index: number) => void;
-  // Called if a file can't be fetched/parsed, so the parent can fall back to
-  // the thumbnail gallery.
+  // Called if a file can't be fetched/parsed, so the parent can fall back to the thumbnail gallery.
   onError?: () => void;
 }) {
   const mountRef = useRef<HTMLDivElement>(null);
   const refs = useRef<SceneRefs | null>(null);
   const platesRef = useRef<Plate[]>([]);
-  // Real bed size (mm) of the selected file, set on load and read by showPlate
-  // (kept on a ref so showPlate stays dependency-free like platesRef).
+  // Real bed size (mm) of the selected file, set on load and read by showPlate (kept on a ref so showPlate stays dependency-free like platesRef).
   const bedRef = useRef<{ x: number; y: number } | null>(null);
   const [ownFileIndex, setOwnFileIndex] = useState(0);
   const fileIndex = Math.min(
@@ -182,31 +160,25 @@ export function ModelViewer({
   }
   const [plateIndex, setPlateIndex] = useState(0);
   const [plateNames, setPlateNames] = useState<string[]>([]);
-  // Which build plate the picker is showing: "file" (the config's own bed,
-  // the default), "auto" (footprint square), or a BED_PRESETS id. Mirrored on a
-  // ref so showPlate can read it without re-running the load effect.
+  // Which build plate the picker is showing: "file" (the config's own bed, the default), "auto" (footprint square), or a BED_PRESETS id. Mirrored on a ref so showPlate can read it without re-running the load effect.
   const [bedChoice, setBedChoice] = useState(() =>
     defaultBedChoice(files[fileIndex]?.bed ?? null),
   );
   const bedChoiceRef = useRef(bedChoice);
-  // Tracks which file the picker was last reset for, so switching files snaps
-  // the picker back to that file's own bed (see the render-time reset below).
+  // Tracks which file the picker was last reset for, so switching files snaps the picker back to that file's own bed (see the render-time reset below).
   const [choiceForFile, setChoiceForFile] = useState(fileIndex);
-  // Whether the geometry overflows the currently drawn real plate — drives the
-  // picker's warning styling. Always false for the footprint-square fallback.
+  // Whether the geometry overflows the currently drawn real plate — drives the picker's warning styling. Always false for the footprint-square fallback.
   const [oversized, setOversized] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  // Expand the viewport to a full-screen overlay, like the image lightbox. The
-  // renderer follows the container via the existing ResizeObserver.
+  // Expand the viewport to a full-screen overlay, like the image lightbox. The renderer follows the container via the existing ResizeObserver.
   const [fullscreen, setFullscreen] = useState(false);
   // Drag-resizable plate-name rail (mirrors the customizer's parameter panel).
   const railRef = useRef<HTMLDivElement>(null);
   const [railWidth, setRailWidth] = useState(RAIL_DEFAULT_WIDTH);
   const resizingRail = useRef(false);
 
-  // Reveal one plate, size the bed to it, and frame the camera. Kept on a ref
-  // so the plate buttons can call it without re-running the load effect.
+  // Reveal one plate, size the bed to it, and frame the camera. Kept on a ref so the plate buttons can call it without re-running the load effect.
   const showPlate = useCallback((index: number) => {
     const r = refs.current;
     const plates = platesRef.current;
@@ -215,16 +187,11 @@ export function ModelViewer({
 
     plates.forEach((p, i) => (p.group.visible = i === index));
 
-    // The plate's load-time size, re-expressed in world axes: the root's
-    // Z-up→Y-up rotation sends .3mf X/Y (the bed axes) to world X/Z and .3mf Z
-    // to world Y. Since the plate was recentred on the bed and dropped onto
-    // z = 0, it straddles the origin in XZ and rests on y = 0.
+    // The plate's load-time size, re-expressed in world axes: the root's Z-up→Y-up rotation sends .3mf X/Y (the bed axes) to world X/Z and .3mf Z to world Y. Since the plate was recentred on the bed and dropped onto z = 0, it straddles the origin in XZ and rests on y = 0.
     const size = new THREE.Vector3(plate.size.x, plate.size.z, plate.size.y);
     const center = new THREE.Vector3(0, size.y / 2, 0);
 
-    // Draw the file's real bed when we know it, so the plate is a true size
-    // reference; otherwise fall back to a square just larger than the plate's
-    // footprint (10 mm cells, min 100 mm).
+    // Draw the file's real bed when we know it, so the plate is a true size reference; otherwise fall back to a square just larger than the plate's footprint (10 mm cells, min 100 mm).
     const realBed = bedForChoice(bedChoiceRef.current, bedRef.current);
     const isOversized = exceedsBed(plate.size, realBed);
     let bedX: number;
@@ -244,8 +211,7 @@ export function ModelViewer({
       makeBedGrid(bedX, bedZ, isOversized ? GRID_WARN_COLOR : GRID_COLOR),
     );
 
-    // Frame the whole bed, not just the geometry, so a small print reads as
-    // small on a large plate (the point of the real-bed reference).
+    // Frame the whole bed, not just the geometry, so a small print reads as small on a large plate (the point of the real-bed reference).
     const radius = Math.max(size.length() / 2, Math.hypot(bedX, bedZ) / 2, 10);
     r.camera.position.set(
       center.x + radius * 1.6,
@@ -257,9 +223,7 @@ export function ModelViewer({
     r.frame();
   }, []);
 
-  // Mirror the picked plate onto a ref so the dependency-free showPlate can read
-  // it (the same pattern as bedRef/platesRef). The onChange handler also sets
-  // this synchronously so its own showPlate call sees the new plate immediately.
+  // Mirror the picked plate onto a ref so the dependency-free showPlate can read it (the same pattern as bedRef/platesRef). The onChange handler also sets this synchronously so its own showPlate call sees the new plate immediately.
   useEffect(() => {
     bedChoiceRef.current = bedChoice;
   }, [bedChoice]);
@@ -283,15 +247,13 @@ export function ModelViewer({
     );
     camera.position.set(120, 110, 140);
 
-    // Soft studio-ish light: sky/ground fill plus one key light, matching how
-    // slicers present a matte print on the plate.
+    // Soft studio-ish light: sky/ground fill plus one key light, matching how slicers present a matte print on the plate.
     scene.add(new THREE.HemisphereLight(0xffffff, 0x777777, 1.1));
     const key = new THREE.DirectionalLight(0xffffff, 1.6);
     key.position.set(180, 320, 220);
     scene.add(key);
 
-    // Plates live under a rotated root (.3mf is Z-up, three.js is Y-up); the
-    // bed lives in world space since plates are recentered onto the origin.
+    // Plates live under a rotated root (.3mf is Z-up, three.js is Y-up); the bed lives in world space since plates are recentered onto the origin.
     const root = new THREE.Group();
     root.rotation.set(-Math.PI / 2, 0, 0);
     scene.add(root);
@@ -327,8 +289,7 @@ export function ModelViewer({
     };
   }, []);
 
-  // Load the selected file: fetch, parse geometry + plate layout, and rebuild
-  // the plate groups.
+  // Load the selected file: fetch, parse geometry + plate layout, and rebuild the plate groups.
   useEffect(() => {
     const file = files[fileIndex];
     if (!file) return;
@@ -358,8 +319,7 @@ export function ModelViewer({
         const r = refs.current;
         if (disposed || !r) return;
 
-        // Give every mesh the same matte look as the customizer preview,
-        // regardless of the file's embedded materials/colors.
+        // Give every mesh the same matte look as the customizer preview, regardless of the file's embedded materials/colors.
         object.traverse((child) => {
           if (child instanceof THREE.Mesh) {
             const mat = child.material as THREE.Material | THREE.Material[];
@@ -372,8 +332,7 @@ export function ModelViewer({
           }
         });
 
-        // Split the build items (top-level children, in build order) into plate
-        // buckets. Without a layout, everything is one plate.
+        // Split the build items (top-level children, in build order) into plate buckets. Without a layout, everything is one plate.
         const buildItems = [...object.children];
         if (buildItems.length === 0) {
           throw new Error("The file contained no geometry.");
@@ -395,10 +354,7 @@ export function ModelViewer({
           if (children.length === 0) return;
           const group = new THREE.Group();
           children.forEach((c) => group.add(c)); // reparent (build transforms kept)
-          // Measure once, in the .3mf's Z-up space, and keep the size for the
-          // bed fit check (measureBounds reads vertices, not mesh bounding
-          // boxes — see why there). Then recenter: center on the bed (XY) and
-          // drop the lowest point to Z=0 so it rests on the plate.
+          // Measure once, in the .3mf's Z-up space, and keep the size for the bed fit check (measureBounds reads vertices, not mesh bounding boxes — see why there). Then recenter: center on the bed (XY) and drop the lowest point to Z=0 so it rests on the plate.
           const box = measureBounds(group);
           const center = box.getCenter(new THREE.Vector3());
           group.position.set(-center.x, -center.y, -box.min.z);
@@ -478,11 +434,7 @@ export function ModelViewer({
     };
   }, [railWidth]);
 
-  // Switching files snaps the picker back to that file's own bed — a preset
-  // picked for the last file shouldn't carry over to one sliced for a different
-  // printer. Done during render (React's "adjust state on prop change" pattern)
-  // rather than in an effect. bedChoiceRef follows via its sync effect, which
-  // lands well before the load effect's async showPlate reads it.
+  // Switching files snaps the picker back to that file's own bed — a preset picked for the last file shouldn't carry over to one sliced for a different printer. Done during render (React's "adjust state on prop change" pattern) rather than in an effect. bedChoiceRef follows via its sync effect, which lands well before the load effect's async showPlate reads it.
   if (choiceForFile !== fileIndex) {
     setChoiceForFile(fileIndex);
     setBedChoice(defaultBedChoice(files[fileIndex]?.bed ?? null));
@@ -500,8 +452,7 @@ export function ModelViewer({
     >
       <div ref={mountRef} className="absolute inset-0" />
 
-      {/* File switcher + full-screen toggle, top-right (top-left holds the
-          platform badge, top-center the Photos/3D toggle). */}
+      {/* File switcher + full-screen toggle, top-right (top-left holds the platform badge, top-center the Photos/3D toggle). */}
       <div className="absolute right-2 top-2 z-10 flex items-center gap-1.5">
         {multiFile && (
           <select
@@ -538,8 +489,7 @@ export function ModelViewer({
         </Tooltip>
       </div>
 
-      {/* Plate selector, mirroring MakerWorld's per-plate rail. Drag its right
-          edge to widen it for long plate names (like the customizer panel). */}
+      {/* Plate selector, mirroring MakerWorld's per-plate rail. Drag its right edge to widen it for long plate names (like the customizer panel). */}
       {multiPlate && !loading && !error && (
         <div
           ref={railRef}
@@ -583,9 +533,7 @@ export function ModelViewer({
         </div>
       )}
 
-      {/* Build-plate picker + size reference (issue #80): defaults to the plate
-          the file was sliced for, and lets you check the model against another
-          common bed. Turns red and warns when the geometry overflows it. */}
+      {/* Build-plate picker + size reference (issue #80): defaults to the plate the file was sliced for, and lets you check the model against another common bed. Turns red and warns when the geometry overflows it. */}
       {!loading && !error && (
         <div className="absolute bottom-2 left-1/2 z-10 -translate-x-1/2">
           <div

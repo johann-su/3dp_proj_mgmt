@@ -1,14 +1,6 @@
-// OpenSCAD customizer parameter parsing — pure string logic, no DB/S3 (the
-// S3 wiring lives in the model page / customize route, mirroring the
-// threemf-slice-info.ts / threemf-remote.ts split).
+// OpenSCAD customizer parameter parsing — pure string logic, no DB/S3 (the S3 wiring lives in the model page / customize route, mirroring the threemf-slice-info.ts / threemf-remote.ts split).
 //
-// The customizer "schema" is OpenSCAD's informal comment grammar
-// (https://en.wikibooks.org/wiki/OpenSCAD_User_Manual/Customizer): top-level
-// literal assignments become parameters, an optional trailing comment
-// annotates the widget, `/* [Section] */` starts a group and `/* [Hidden] */`
-// hides everything after it. MakerWorld's parametric models use exactly this
-// grammar (their design API's scadConfig field is empty in practice, so the
-// source is the only schema we can rely on).
+// The customizer "schema" is OpenSCAD's informal comment grammar (https://en.wikibooks.org/wiki/OpenSCAD_User_Manual/Customizer): top-level literal assignments become parameters, an optional trailing comment annotates the widget, `/* [Section] */` starts a group and `/* [Hidden] */` hides everything after it. MakerWorld's parametric models use exactly this grammar (their design API's scadConfig field is empty in practice, so the source is the only schema we can rely on).
 
 export type ScadParameterOption<V> = { value: V; label: string };
 
@@ -54,9 +46,7 @@ const MAX_PARAMETERS = 200;
 
 // --- tokenizing helpers -----------------------------------------------------
 
-// Strips block comments and string bodies so structural scans (first module/
-// geometry statement, include targets) can't be fooled by comment or string
-// content, while keeping offsets intact by replacing with spaces.
+// Strips block comments and string bodies so structural scans (first module/geometry statement, include targets) can't be fooled by comment or string content, while keeping offsets intact by replacing with spaces.
 function blankNonCode(source: string): string {
   let out = "";
   let i = 0;
@@ -89,8 +79,7 @@ function blankNonCode(source: string): string {
   return out;
 }
 
-// Parses one literal: number, boolean, quoted string, or vector of numbers.
-// Returns null for anything else (expressions are not customizer params).
+// Parses one literal: number, boolean, quoted string, or vector of numbers. Returns null for anything else (expressions are not customizer params).
 function parseLiteral(
   raw: string,
 ): { type: "number"; value: number } | { type: "boolean"; value: boolean } | { type: "string"; value: string } | { type: "vector"; value: number[] } | null {
@@ -123,14 +112,12 @@ type Annotation =
   | { kind: "maxLength"; maxLength: number }
   | null;
 
-// Parses the trailing `// …` widget annotation. Unrecognized shapes return
-// null — the parameter degrades to a plain input, never an error.
+// Parses the trailing `// …` widget annotation. Unrecognized shapes return null — the parameter degrades to a plain input, never an error.
 function parseAnnotation(comment: string): Annotation {
   const text = comment.trim();
   if (!text) return null;
 
-  // `// 12` on a string parameter = max length; on numbers OpenSCAD treats a
-  // bare number as a spin-box step, which we fold into maxLength/step later.
+  // `// 12` on a string parameter = max length; on numbers OpenSCAD treats a bare number as a spin-box step, which we fold into maxLength/step later.
   if (/^\d+(\.\d+)?$/.test(text)) {
     return { kind: "maxLength", maxLength: Number(text) };
   }
@@ -173,10 +160,7 @@ function parseAnnotation(comment: string): Annotation {
 
 // --- main parser ------------------------------------------------------------
 
-// Customizer parameters are only the top-level assignments before the first
-// module/function definition or geometry statement — OpenSCAD itself stops
-// collecting there, and so do we. We scan line-groups: section headers,
-// comments (descriptions), assignments, and stop markers.
+// Customizer parameters are only the top-level assignments before the first module/function definition or geometry statement — OpenSCAD itself stops collecting there, and so do we. We scan line-groups: section headers, comments (descriptions), assignments, and stop markers.
 export function parseScadParameters(source: string): ScadParameterGroup[] {
   const code = blankNonCode(source);
   const lines = source.split(/\r?\n/);
@@ -197,9 +181,7 @@ export function parseScadParameters(source: string): ScadParameterGroup[] {
     const codeLine = codeLines[i];
     const trimmed = line.trim();
 
-    // Stop at the first module/function definition or geometry/control
-    // statement: nothing below is a customizer parameter. Detect on the
-    // comment/string-blanked code so text inside comments can't trigger it.
+    // Stop at the first module/function definition or geometry/control statement: nothing below is a customizer parameter. Detect on the comment/string-blanked code so text inside comments can't trigger it.
     const codeTrimmed = codeLine.trim();
     if (
       /^(module|function)\b/.test(codeTrimmed) ||
@@ -232,8 +214,7 @@ export function parseScadParameters(source: string): ScadParameterGroup[] {
       continue;
     }
 
-    // Assignment? Use the blanked code line to find the terminating `;` and
-    // the original line for the value + trailing annotation comment.
+    // Assignment? Use the blanked code line to find the terminating `;` and the original line for the value + trailing annotation comment.
     const assign = codeLine.match(/^\s*([a-zA-Z_$][\w$]*)\s*=/);
     if (!assign) {
       pendingDescription = [];
@@ -255,8 +236,7 @@ export function parseScadParameters(source: string): ScadParameterGroup[] {
     pendingDescription = [];
 
     if (!literal || hidden || name === "$fn" || total >= MAX_PARAMETERS) continue;
-    // OpenSCAD ignores re-assignments of the same name for the customizer
-    // (last value wins in the language, first wins in the UI) — keep first.
+    // OpenSCAD ignores re-assignments of the same name for the customizer (last value wins in the language, first wins in the UI) — keep first.
     if (current.parameters.some((p) => p.name === name)) continue;
 
     const annotation = annotationMatch ? parseAnnotation(annotationMatch[1]) : null;
@@ -321,13 +301,7 @@ function formatNumber(value: number): string {
   return Number.isFinite(value) ? String(value) : "0";
 }
 
-// Validates client-submitted values against the parsed schema and returns the
-// canonical {name: stringValue} map for OpenSCAD's parameter-set JSON (which
-// stringifies every value). Unknown names are dropped, numbers clamped to the
-// annotated range, dropdowns must match an option, strings are length-capped,
-// vectors must match the default's length. Values never reach a command line
-// (the service passes them via -p JSON only), but the tight canonicalization
-// here is defense in depth.
+// Validates client-submitted values against the parsed schema and returns the canonical {name: stringValue} map for OpenSCAD's parameter-set JSON (which stringifies every value). Unknown names are dropped, numbers clamped to the annotated range, dropdowns must match an option, strings are length-capped, vectors must match the default's length. Values never reach a command line (the service passes them via -p JSON only), but the tight canonicalization here is defense in depth.
 export function coerceScadValues(
   groups: ScadParameterGroup[],
   values: Record<string, unknown>,
@@ -356,8 +330,7 @@ export function coerceScadValues(
         if (typeof raw !== "string") continue;
         let v = raw.slice(0, param.maxLength ?? STRING_MAX_LENGTH);
         if (param.options && !param.options.some((o) => o.value === v)) continue;
-        // strip quotes/backslashes so the value can't escape OpenSCAD's own
-        // string literal when the parameter set is applied
+        // strip quotes/backslashes so the value can't escape OpenSCAD's own string literal when the parameter set is applied
         v = v.replace(/["\\]/g, "");
         if (v !== param.default) out[param.name] = v;
       } else {
@@ -381,15 +354,10 @@ export function coerceScadValues(
 
 // --- include scanning -------------------------------------------------------
 
-// Libraries bundled in the openscad service image (see openscad/Dockerfile).
-// Only includes that resolve inside these directories are allowed.
+// Libraries bundled in the openscad service image (see openscad/Dockerfile). Only includes that resolve inside these directories are allowed.
 export const SCAD_LIBRARY_ALLOWLIST = ["BOSL2/", "MCAD/"];
 
-// Scans include<>/use<> directives and import()/surface() calls. The renderer
-// runs in an empty temp dir, so a stray path mostly just fails — but rejecting
-// up front gives the uploader a clear message and keeps /etc-style probes out
-// of the service entirely. Multi-file projects (sibling includes) are
-// unsupported in v1: only bundled-library includes pass.
+// Scans include<>/use<> directives and import()/surface() calls. The renderer runs in an empty temp dir, so a stray path mostly just fails — but rejecting up front gives the uploader a clear message and keeps /etc-style probes out of the service entirely. Multi-file projects (sibling includes) are unsupported in v1: only bundled-library includes pass.
 export function findForbiddenFileRefs(source: string): string[] {
   const violations: string[] = [];
   const seen = new Set<string>();
@@ -405,10 +373,7 @@ export function findForbiddenFileRefs(source: string): string[] {
   const allowed = (target: string) =>
     SCAD_LIBRARY_ALLOWLIST.some((prefix) => target.startsWith(prefix));
 
-  // include <path> / use <path> — angle-bracket targets are not string
-  // literals, so they survive comment/string blanking and can be read
-  // straight from the blanked code (occurrences inside comments are blanked
-  // away and correctly skipped).
+  // include <path> / use <path> — angle-bracket targets are not string literals, so they survive comment/string blanking and can be read straight from the blanked code (occurrences inside comments are blanked away and correctly skipped).
   const code = blankNonCode(source);
   const directive = /\b(include|use)\s*<([^>\n]*)>/g;
   let match: RegExpExecArray | null;
@@ -421,10 +386,7 @@ export function findForbiddenFileRefs(source: string): string[] {
     }
   }
 
-  // import()/surface() read external files at render time. There is no file
-  // the source could legitimately reference — uploads are single .scad files
-  // and the renderer's temp dir is empty — so any call is a violation, no
-  // matter how the path is built.
+  // import()/surface() read external files at render time. There is no file the source could legitimately reference — uploads are single .scad files and the renderer's temp dir is empty — so any call is a violation, no matter how the path is built.
   const call = /\b(import|surface)\s*\(/g;
   while ((match = call.exec(code)) !== null) {
     flag(match[1], `${match[1]}() reads external files`);

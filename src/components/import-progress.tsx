@@ -1,9 +1,6 @@
 "use client";
 
-// Header widget for background collection imports: a small progress ring in
-// the top-right corner while a job runs, turning into a status dot when it
-// finishes. Polls GET /api/import-jobs while a job is active; the import form
-// fires IMPORT_JOB_STARTED_EVENT so polling starts without a page reload.
+// Header widget for background collection imports: a small progress ring in the top-right corner while a job runs, turning into a status dot when it finishes. Polls GET /api/import-jobs while a job is active; the import form fires IMPORT_JOB_STARTED_EVENT so polling starts without a page reload.
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
@@ -85,8 +82,7 @@ export function ImportProgressIndicator() {
   const [dismissed, setDismissed] = useState<string[]>(() =>
     typeof window === "undefined" ? [] : dismissedIds(),
   );
-  // The collection page the user is likely looking at re-renders as models
-  // land; refresh it when the running job's numbers move.
+  // The collection page the user is likely looking at re-renders as models land; refresh it when the running job's numbers move.
   const lastCompleted = useRef<number>(-1);
 
   useEffect(() => {
@@ -101,8 +97,7 @@ export function ImportProgressIndicator() {
         if (res.ok) {
           const body = (await res.json()) as { jobs: ImportJob[] };
           if (cancelled) return;
-          // Finished jobs expire out of the header after a while; filtering
-          // at fetch time keeps render pure.
+          // Finished jobs expire out of the header after a while; filtering at fetch time keeps render pure.
           setJobs(
             body.jobs.filter(
               (j) =>

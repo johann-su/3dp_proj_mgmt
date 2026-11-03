@@ -1,8 +1,6 @@
 "use client";
 
-// Slicer deep links (orcaslicer:// / bambustudioopen://) need an absolute URL
-// to the .3mf file, which is only known in the browser — hence a client
-// component.
+// Slicer deep links (orcaslicer:// / bambustudioopen://) need an absolute URL to the .3mf file, which is only known in the browser — hence a client component.
 
 import { Download, ExternalLink } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -20,30 +18,10 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 
-// Orca and Bambu register different URL schemes (`orcaslicer:` vs.
-// `bambustudioopen:` — NOT `bambustudio:`, an unregistered scheme fails
-// silently) AND parse the link differently, so each builds its own URL from
-// the same tokened file URL (`.../api/files/<id>/<token>/<name>.3mf`) and the
-// `.3mf` name. Both apps download the URL themselves, without the session
-// cookie, so the URL carries a signed access token — as a PATH segment, not
-// `?token=`, because Orca keeps the query string when naming the file (below):
+// Orca and Bambu register different URL schemes (`orcaslicer:` vs. `bambustudioopen:` — NOT `bambustudio:`, an unregistered scheme fails silently) AND parse the link differently, so each builds its own URL from the same tokened file URL (`.../api/files/<id>/<token>/<name>.3mf`) and the `.3mf` name. Both apps download the URL themselves, without the session cookie, so the URL carries a signed access token — as a PATH segment, not `?token=`, because Orca keeps the query string when naming the file (below):
 //
-// - Orca matches `orcaslicer://open?file=<url>`, treats the entire remainder
-//   as the URL to fetch, and names the saved file from that URL's LAST PATH
-//   SEGMENT without stripping any query string (`filename_from_url` in
-//   Downloader.cpp) — the trailing `<name>.3mf` segment yields a real `.3mf`
-//   name instead of the bare UUID (this matches the link Printables/MakerWorld
-//   generate). A `&name=` param would just corrupt the fetched URL (our route
-//   404s on the bad id), so it must not be used here. (`open?file=`, no slash:
-//   Orca's regex accepts a `open/?` slash too, but that's the legacy
-//   PrusaSlicer "mysterious slash".)
-// - Bambu's macOS handler takes whatever follows `bambustudioopen://`, decodes
-//   it once, and treats it as the raw download URL (rejected unless it starts
-//   with http/https — an `open/?file=` prefix breaks it). It then splits a
-//   trailing `&name=` off to name the file, refusing it unless the name ends in
-//   `.3mf` (the bare-UUID URL has no extension). Matching MakerWorld's own
-//   links, the whole `<url>&name=<file>.3mf` is percent-encoded as one blob so
-//   the browser can't mangle the literal `&`/`:` before the OS gets it.
+// - Orca matches `orcaslicer://open?file=<url>`, treats the entire remainder as the URL to fetch, and names the saved file from that URL's LAST PATH SEGMENT without stripping any query string (`filename_from_url` in Downloader.cpp) — the trailing `<name>.3mf` segment yields a real `.3mf` name instead of the bare UUID (this matches the link Printables/MakerWorld generate). A `&name=` param would just corrupt the fetched URL (our route 404s on the bad id), so it must not be used here. (`open?file=`, no slash: Orca's regex accepts a `open/?` slash too, but that's the legacy PrusaSlicer "mysterious slash".)
+// - Bambu's macOS handler takes whatever follows `bambustudioopen://`, decodes it once, and treats it as the raw download URL (rejected unless it starts with http/https — an `open/?file=` prefix breaks it). It then splits a trailing `&name=` off to name the file, refusing it unless the name ends in `.3mf` (the bare-UUID URL has no extension). Matching MakerWorld's own links, the whole `<url>&name=<file>.3mf` is percent-encoded as one blob so the browser can't mangle the literal `&`/`:` before the OS gets it.
 const SLICERS = [
   {
     name: "Orca Slicer",
@@ -63,10 +41,7 @@ export function FileDownloadMenu({
   filename,
   makerworldUrl,
 }: {
-  // Cookie-less file URL prefix with the credential as a path segment —
-  // `/api/files/<id>/<file token>` for members, or
-  // `/api/files/shared/<id>/<share token>` on public share pages. Minted
-  // server-side; it, not a cookie, authenticates the slicer's download.
+  // Cookie-less file URL prefix with the credential as a path segment — `/api/files/<id>/<file token>` for members, or `/api/files/shared/<id>/<share token>` on public share pages. Minted server-side; it, not a cookie, authenticates the slicer's download.
   slicerPath: string;
   downloadHref: string;
   filename: string;

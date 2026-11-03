@@ -10,9 +10,7 @@ import { listFeed, type FeedItem } from "@/lib/list-queries";
 import type { Page } from "@/lib/pagination";
 import type { PinKind } from "@/lib/pins";
 
-// Fetches the next page of the homepage feed (models + collections interleaved)
-// for endless scroll. The category slug and sort are echoed back from the
-// client so the paged results match the currently displayed list.
+// Fetches the next page of the homepage feed (models + collections interleaved) for endless scroll. The category slug and sort are echoed back from the client so the paged results match the currently displayed list.
 export async function loadMoreFeed(input: {
   category?: string;
   sort?: string;
@@ -35,9 +33,7 @@ export async function loadMoreFeed(input: {
   return listFeed({ categoryId, cursor: input.cursor, sort: parseFeedSort(input.sort) });
 }
 
-// Pin/unpin a model or collection on the homepage. Pins are shared curation
-// (everyone sees everyone's pins), so like editing, any signed-in user may pin
-// or unpin anything. Not a model mutation — no versioning, no S3 bookkeeping.
+// Pin/unpin a model or collection on the homepage. Pins are shared curation (everyone sees everyone's pins), so like editing, any signed-in user may pin or unpin anything. Not a model mutation — no versioning, no S3 bookkeeping.
 export async function setHomePin(input: {
   kind: PinKind;
   id: string;

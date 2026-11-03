@@ -6,9 +6,7 @@ services:
       POSTGRES_USER: stl
       POSTGRES_PASSWORD: stl
       POSTGRES_DB: stl
-    # Loopback only: Docker's published ports bypass host firewalls (ufw etc.),
-    # and this database holds password hashes, sessions and encrypted tokens.
-    # The app container reaches it over the compose network either way.
+    # Loopback only: Docker's published ports bypass host firewalls (ufw etc.), and this database holds password hashes, sessions and encrypted tokens. The app container reaches it over the compose network either way.
     ports:
       - "127.0.0.1:5432:5432"
     volumes:
@@ -19,15 +17,11 @@ services:
       timeout: 5s
       retries: 10
 
-  # Headless OrcaSlicer wrapped in a small HTTP service (./slicer). Slices
-  # unsliced .3mf uploads to estimate print time & filament use. The port is
-  # published loopback-only so `npm run dev` on the host can reach it without
-  # exposing the unauthenticated service to the network.
+  # Headless OrcaSlicer wrapped in a small HTTP service (./slicer). Slices unsliced .3mf uploads to estimate print time & filament use. The port is published loopback-only so `npm run dev` on the host can reach it without exposing the unauthenticated service to the network.
   slicer:
     build: ./slicer
     restart: unless-stopped
-    # The printer files without slicer settings are estimated for — names of
-    # OrcaSlicer system presets; unset = Bambu Lab P1S, 0.20mm, Bambu PLA.
+    # The printer files without slicer settings are estimated for — names of OrcaSlicer system presets; unset = Bambu Lab P1S, 0.20mm, Bambu PLA.
     environment:
       SLICER_GENERIC_MACHINE: ${SLICER_GENERIC_MACHINE:-}
       SLICER_GENERIC_PROCESS: ${SLICER_GENERIC_PROCESS:-}
@@ -35,11 +29,7 @@ services:
     ports:
       - "127.0.0.1:8000:8000"
 
-  # Headless OpenSCAD wrapped in the same kind of HTTP service (./openscad).
-  # Renders parametric .scad model files into .3mf with user-chosen customizer
-  # values. Loopback-only for the same reason as the slicer; the memory/pid
-  # limits matter because OpenSCAD's CGAL renderer can eat unbounded RAM on a
-  # hostile or just overly ambitious model.
+  # Headless OpenSCAD wrapped in the same kind of HTTP service (./openscad). Renders parametric .scad model files into .3mf with user-chosen customizer values. Loopback-only for the same reason as the slicer; the memory/pid limits matter because OpenSCAD's CGAL renderer can eat unbounded RAM on a hostile or just overly ambitious model.
   openscad:
     build: ./openscad
     restart: unless-stopped
@@ -53,67 +43,51 @@ services:
     profiles: ["app"]
     build: .
     restart: unless-stopped
-    # Loopback only, for the same reason as postgres above: Docker's published
-    # ports bypass host firewalls (ufw etc.), so "3000:3000" would put the app
-    # on the host's public IP — reachable without TLS and around whatever
-    # reverse proxy (and IPS/bouncer) you put in front of it. Terminate TLS in
-    # your proxy on the same host and point it at 127.0.0.1:3000, or drop this
-    # block entirely and join the proxy's Docker network.
+    # Loopback only, for the same reason as postgres above: Docker's published ports bypass host firewalls (ufw etc.), so "3000:3000" would put the app on the host's public IP — reachable without TLS and around whatever reverse proxy (and IPS/bouncer) you put in front of it. Terminate TLS in your proxy on the same host and point it at 127.0.0.1:3000, or drop this block entirely and join the proxy's Docker network.
     ports:
       - "127.0.0.1:3000:3000"
     environment:
       DATABASE_URL: postgres://stl:stl@postgres:5432/stl
-      # Required, no default: this secret guards sessions, signed file URLs
-      # and the encrypted Bambu/Onshape tokens. openssl rand -base64 32
+      # Required, no default: this secret guards sessions, signed file URLs and the encrypted Bambu/Onshape tokens. openssl rand -base64 32
       BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:?set BETTER_AUTH_SECRET to a long random string}
       BETTER_AUTH_URL: ${BETTER_AUTH_URL:-http://localhost:3000}
       # Set to true to turn off self-registration (see .env.example)
       DISABLE_SIGNUP: ${DISABLE_SIGNUP:-}
-      # Reverse-proxy IP(s)/CIDR(s), comma-separated, so sign-in rate limiting
-      # can key by real client IP instead of one shared bucket (see .env.example)
+      # Reverse-proxy IP(s)/CIDR(s), comma-separated, so sign-in rate limiting can key by real client IP instead of one shared bucket (see .env.example)
       TRUSTED_PROXY_CIDRS: ${TRUSTED_PROXY_CIDRS:-}
       # Optional OIDC SSO (see .env.example)
       OIDC_ISSUER: ${OIDC_ISSUER:-}
       OIDC_CLIENT_ID: ${OIDC_CLIENT_ID:-}
       OIDC_CLIENT_SECRET: ${OIDC_CLIENT_SECRET:-}
       OIDC_PROVIDER_NAME: ${OIDC_PROVIDER_NAME:-SSO}
-      # Where uploaded files live: "s3" (the default) or "filesystem", which
-      # stores them in the file-data volume below instead (see .env.example)
+      # Where uploaded files live: "s3" (the default) or "filesystem", which stores them in the file-data volume below instead (see .env.example)
       STORAGE_BACKEND: ${STORAGE_BACKEND:-s3}
       STORAGE_PATH: ${STORAGE_PATH:-/app/data/files}
-      # With STORAGE_BACKEND=s3: point these at your S3-compatible storage
-      # (AWS S3, MinIO, Garage, …). Unused by the filesystem backend.
+      # With STORAGE_BACKEND=s3: point these at your S3-compatible storage (AWS S3, MinIO, Garage, …). Unused by the filesystem backend.
       S3_ENDPOINT: ${S3_ENDPOINT:-}
       S3_REGION: ${S3_REGION:-us-east-1}
       S3_ACCESS_KEY_ID: ${S3_ACCESS_KEY_ID:-}
       S3_SECRET_ACCESS_KEY: ${S3_SECRET_ACCESS_KEY:-}
       S3_BUCKET: ${S3_BUCKET:-models}
       S3_FORCE_PATH_STYLE: ${S3_FORCE_PATH_STYLE:-true}
-      # Optional OpenTelemetry OTLP trace export (see .env.example). Unset
-      # (the default) disables telemetry entirely.
+      # Optional OpenTelemetry OTLP trace export (see .env.example). Unset (the default) disables telemetry entirely.
       OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
       OTEL_SERVICE_NAME: ${OTEL_SERVICE_NAME:-}
       # Headless slicer service for print time / filament estimates
       SLICER_URL: http://slicer:8000
       # Headless OpenSCAD service for parametric .scad models (customizer)
       OPENSCAD_URL: http://openscad:8000
-      # Set to true to expose the read-only MCP server for LLM clients. Also
-      # opens an unauthenticated OAuth client-registration endpoint — read the
-      # MCP integration docs before enabling it on a public instance.
+      # Set to true to expose the read-only MCP server for LLM clients. Also opens an unauthenticated OAuth client-registration endpoint — read the MCP integration docs before enabling it on a public instance.
       ENABLE_MCP: ${ENABLE_MCP:-}
-      # Set to true to serve the REST API at /api/v1 with per-user API keys
-      # (Settings → API keys). Keys bypass SSO/MFA, hence opt-in.
+      # Set to true to serve the REST API at /api/v1 with per-user API keys (Settings → API keys). Keys bypass SSO/MFA, hence opt-in.
       ENABLE_API: ${ENABLE_API:-}
     depends_on:
       postgres:
         condition: service_healthy
-    # Next.js writes its on-disk cache here, including resized/reformatted
-    # next/image output. Without a volume this resets on every restart or
-    # rebuild, so every image is re-optimized from scratch on next viewing.
+    # Next.js writes its on-disk cache here, including resized/reformatted next/image output. Without a volume this resets on every restart or rebuild, so every image is re-optimized from scratch on next viewing.
     volumes:
       - next-cache:/app/.next/cache
-      # Uploaded files when STORAGE_BACKEND=filesystem (unused with S3). Back
-      # this up together with the database — rows reference files in it.
+      # Uploaded files when STORAGE_BACKEND=filesystem (unused with S3). Back this up together with the database — rows reference files in it.
       - file-data:/app/data
 
 volumes:

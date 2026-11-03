@@ -32,8 +32,7 @@ export default async function EditModelPage({
     }),
     db.query.categories.findMany({ orderBy: (c, { asc }) => asc(c.name) }),
   ]);
-  // Editing is open to any signed-in user (collaborative library); only
-  // deletion is owner-gated. See updateModel / deleteModel in ../../actions.ts.
+  // Editing is open to any signed-in user (collaborative library); only deletion is owner-gated. See updateModel / deleteModel in ../../actions.ts.
   if (!model || model.deletedAt) notFound();
 
   return (

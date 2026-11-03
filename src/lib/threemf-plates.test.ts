@@ -3,8 +3,7 @@ import assert from "node:assert/strict";
 import { zipSync, strToU8 } from "fflate";
 import { parsePlateLayout } from "@/lib/threemf-plates";
 
-// Minimal Bambu-shaped .3mf: a <build> whose item order maps to scene-child
-// order, and model_settings plates that claim objects by id.
+// Minimal Bambu-shaped .3mf: a <build> whose item order maps to scene-child order, and model_settings plates that claim objects by id.
 function make3mf(model: string, settings: string): Uint8Array {
   return zipSync({
     "3D/3dmodel.model": strToU8(model),

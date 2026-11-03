@@ -19,8 +19,7 @@ function threeMf(entries: Record<string, Uint8Array>, filename = "test.3mf") {
   return new File([zipSync(entries) as unknown as BlobPart], filename);
 }
 
-// The Description keeps its formatting as Markdown (Bambu double-escapes the
-// HTML: "&amp;lt;h3&amp;gt;…"); the Title is flattened to plain text.
+// The Description keeps its formatting as Markdown (Bambu double-escapes the HTML: "&amp;lt;h3&amp;gt;…"); the Title is flattened to plain text.
 test("extract3mfMetadata reads Title and a double-escaped HTML Description as markdown", async () => {
   const meta = await extract3mfMetadata(
     threeMf({

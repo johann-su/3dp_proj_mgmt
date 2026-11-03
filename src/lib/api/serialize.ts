@@ -1,10 +1,6 @@
-// DB rows → the API's response shapes (src/lib/api/schemas.ts). Pure — rows
-// in, plain objects out — so what the API exposes is unit-tested, and every
-// field is projected by hand: spreading a row would publish whatever column
-// is added to it next (S3 keys, content hashes, download counters).
+// DB rows → the API's response shapes (src/lib/api/schemas.ts). Pure — rows in, plain objects out — so what the API exposes is unit-tested, and every field is projected by hand: spreading a row would publish whatever column is added to it next (S3 keys, content hashes, download counters).
 //
-// URLs are absolute and built by the caller's `url` (appUrl in the routes),
-// never from the request, which behind a proxy is the internal bind address.
+// URLs are absolute and built by the caller's `url` (appUrl in the routes), never from the request, which behind a proxy is the internal bind address.
 
 import type { collections, modelFiles } from "@/db/schema";
 import type { BomItemInput } from "@/lib/bom";
@@ -74,8 +70,7 @@ export function serializeFile(file: FileRow, url: UrlFor): ApiFileOut {
     imported: file.imported,
     generatedFromId: file.generatedFromId,
     downloadUrl: url(fileDownloadPath(file.id)),
-    // Estimates only exist for sliceable files; null status means estimates
-    // don't apply (.step/.scad, images), which is different from "pending".
+    // Estimates only exist for sliceable files; null status means estimates don't apply (.step/.scad, images), which is different from "pending".
     print: file.sliceStatus
       ? {
           status: file.sliceStatus,

@@ -1,254 +1,64 @@
 # Platform import (.3mf, MakerWorld/Printables, archives, source sync, collections)
 
-*Read before touching the importers, source sync, or collection import. Onshape
-has its own file — see [`onshape.md`](./onshape.md). Update in the same PR that
-changes this behaviour.*
+*Read before touching the importers, source sync, or collection import. Onshape has its own file — see [`onshape.md`](./onshape.md). Update in the same PR that changes this behaviour.*
 
 ## Source registry
 
-Every upstream source (MakerWorld, Printables, Onshape) is described once, in
-two halves:
+Every upstream source (MakerWorld, Printables, Onshape) is described once, in two halves:
 
-- **`src/lib/sources/registry.ts`** — pure and **client-safe** (the model page
-  and the rule builder render source labels): label, host test (and the same
-  test as a Postgres regex for the smart-collection "source" rule), the
-  sourceUrl allowlist (`canonicalSourceUrl`), the design id duplicate detection
-  compares (`designId`/`designUrlFragment`), the revision-token format, and
-  the URL parsers themselves — re-exported from the importer modules that
-  used to own them. `platform.ts`, `duplicate-key.ts`, `collection-rules.ts`
-  and the mutation core read it; none of them lists platforms any more.
-  `registry.test.ts` pins the contracts, including that each SQL host regex
-  agrees with its JS twin.
-- **`src/lib/sources/importers.ts`** — server-only: per source, which URLs it
-  takes, a more useful rejection for near misses (a MakerWorld *collection*
-  link), and `importUrl`, which returns either an `ImportedProject` or a
-  `prompt` — a JSON body for a round-trip the client answers first (Onshape's
-  tab/branch picker, `OnshapeSelectionResponse`). Follow-up answers come back
-  in the request body untouched and each importer validates its own fields.
-  `POST /api/import` only dispatches; it names no platform.
+- **`src/lib/sources/registry.ts`** — pure and **client-safe** (the model page and the rule builder render source labels): label, host test (and the same test as a Postgres regex for the smart-collection "source" rule), the sourceUrl allowlist (`canonicalSourceUrl`), the design id duplicate detection compares (`designId`/`designUrlFragment`), the revision-token format, and the URL parsers themselves — re-exported from the importer modules that used to own them. `platform.ts`, `duplicate-key.ts`, `collection-rules.ts` and the mutation core read it; none of them lists platforms any more. `registry.test.ts` pins the contracts, including that each SQL host regex agrees with its JS twin.
+- **`src/lib/sources/importers.ts`** — server-only: per source, which URLs it takes, a more useful rejection for near misses (a MakerWorld *collection* link), and `importUrl`, which returns either an `ImportedProject` or a `prompt` — a JSON body for a round-trip the client answers first (Onshape's tab/branch picker, `OnshapeSelectionResponse`). Follow-up answers come back in the request body untouched and each importer validates its own fields. `POST /api/import` only dispatches; it names no platform.
 
-Adding a source = a descriptor + an importer (+ its logo and an icon in the
-UI copy). This is the in-process seam a plugin system would register sources
-through. Still platform-specific, deliberately for now: the two sync routes
-(`source-sync`, `onshape-sync`), the Onshape tab dialog in `import-form.tsx`,
-the credential tables (`bambu_credentials`, `onshape_credentials`) and
-`model_files.onshape_element_id` — generalizing those needs the plugin
-connection/prompt design, not just a rename. The model-level revision token
-already is generic: `models.source_revision` (was `onshape_microversion`,
-migration `0032`), whose format each source declares (`isRevisionToken`).
+Adding a source = a descriptor + an importer (+ its logo and an icon in the UI copy). This is the in-process seam a plugin system would register sources through. Still platform-specific, deliberately for now: the two sync routes (`source-sync`, `onshape-sync`), the Onshape tab dialog in `import-form.tsx`, the credential tables (`bambu_credentials`, `onshape_credentials`) and `model_files.onshape_element_id` — generalizing those needs the plugin connection/prompt design, not just a rename. The model-level revision token already is generic: `models.source_revision` (was `onshape_microversion`, migration `0032`), whose format each source declares (`isRevisionToken`).
 
 ## .3mf import
 
-`src/lib/threemf.ts` runs client-side on file selection: the zip is unpacked in
-the browser (fflate) and title/description (`3D/3dmodel.model`), printer name
-(`Metadata/project_settings.config` / `slice_info.config`) and preview images
-(`Auxiliaries/`, `Metadata/plate_*.png`, thumbnails) prefill the form.
+`src/lib/threemf.ts` runs client-side on file selection: the zip is unpacked in the browser (fflate) and title/description (`3D/3dmodel.model`), printer name (`Metadata/project_settings.config` / `slice_info.config`) and preview images (`Auxiliaries/`, `Metadata/plate_*.png`, thumbnails) prefill the form.
 
 ## URL import
 
-`POST /api/import`, `src/lib/import/`: fetches a model's public metadata +
-images server-side and stages them to S3 for the create form. MakerWorld uses
-the anonymous `api.bambulab.com/v1/design-service/design/{id}` JSON API (the
-makerworld.com pages themselves are Cloudflare-gated); Printables uses its
-public GraphQL API, which also yields anonymous file download links. A
-MakerWorld design's gallery **videos** come from `designExtension.design_video`
-(direct CDN `.mp4` links, same shape as `design_pictures`) and are downloaded
-and stored as `kind: "video"` files rather than hotlinked — the CDN URL isn't
-guaranteed stable. They are appended *after* the photos so the design's cover
-image stays the model's cover; `selectVideoUrls` drops anything whose extension
-isn't a playable video, and staging caps them at `MAX_VIDEO_BYTES` (200 MB).
-MakerWorld
-file downloads require a Bambu Cloud login: a user connects their account at
-**Settings → Bambu Cloud** (`src/app/settings/bambu/`, backed by
-`src/lib/bambu/`), which logs in via `api.bambulab.com` (handling email-code and
-TOTP two-factor) or accepts a pasted `token` cookie. The resulting access token
-is stored **encrypted at rest** (AES-256-GCM, `src/lib/crypto.ts`, keyed by
-`BAMBU_TOKEN_SECRET`/`BETTER_AUTH_SECRET`). At import time the token exchanges
-each print profile for a short-lived presigned URL that streams to S3 like any
-other asset. Without a connection, only metadata + images import.
+`POST /api/import`, `src/lib/import/`: fetches a model's public metadata + images server-side and stages them to S3 for the create form. MakerWorld uses the anonymous `api.bambulab.com/v1/design-service/design/{id}` JSON API (the makerworld.com pages themselves are Cloudflare-gated); Printables uses its public GraphQL API, which also yields anonymous file download links. A MakerWorld design's gallery **videos** come from `designExtension.design_video` (direct CDN `.mp4` links, same shape as `design_pictures`) and are downloaded and stored as `kind: "video"` files rather than hotlinked — the CDN URL isn't guaranteed stable. They are appended *after* the photos so the design's cover image stays the model's cover; `selectVideoUrls` drops anything whose extension isn't a playable video, and staging caps them at `MAX_VIDEO_BYTES` (200 MB). MakerWorld file downloads require a Bambu Cloud login: a user connects their account at **Settings → Bambu Cloud** (`src/app/settings/bambu/`, backed by `src/lib/bambu/`), which logs in via `api.bambulab.com` (handling email-code and TOTP two-factor) or accepts a pasted `token` cookie. The resulting access token is stored **encrypted at rest** (AES-256-GCM, `src/lib/crypto.ts`, keyed by `BAMBU_TOKEN_SECRET`/`BETTER_AUTH_SECRET`). At import time the token exchanges each print profile for a short-lived presigned URL that streams to S3 like any other asset. Without a connection, only metadata + images import.
 
-**Token expiry & renewal**: Bambu tokens last ~90 days and **cannot be
-refreshed silently** — the community-documented `/user/refreshtoken` endpoint
-only answers 401 now, and its "refresh token" equals the access token. So
-`bambu_credentials` records `expires_at` (login response `expiresIn`, the TFA
-cookie's `Max-Age`, or the pasted token's JWT `exp`; null when unknown — never
-guessed) and `invalid_at` (set via `markBambuCredentialInvalid` wherever
-`BAMBU_EXPIRED_WARNING` surfaces: the import route, the collection job, source
-sync; cleared by any save). `src/lib/bambu/token-expiry.ts` turns those into
-valid/expiring (< `EXPIRY_WARNING_DAYS`)/expired; the root layout passes a
-reminder to `BambuRenewalBanner` in the app header, and Settings → Bambu Cloud
-offers "Renew login" — a re-login with the account/region prefilled. A new
-place that sees a Bambu 401 should call `markBambuCredentialInvalid` too.
+**Token expiry & renewal**: Bambu tokens last ~90 days and **cannot be refreshed silently** — the community-documented `/user/refreshtoken` endpoint only answers 401 now, and its "refresh token" equals the access token. So `bambu_credentials` records `expires_at` (login response `expiresIn`, the TFA cookie's `Max-Age`, or the pasted token's JWT `exp`; null when unknown — never guessed) and `invalid_at` (set via `markBambuCredentialInvalid` wherever `BAMBU_EXPIRED_WARNING` surfaces: the import route, the collection job, source sync; cleared by any save). `src/lib/bambu/token-expiry.ts` turns those into valid/expiring (< `EXPIRY_WARNING_DAYS`)/expired; the root layout passes a reminder to `BambuRenewalBanner` in the app header, and Settings → Bambu Cloud offers "Renew login" — a re-login with the account/region prefilled. A new place that sees a Bambu 401 should call `markBambuCredentialInvalid` too.
 
-**Per-file import provenance**: every file staged by an importer (all three
-platforms, single-model and collection jobs, Onshape sync inserts) is flagged
-`model_files.imported`, so files added manually to an imported model later stay
-distinguishable — the model page and edit form badge imported files with a
-cloud icon. The flag is carried through version snapshots and scopes the source
-sync below; Onshape sync keeps selecting the files it replaces via
-`onshape_element_id`, never via `imported`. Migration 0019 backfilled it
-(Onshape by element id; other platforms by files sharing their model's
-`created_at` — same insert transaction — on models with a `source_url`).
+**Per-file import provenance**: every file staged by an importer (all three platforms, single-model and collection jobs, Onshape sync inserts) is flagged `model_files.imported`, so files added manually to an imported model later stay distinguishable — the model page and edit form badge imported files with a cloud icon. The flag is carried through version snapshots and scopes the source sync below; Onshape sync keeps selecting the files it replaces via `onshape_element_id`, never via `imported`. Migration 0019 backfilled it (Onshape by element id; other platforms by files sharing their model's `created_at` — same insert transaction — on models with a `source_url`).
 
 ## Archive import
 
-`POST /api/import/archive`, pure reader in `src/lib/import/archive.ts`: takes a
-`.zip` produced by the [export route](files.md#export-zip) — from this instance
-or another one — and turns it into the same create-form draft the URL importers
-produce (staged S3 files + metadata in `sessionStorage`). The zip arrives as the
-**raw request body** (like `/api/upload`), not multipart: there is one file, and
-it has to be buffered whole to unzip anyway. Nothing is written to the catalog —
-the user still reviews and saves the form.
+`POST /api/import/archive`, pure reader in `src/lib/import/archive.ts`: takes a `.zip` produced by the [export route](files.md#export-zip) — from this instance or another one — and turns it into the same create-form draft the URL importers produce (staged S3 files + metadata in `sessionStorage`). The zip arrives as the **raw request body** (like `/api/upload`), not multipart: there is one file, and it has to be buffered whole to unzip anyway. Nothing is written to the catalog — the user still reviews and saves the form.
 
-The reader takes everything from `metadata.json` when it is present and falls
-back to the folder tree + `README.md` heading + `bom.csv` when it isn't (zips
-exported before the manifest shipped are already on people's disks). Four rules
-it must keep:
+The reader takes everything from `metadata.json` when it is present and falls back to the folder tree + `README.md` heading + `bom.csv` when it isn't (zips exported before the manifest shipped are already on people's disks). Four rules it must keep:
 
-- **The manifest is untrusted input.** It rides in on a user-supplied file, so
-  its `kind` is re-checked against the extension allowlist (an "image" named
-  `.html` would otherwise become a stored content type on our own origin) and
-  its `filename` is re-sanitized with the exporter's own `safeEntryName` (zip
-  slip, in reverse). The folder an entry sits in wins over the manifest's
-  `kind` — that is where the bytes actually are.
-- **Guard the unpacked size, not just the upload.** The route caps the
-  compressed body at 250 MB; a zip bomb a few hundred KB long can still claim
-  gigabytes, so the fflate `filter` enforces a decompressed-byte and file-count
-  budget *before* anything is decompressed.
-- **Generated variants are skipped** (with a warning). A customizer variant's
-  link to the `.scad` it was rendered from can't cross instances, so importing
-  it would leave a detached duplicate of geometry the customizer regenerates on
-  demand.
-- **Per-file provenance is restored**, not invented: `imported`,
-  `sourceFileId`, `sourceModifiedAt` and `onshapeElementId` come back off the
-  manifest so a restored model still source-syncs like the original did.
-  `createModel` re-applies its own `sourceUrl` gate to all of them, so an
-  archive claiming provenance without a valid source URL gets none.
+- **The manifest is untrusted input.** It rides in on a user-supplied file, so its `kind` is re-checked against the extension allowlist (an "image" named `.html` would otherwise become a stored content type on our own origin) and its `filename` is re-sanitized with the exporter's own `safeEntryName` (zip slip, in reverse). The folder an entry sits in wins over the manifest's `kind` — that is where the bytes actually are.
+- **Guard the unpacked size, not just the upload.** The route caps the compressed body at 250 MB; a zip bomb a few hundred KB long can still claim gigabytes, so the fflate `filter` enforces a decompressed-byte and file-count budget *before* anything is decompressed.
+- **Generated variants are skipped** (with a warning). A customizer variant's link to the `.scad` it was rendered from can't cross instances, so importing it would leave a detached duplicate of geometry the customizer regenerates on demand.
+- **Per-file provenance is restored**, not invented: `imported`, `sourceFileId`, `sourceModifiedAt` and `onshapeElementId` come back off the manifest so a restored model still source-syncs like the original did. `createModel` re-applies its own `sourceUrl` gate to all of them, so an archive claiming provenance without a valid source URL gets none.
 
-The category travels as a **name** and is fed to `suggestCategory` as a source
-category, which matches it against the importing instance's own categories
-(ids don't survive the trip) — the same mechanism MakerWorld's categories use.
+The category travels as a **name** and is fed to `suggestCategory` as a source category, which matches it against the importing instance's own categories (ids don't survive the trip) — the same mechanism MakerWorld's categories use.
 
 ## Duplicate detection
 
-`src/lib/duplicate-key.ts` (pure, unit-tested) + `src/lib/duplicates.ts` (the
-DB side): flags a model that already exists instead of letting the catalog
-accumulate copies (issue #118). **Flag-only, by design** — every signed-in user
-can already edit any model, so a copy is a cleanup task, not an error. Nothing
-is blocked, nothing is merged automatically, and continuing past a flag records
-the match for a moderator instead of dropping it.
+`src/lib/duplicate-key.ts` (pure, unit-tested) + `src/lib/duplicates.ts` (the DB side): flags a model that already exists instead of letting the catalog accumulate copies (issue #118). **Flag-only, by design** — every signed-in user can already edit any model, so a copy is a cleanup task, not an error. Nothing is blocked, nothing is merged automatically, and continuing past a flag records the match for a moderator instead of dropping it.
 
 Two signals, one shared lookup helper:
 
-- **Same upstream design** (`POST /api/import`, before any platform call — the
-  same "don't do the expensive part yet" shape as the `needsConfirmation` /
-  `needsOnshapeSelection` round-trips). The comparison key is **platform + id,
-  never the `sourceUrl` string**: `validateSourceUrl` keeps the hash/pin, so
-  MakerWorld's print-profile `#hash`, Onshape's `/w|v/` pin and its `/e/` tab
-  all vary across imports of one design. `sourceKeyFromUrl` runs each
-  platform's own parser and reduces Onshape to the bare `documentId`. SQL
-  narrows candidates with a `LIKE` fragment that deliberately over-matches
-  (`/models/12` also hits model 123) and the re-parsed key decides — so the
-  fragment must never be treated as the match. Answer:
-  `{ needsDuplicateConfirmation: true, duplicates: [...] }`; the client
-  re-POSTs with `confirmDuplicate`, a **separate flag from `confirm`** because
-  the duplicate prompt comes first and reusing `confirm` would silently answer
-  the many-files prompt behind it.
-- **Same file bytes** (`createModel`/`updateModel`), which covers models with
-  no `sourceUrl` at all: direct upload and archive import both end at the create
-  form, so one check there covers both. `model_files.content_hash` is a SHA-256
-  digested as the bytes stream past in `stageStream`/`stageBuffer` — see
-  [`files.md`](./files.md). A raw byte hash **under-detects on purpose**: the
-  same geometry re-exported by a slicer differs in its embedded
-  timestamp/thumbnail/`project_settings.config`, so it won't hash-equal. That
-  catches "uploaded the exact same file again"; a mesh-level fingerprint over
-  the parsed `3D/3dmodel.model` would catch more and is a deliberate follow-up,
-  not a v1 blocker.
+- **Same upstream design** (`POST /api/import`, before any platform call — the same "don't do the expensive part yet" shape as the `needsConfirmation` / `needsOnshapeSelection` round-trips). The comparison key is **platform + id, never the `sourceUrl` string**: `validateSourceUrl` keeps the hash/pin, so MakerWorld's print-profile `#hash`, Onshape's `/w|v/` pin and its `/e/` tab all vary across imports of one design. `sourceKeyFromUrl` runs each platform's own parser and reduces Onshape to the bare `documentId`. SQL narrows candidates with a `LIKE` fragment that deliberately over-matches (`/models/12` also hits model 123) and the re-parsed key decides — so the fragment must never be treated as the match. Answer: `{ needsDuplicateConfirmation: true, duplicates: [...] }`; the client re-POSTs with `confirmDuplicate`, a **separate flag from `confirm`** because the duplicate prompt comes first and reusing `confirm` would silently answer the many-files prompt behind it.
+- **Same file bytes** (`createModel`/`updateModel`), which covers models with no `sourceUrl` at all: direct upload and archive import both end at the create form, so one check there covers both. `model_files.content_hash` is a SHA-256 digested as the bytes stream past in `stageStream`/`stageBuffer` — see [`files.md`](./files.md). A raw byte hash **under-detects on purpose**: the same geometry re-exported by a slicer differs in its embedded timestamp/thumbnail/`project_settings.config`, so it won't hash-equal. That catches "uploaded the exact same file again"; a mesh-level fingerprint over the parsed `3D/3dmodel.model` would catch more and is a deliberate follow-up, not a v1 blocker.
 
-Rules both signals share: **catalog-wide**, not scoped to the importing user
-(unlike the collection job's own per-user `sourceUrl` dedup below, which this
-issue deliberately left alone) — a shared library means someone re-importing
-what a colleague added should see the flag. Trashed models never match (a model
-the owner threw away shouldn't block re-adding it). Generated OpenSCAD variants
-are excluded from hash lookups: they're derived, already deduped among
-themselves by `generatedParamsHash`, and the archive importer skips them for a
-related reason.
+Rules both signals share: **catalog-wide**, not scoped to the importing user (unlike the collection job's own per-user `sourceUrl` dedup below, which this issue deliberately left alone) — a shared library means someone re-importing what a colleague added should see the flag. Trashed models never match (a model the owner threw away shouldn't block re-adding it). Generated OpenSCAD variants are excluded from hash lookups: they're derived, already deduped among themselves by `generatedParamsHash`, and the archive importer skips them for a related reason.
 
-A URL import that was waved through will usually *also* hash-match the same
-model's files, so `createModel` suppresses a second prompt for models already
-listed in the draft's `duplicateOfIds` — one decision, one dialog.
+A URL import that was waved through will usually *also* hash-match the same model's files, so `createModel` suppresses a second prompt for models already listed in the draft's `duplicateOfIds` — one decision, one dialog.
 
-Dismissed flags land in `model_duplicates` (`model_id`, `duplicate_of_id`,
-`detected_via`) — a table, not a column on `models`, because a model can
-accumulate several matches. One row per pair (source-URL wins the `via` label
-when both signals fired), re-recorded idempotently via a unique index +
-`onConflictDoNothing`. **Settings → Duplicates**
-(`src/app/settings/duplicates/`, `isModerator`-gated on both the page and the
-actions) is the worklist: trash the copy (the same soft delete as the model
-page's own — restorable, never a purge, since a false positive must not be able
-to destroy someone's model from a settings list) or dismiss the flag. Rows whose
-copy is already trashed drop out of the list and the nav count together —
-nothing is duplicated while it sits in the trash, and restoring it brings the
-flag back.
+Dismissed flags land in `model_duplicates` (`model_id`, `duplicate_of_id`, `detected_via`) — a table, not a column on `models`, because a model can accumulate several matches. One row per pair (source-URL wins the `via` label when both signals fired), re-recorded idempotently via a unique index + `onConflictDoNothing`. **Settings → Duplicates** (`src/app/settings/duplicates/`, `isModerator`-gated on both the page and the actions) is the worklist: trash the copy (the same soft delete as the model page's own — restorable, never a purge, since a false positive must not be able to destroy someone's model from a settings list) or dismiss the flag. Rows whose copy is already trashed drop out of the list and the nav count together — nothing is duplicated while it sits in the trash, and restoring it brings the flag back.
 
 ## Source sync (MakerWorld/Printables)
 
-`POST /api/models/{id}/source-sync`, pure planner in
-`src/lib/import/sync-diff.ts`: the model page's "Sync from MakerWorld/Printables"
-button diffs the model's *imported* files against the platform's current file
-list and shows a preview dialog (concrete filenames) before applying. The
-contract: **imported files mirror upstream, everything else is local** — manual
-uploads, generated variants, images, title/description/tags/BOM are never
-touched, and files removed upstream are removed locally (safe because the
-pre-sync state becomes a version; reason `source-sync`). Matching uses
-`model_files.source_file_id` (`profile:<id>` / `scad:<name>` / `doc:<name>` on
-MakerWorld, `file:<id>` on Printables — stamped by the importers and required to
-stay in lockstep with
-`listMakerworldUpstreamFiles`/`listPrintablesUpstreamFiles`), so local renames
-survive; change detection compares `model_files.source_modified_at`, an opaque
-per-file token (Printables per-file `modified`; MakerWorld per-profile
-`publishTime` and raw-file `modelUpdateTime` — **never the design/instance
-`updateTime`**, which MakerWorld touches on counter activity: an untouched 2024
-design reports today's date, verified live). An unchanged token skips the
-download entirely; all `.scad` files share one group token because they arrive
-as a single raw-files zip (any change re-stages them all). Neither platform
-exposes revision history, so `model_versions` doubles as the record of upstream
-changes. Imports predating the feature carry no ids — the first sync adopts them
-by filename, treats "upstream modified after the local row's created_at" as
-stale, and re-stamps ids/tokens. MakerWorld profile/scad downloads need the
-user's Bambu connection, like the importer; Printables sync is fully anonymous.
+`POST /api/models/{id}/source-sync`, pure planner in `src/lib/import/sync-diff.ts`: the model page's "Sync from MakerWorld/Printables" button diffs the model's *imported* files against the platform's current file list and shows a preview dialog (concrete filenames) before applying. The contract: **imported files mirror upstream, everything else is local** — manual uploads, generated variants, images, title/description/tags/BOM are never touched, and files removed upstream are removed locally (safe because the pre-sync state becomes a version; reason `source-sync`). Matching uses `model_files.source_file_id` (`profile:<id>` / `scad:<name>` / `doc:<name>` on MakerWorld, `file:<id>` on Printables — stamped by the importers and required to stay in lockstep with `listMakerworldUpstreamFiles`/`listPrintablesUpstreamFiles`), so local renames survive; change detection compares `model_files.source_modified_at`, an opaque per-file token (Printables per-file `modified`; MakerWorld per-profile `publishTime` and raw-file `modelUpdateTime` — **never the design/instance `updateTime`**, which MakerWorld touches on counter activity: an untouched 2024 design reports today's date, verified live). An unchanged token skips the download entirely; all `.scad` files share one group token because they arrive as a single raw-files zip (any change re-stages them all). Neither platform exposes revision history, so `model_versions` doubles as the record of upstream changes. Imports predating the feature carry no ids — the first sync adopts them by filename, treats "upstream modified after the local row's created_at" as stale, and re-stamps ids/tokens. MakerWorld profile/scad downloads need the user's Bambu connection, like the importer; Printables sync is fully anonymous.
 
 ## MakerWorld collection import
 
-`POST /api/import/collection`, `src/lib/import/makerworld-collection.ts` +
-`collection-job.ts`: bulk-imports every model of a
-`makerworld.com/…/collections/{id}` list. Collections are "favorites lists" in
-Bambu's API: `GET api.bambulab.com/v1/design-service/favorites/{id}` (metadata)
-and `…/favorites/{id}/designs?limit=&offset=` (contents, hidden designs
-excluded) answer anonymously — undocumented; discovered from MakerWorld's own
-frontend (`getFavorites` in the `/collections/[collectionId]` page chunk), so
-Bambu can change them at will. Because editing dozens of models by hand is
-infeasible, imported designs skip the create-form draft flow: the job runs in
-the background (`after()`, like slicing) via an `import_jobs` row
-(status/progress/heartbeat), reuses the single-model importer per design,
-inserts finished models directly, and links them into a local collection
-created up front — already-imported designs (matching `sourceUrl`) are only
-linked, which makes re-running a failed job a resume.
+`POST /api/import/collection`, `src/lib/import/makerworld-collection.ts` + `collection-job.ts`: bulk-imports every model of a `makerworld.com/…/collections/{id}` list. Collections are "favorites lists" in Bambu's API: `GET api.bambulab.com/v1/design-service/favorites/{id}` (metadata) and `…/favorites/{id}/designs?limit=&offset=` (contents, hidden designs excluded) answer anonymously — undocumented; discovered from MakerWorld's own frontend (`getFavorites` in the `/collections/[collectionId]` page chunk), so Bambu can change them at will. Because editing dozens of models by hand is infeasible, imported designs skip the create-form draft flow: the job runs in the background (`after()`, like slicing) via an `import_jobs` row (status/progress/heartbeat), reuses the single-model importer per design, inserts finished models directly, and links them into a local collection created up front — already-imported designs (matching `sourceUrl`) are only linked, which makes re-running a failed job a resume.
 
-The source URL is stored on the collection (`collections.source_url`, rendered
-as an "Imported from MakerWorld" link), and "Sync from MakerWorld" (any
-signed-in user — syncing counts as editing and uses the syncer's own Bambu
-connection; `POST /api/collections/{id}/sync`) re-runs the same job against the
-existing collection: designs added remotely import as new models, everything
-already in the library is (re-)linked. Sync never deletes — models removed
-remotely stay, and a model the user pulled out of the local collection gets
-re-linked on the next sync. Local title/description edits are never overwritten.
+The source URL is stored on the collection (`collections.source_url`, rendered as an "Imported from MakerWorld" link), and "Sync from MakerWorld" (any signed-in user — syncing counts as editing and uses the syncer's own Bambu connection; `POST /api/collections/{id}/sync`) re-runs the same job against the existing collection: designs added remotely import as new models, everything already in the library is (re-)linked. Sync never deletes — models removed remotely stay, and a model the user pulled out of the local collection gets re-linked on the next sync. Local title/description edits are never overwritten.
 
-Slice estimates run as a post-phase so a slow slicer doesn't stall visible
-progress. A connected Bambu account is required up front (otherwise every model
-would be a file-less shell), jobs are capped at 200 designs, and one runs per
-user at a time. Progress surfaces as a ring in the top-right header
-(`src/components/import-progress.tsx`) polling `GET /api/import-jobs`, with
-cancel (checked between designs) and per-design failures as warnings; a poll
-marks heartbeat-stale "running" jobs failed so a server restart doesn't leave a
-spinner forever.
+Slice estimates run as a post-phase so a slow slicer doesn't stall visible progress. A connected Bambu account is required up front (otherwise every model would be a file-less shell), jobs are capped at 200 designs, and one runs per user at a time. Progress surfaces as a ring in the top-right header (`src/components/import-progress.tsx`) polling `GET /api/import-jobs`, with cancel (checked between designs) and per-design failures as warnings; a poll marks heartbeat-stale "running" jobs failed so a server restart doesn't leave a spinner forever.

@@ -4,9 +4,7 @@ import { revalidatePath } from "next/cache";
 import { getSession, mcpEnabled } from "@/lib/auth";
 import { revokeMcpClient } from "@/lib/mcp/clients";
 
-// Cuts off one LLM client's access. Scoped to the caller's own tokens — the
-// clientId comes from the browser, so it selects *which* of your connections
-// to drop and can never reach another user's.
+// Cuts off one LLM client's access. Scoped to the caller's own tokens — the clientId comes from the browser, so it selects *which* of your connections to drop and can never reach another user's.
 export async function disconnectMcpClient(
   clientId: string,
 ): Promise<{ error: string } | void> {

@@ -24,9 +24,7 @@ test("an empty query is the newest-first first page", () => {
   assert.deepEqual(q.tags, []);
 });
 
-// Cursors carry Postgres' microsecond text form: a JS Date would round to
-// milliseconds and skip rows created within the same millisecond as a page
-// boundary.
+// Cursors carry Postgres' microsecond text form: a JS Date would round to milliseconds and skip rows created within the same millisecond as a page boundary.
 test("a cursor round-trips with microsecond precision", () => {
   const raw = encodeCursor("updated_asc", "2026-11-02 14:22:44.116789", ID);
   assert.deepEqual(decodeCursor(raw, "updated_asc"), {

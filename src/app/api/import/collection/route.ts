@@ -6,10 +6,7 @@ import { reportError } from "@/lib/telemetry";
 
 export const runtime = "nodejs";
 
-// Starts a background import of a whole MakerWorld collection: validates the
-// URL and the user's Bambu connection, creates a local collection plus an
-// import_jobs row, and kicks the runner off via after(). The response returns
-// immediately — progress is polled from GET /api/import-jobs.
+// Starts a background import of a whole MakerWorld collection: validates the URL and the user's Bambu connection, creates a local collection plus an import_jobs row, and kicks the runner off via after(). The response returns immediately — progress is polled from GET /api/import-jobs.
 export async function POST(req: NextRequest) {
   const session = await getSession();
   if (!session) {

@@ -19,9 +19,7 @@ export const metadata: Metadata = {
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-// A model opened from a shared collection. Access is the link's, checked per
-// request: the model must still be a (non-trashed) member, so taking it out
-// of the collection unshares it here too.
+// A model opened from a shared collection. Access is the link's, checked per request: the model must still be a (non-trashed) member, so taking it out of the collection unshares it here too.
 export default async function SharedCollectionModelPage({
   params,
 }: {

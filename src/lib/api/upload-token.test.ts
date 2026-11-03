@@ -22,8 +22,7 @@ test("an upload handle verifies back to the staged descriptor", () => {
   assert.deepEqual(verifyUploadToken(token, "user-1", key, now), upload);
 });
 
-// The point of signing: a client can't claim another size or content hash
-// (the hash drives duplicate detection) by editing the payload.
+// The point of signing: a client can't claim another size or content hash (the hash drives duplicate detection) by editing the payload.
 test("a tampered handle is rejected", () => {
   const { token } = signUploadToken(upload, "user-1", key, now);
   const [payload, sig] = token.split(".");

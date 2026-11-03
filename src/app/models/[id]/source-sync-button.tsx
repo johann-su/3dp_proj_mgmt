@@ -23,8 +23,7 @@ type SyncPreview = {
   toRemove: string[];
 };
 
-// A filename list for the preview dialog, capped so a 100-profile model
-// doesn't produce a scrolling wall.
+// A filename list for the preview dialog, capped so a 100-profile model doesn't produce a scrolling wall.
 function FileList({ label, files }: { label: string; files: string[] }) {
   if (files.length === 0) return null;
   const shown = files.slice(0, 6);
@@ -45,11 +44,7 @@ function FileList({ label, files }: { label: string; files: string[] }) {
   );
 }
 
-// "Sync from MakerWorld/Printables": first POST fetches a preview of what
-// changed upstream; the dialog shows the concrete plan and a second POST
-// with confirm applies it. Imported files mirror upstream — manually added
-// files, title, description and images are never touched, and the pre-sync
-// state stays restorable from History.
+// "Sync from MakerWorld/Printables": first POST fetches a preview of what changed upstream; the dialog shows the concrete plan and a second POST with confirm applies it. Imported files mirror upstream — manually added files, title, description and images are never touched, and the pre-sync state stays restorable from History.
 export function SourceSyncButton({
   modelId,
   sourceName,

@@ -10,11 +10,7 @@ import {
 import { smartCollectionContains } from "@/lib/smart-collections";
 import { isWellFormedShareToken, publicSharingEnabled } from "@/lib/share-token";
 
-// Public share links: the one surface where an anonymous visitor may read
-// catalog content. Every public page and the shared file route resolve the
-// token through here on *every* request, so a revoked link (row deleted) or
-// DISABLE_PUBLIC_SHARING cuts access off immediately. See
-// docs/architecture/auth-and-access.md#public-share-links.
+// Public share links: the one surface where an anonymous visitor may read catalog content. Every public page and the shared file route resolve the token through here on *every* request, so a revoked link (row deleted) or DISABLE_PUBLIC_SHARING cuts access off immediately. See docs/architecture/auth-and-access.md#public-share-links.
 
 export type ShareKind = "model" | "collection";
 
@@ -28,9 +24,7 @@ export type ResolvedShare =
       rules: unknown;
     };
 
-// Token → what it shares, or null for a malformed/unknown/revoked token (or
-// sharing disabled). A model share whose model sits in the trash resolves to
-// null too: trashed models aren't viewable, and restoring brings the link back.
+// Token → what it shares, or null for a malformed/unknown/revoked token (or sharing disabled). A model share whose model sits in the trash resolves to null too: trashed models aren't viewable, and restoring brings the link back.
 export async function resolveShareLink(
   token: string | null | undefined,
 ): Promise<ResolvedShare | null> {
@@ -66,10 +60,7 @@ export async function resolveShareLink(
   return null;
 }
 
-// Whether a resolved share lets its holder see a given model: the shared model
-// itself, or a current, non-trashed member of the shared collection (live
-// rules for smart collections). Removing a model from the collection revokes
-// access to it through that link.
+// Whether a resolved share lets its holder see a given model: the shared model itself, or a current, non-trashed member of the shared collection (live rules for smart collections). Removing a model from the collection revokes access to it through that link.
 export async function shareGrantsModel(
   share: ResolvedShare,
   modelId: string,

@@ -27,8 +27,7 @@ const current: CurrentModelState = {
   videos: [{ url: "https://www.youtube.com/watch?v=dQw4w9WgXcQ", position: 1 }],
 };
 
-// The core's update takes the whole editable state; a PATCH that names one
-// field must not wipe the others (the classic partial-update bug).
+// The core's update takes the whole editable state; a PATCH that names one field must not wipe the others (the classic partial-update bug).
 test("a PATCH keeps every field it doesn't mention", () => {
   const input = updateInputFromPatch(current, UpdateModelBody.parse({ title: "Bracket v2" }), []);
   assert.equal(input.title, "Bracket v2");
@@ -77,8 +76,7 @@ test("slice: false opts a file out of print estimates", () => {
   assert.equal(input.categoryId, null);
 });
 
-// A model saved with some of its files silently missing would be worse than
-// a failed request; the error points at the bad handle.
+// A model saved with some of its files silently missing would be worse than a failed request; the error points at the bad handle.
 test("a bad upload handle fails the request and names the field", () => {
   const { token } = signUploadToken(staged, "u1", key);
   const result = resolveAttachments(

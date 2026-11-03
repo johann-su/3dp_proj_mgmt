@@ -12,8 +12,7 @@ test("parseUserRole accepts exactly the three known roles", () => {
   assert.equal(parseUserRole("user"), "user");
   assert.equal(parseUserRole("moderator"), "moderator");
   assert.equal(parseUserRole("admin"), "admin");
-  // Anything else — including casing variants — is rejected, so a crafted
-  // action input can't invent a role.
+  // Anything else — including casing variants — is rejected, so a crafted action input can't invent a role.
   assert.equal(parseUserRole("Admin"), null);
   assert.equal(parseUserRole("owner"), null);
   assert.equal(parseUserRole(""), null);
@@ -28,8 +27,7 @@ test("admin counts as moderator (tiers nest, not fork)", () => {
 });
 
 test("unknown or missing roles degrade to plain user", () => {
-  // Sessions from before the role column existed carry no role; they must
-  // never pass an elevated check.
+  // Sessions from before the role column existed carry no role; they must never pass an elevated check.
   for (const role of [undefined, null, "", "superuser"]) {
     assert.equal(isModerator(role), false);
     assert.equal(isAdmin(role), false);
@@ -42,8 +40,7 @@ test("OIDC group mapping is authoritative when a usable claim arrives", () => {
   assert.equal(roleFromOidcGroups(["mods"], mapping), "moderator");
   // Admin group wins when the user is in both.
   assert.equal(roleFromOidcGroups(["mods", "homelab-admins"], mapping), "admin");
-  // In neither mapped group → demoted to plain user, so removing someone
-  // from the IdP group revokes the role on their next login.
+  // In neither mapped group → demoted to plain user, so removing someone from the IdP group revokes the role on their next login.
   assert.equal(roleFromOidcGroups(["other"], mapping), "user");
   assert.equal(roleFromOidcGroups([], mapping), "user");
   // Group names match exactly — no substring/casing tolerance.
@@ -53,9 +50,7 @@ test("OIDC group mapping is authoritative when a usable claim arrives", () => {
 test("OIDC group mapping stays inert without config or without a claim", () => {
   // No groups configured → mapping is off entirely.
   assert.equal(roleFromOidcGroups(["homelab-admins"], {}), null);
-  // Mapping configured but the claim is missing or malformed → leave the
-  // stored role alone (an IdP that stops sending `groups` must not demote
-  // every user on their next login).
+  // Mapping configured but the claim is missing or malformed → leave the stored role alone (an IdP that stops sending `groups` must not demote every user on their next login).
   const mapping = { adminGroup: "homelab-admins" };
   assert.equal(roleFromOidcGroups(undefined, mapping), null);
   assert.equal(roleFromOidcGroups("homelab-admins", mapping), null);

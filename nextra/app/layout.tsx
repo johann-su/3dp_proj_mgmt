@@ -17,11 +17,7 @@ export const metadata: Metadata = {
     "Self-hosted management platform for 3D-printing models — operator and user documentation",
 };
 
-// The dev/agent architecture notes (docs/architecture/) are already hidden
-// from the sidebar via docs/_meta.js and dropped from the export by the
-// catch-all route's generateStaticParams; filtering them here as well keeps
-// even their titles and file paths out of the page map serialized into every
-// page's payload.
+// The dev/agent architecture notes (docs/architecture/) are already hidden from the sidebar via docs/_meta.js and dropped from the export by the catch-all route's generateStaticParams; filtering them here as well keeps even their titles and file paths out of the page map serialized into every page's payload.
 function withoutArchitecture(pageMap: PageMapItem[]): PageMapItem[] {
   return pageMap.flatMap((item) => {
     if ("data" in item) {

@@ -24,8 +24,7 @@ export function SignInForm({
   callbackPath,
 }: {
   oidcProvider: string | null;
-  // DISABLE_PASSWORD_LOGIN instances offer SSO only — hiding the fields is
-  // cosmetic, BetterAuth stops serving the email sign-in endpoint either way.
+  // DISABLE_PASSWORD_LOGIN instances offer SSO only — hiding the fields is cosmetic, BetterAuth stops serving the email sign-in endpoint either way.
   passwordLoginEnabled: boolean;
   signupEnabled: boolean;
   // Server-validated in-app path to land on after login (null → homepage).
@@ -113,8 +112,7 @@ export function SignInForm({
 
           {oidcProvider && (
             <>
-              {/* The divider only separates two options — with SSO alone the
-                  button stands by itself. */}
+              {/* The divider only separates two options — with SSO alone the button stands by itself. */}
               {passwordLoginEnabled && (
                 <div className="relative my-4">
                   <div className="absolute inset-0 flex items-center">

@@ -10,8 +10,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 
-// A read-only value with a copy button — endpoint URLs, commands, a freshly
-// created API key.
+// A read-only value with a copy button — endpoint URLs, commands, a freshly created API key.
 export function CopyField({ label, value }: { label: string; value: string }) {
   const [copied, setCopied] = useState(false);
 

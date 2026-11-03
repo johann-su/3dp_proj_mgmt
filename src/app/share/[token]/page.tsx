@@ -18,17 +18,13 @@ import { loadSharedModelView } from "./shared-model";
 
 export const dynamic = "force-dynamic";
 
-// Share links are bearer URLs: keep them out of search indexes even if one
-// gets posted somewhere a crawler can see.
+// Share links are bearer URLs: keep them out of search indexes even if one gets posted somewhere a crawler can see.
 export const metadata: Metadata = {
   title: "Shared on Print Vault",
   robots: { index: false, follow: false },
 };
 
-// Public view of a shared model or collection — the one page tree reachable
-// without a session (proxy.ts lets /share through). The token is the only
-// credential; an unknown, revoked or disabled link is a plain 404, never a
-// sign-in redirect, so the response doesn't reveal whether it ever existed.
+// Public view of a shared model or collection — the one page tree reachable without a session (proxy.ts lets /share through). The token is the only credential; an unknown, revoked or disabled link is a plain 404, never a sign-in redirect, so the response doesn't reveal whether it ever existed.
 export default async function SharePage({
   params,
 }: {
@@ -74,9 +70,7 @@ export default async function SharePage({
   });
   if (!collection) notFound();
 
-  // Same membership as the member page (live rules for smart collections,
-  // trashed members hidden), but covers re-pointed at share-scoped URLs so
-  // they stop loading the moment the link is revoked.
+  // Same membership as the member page (live rules for smart collections, trashed members hidden), but covers re-pointed at share-scoped URLs so they stop loading the moment the link is revoked.
   const sharedCover = (f: { id: string; animated?: boolean; kind?: string }) => ({
     id: f.id,
     src: sharedFileSrc(share.token, f.id),

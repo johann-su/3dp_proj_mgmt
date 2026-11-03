@@ -4,8 +4,7 @@ import { zipSync, strToU8 } from "fflate";
 import { extractScadFiles } from "@/lib/import/scad-archive";
 
 function streamOf(data: Uint8Array): ReadableStream<Uint8Array> {
-  // Emit in small chunks so the test exercises the incremental push path,
-  // not just a single-shot buffer.
+  // Emit in small chunks so the test exercises the incremental push path, not just a single-shot buffer.
   return new ReadableStream({
     start(controller) {
       for (let i = 0; i < data.byteLength; i += 4096) {
@@ -19,8 +18,7 @@ function streamOf(data: Uint8Array): ReadableStream<Uint8Array> {
 const opts = { fallbackName: "download.zip", maxFileBytes: 32 * 1024 * 1024 };
 
 test("extractScadFiles pulls .scad entries out of a raw-file archive, skipping geometry", async () => {
-  // The raw-model zip bundles big geometry next to the .scad sources; only the
-  // sources should come back, named by their basename (folders stripped).
+  // The raw-model zip bundles big geometry next to the .scad sources; only the sources should come back, named by their basename (folders stripped).
   const zip = zipSync({
     "SCAD File/Parametric Model Maker.scad": strToU8("// model maker\n"),
     "SCAD File/Advanced Settings.scad": strToU8("// advanced\n"),

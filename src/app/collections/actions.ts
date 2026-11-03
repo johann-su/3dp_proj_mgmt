@@ -10,10 +10,7 @@ import { canActAsOwner } from "@/lib/roles";
 import { parseRuleTree, type RuleGroup } from "@/lib/collection-rules";
 import { setCollectionMembership } from "@/lib/collection-mutations";
 
-// Validates the smart/rules pair of a create/update input. Smart collections
-// must carry a valid rule tree; manual ones store none (a stale tree left
-// behind after toggling smart off would silently come back on re-enable with
-// rules the user no longer sees).
+// Validates the smart/rules pair of a create/update input. Smart collections must carry a valid rule tree; manual ones store none (a stale tree left behind after toggling smart off would silently come back on re-enable with rules the user no longer sees).
 function resolveRules(input: {
   smart: boolean;
   rules?: unknown;
@@ -72,13 +69,11 @@ export async function updateCollection(input: {
     columns: { id: true, userId: true, sourceUrl: true },
   });
   if (!collection) return { error: "Collection not found" };
-  // Editing is open to any signed-in user (collaborative library); only
-  // deletion stays owner-only. See deleteCollection.
+  // Editing is open to any signed-in user (collaborative library); only deletion stays owner-only. See deleteCollection.
 
   const resolved = resolveRules({ smart: input.smart === true, rules: input.rules });
   if ("error" in resolved) return { error: resolved.error };
-  // Imported collections mirror an external MakerWorld list ("Sync" re-links
-  // members); rule-based membership would fight that.
+  // Imported collections mirror an external MakerWorld list ("Sync" re-links members); rule-based membership would fight that.
   if (resolved.smart && collection.sourceUrl) {
     return { error: "Imported collections can't be smart collections" };
   }
@@ -109,9 +104,7 @@ export async function deleteCollection(
     where: eq(collections.id, collectionId),
   });
   if (!collection) return { error: "Collection not found" };
-  // Deletion stays owner-gated even though editing is open to everyone — losing
-  // a collection is destructive and non-recoverable, unlike an edit.
-  // Moderators/admins pass as owner-equivalent (issue #54).
+  // Deletion stays owner-gated even though editing is open to everyone — losing a collection is destructive and non-recoverable, unlike an edit. Moderators/admins pass as owner-equivalent (issue #54).
   if (!canActAsOwner(session.user, collection.userId)) {
     return { error: "Not your collection" };
   }

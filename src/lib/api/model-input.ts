@@ -1,11 +1,6 @@
-// Turns validated API bodies into the mutation core's inputs
-// (src/lib/model-mutations.ts). Pure, so the merge rules are unit-tested.
+// Turns validated API bodies into the mutation core's inputs (src/lib/model-mutations.ts). Pure, so the merge rules are unit-tested.
 //
-// The core's update takes the model's *whole* editable state (tags, BOM and
-// videos are full lists, not deltas — that is what the edit form sends). A
-// PATCH names only what changes, so everything it leaves out is filled in from
-// the model as it is now; that merge is the one thing worth getting wrong
-// here, and the reason this module exists.
+// The core's update takes the model's *whole* editable state (tags, BOM and videos are full lists, not deltas — that is what the edit form sends). A PATCH names only what changes, so everything it leaves out is filled in from the model as it is now; that merge is the one thing worth getting wrong here, and the reason this module exists.
 
 import type { BomItemInput } from "@/lib/bom";
 import { contentTypeForFilename } from "@/lib/file-kind";
@@ -16,9 +11,7 @@ import { verifyUploadToken, type StagedUpload } from "./upload-token";
 
 export type ResolvedAttachment = { upload: StagedUpload; slice: boolean };
 
-// The staged uploads a body's attachments name, verified for this user. The
-// first bad handle fails the whole request, naming the field it came from —
-// a model saved with some of its files silently missing would be worse.
+// The staged uploads a body's attachments name, verified for this user. The first bad handle fails the whole request, naming the field it came from — a model saved with some of its files silently missing would be worse.
 export function resolveAttachments(
   attachments: { upload: string; slice?: boolean }[] | undefined,
   field: string,
@@ -54,16 +47,14 @@ function uploadedFile({ upload }: ResolvedAttachment): UploadedFile {
     key: upload.key,
     filename: upload.filename,
     size: upload.size,
-    // The core derives the served type from the extension again; this only
-    // fills the field.
+    // The core derives the served type from the extension again; this only fills the field.
     contentType: contentTypeForFilename(upload.filename),
     kind: upload.kind,
     ...(upload.contentHash ? { contentHash: upload.contentHash } : {}),
   };
 }
 
-// "slice: false" opts a .3mf out of print estimates; the core takes that as
-// the S3 keys to skip.
+// "slice: false" opts a .3mf out of print estimates; the core takes that as the S3 keys to skip.
 function skipSliceKeys(files: ResolvedAttachment[]): string[] {
   return files.filter((f) => !f.slice).map((f) => f.upload.key);
 }
@@ -94,13 +85,11 @@ export function updateInputFromPatch(
     modelId: current.id,
     title: patch.title ?? current.title,
     description: patch.description ?? current.description,
-    // `null` is a real value here (back to "Other"), so only an absent key
-    // keeps the current category.
+    // `null` is a real value here (back to "Other"), so only an absent key keeps the current category.
     categoryId: patch.categoryId === undefined ? current.categoryId : patch.categoryId,
     tags: patch.tags ?? current.tags,
     bom: patch.bom ?? current.bom,
-    // Not editable through the API yet; passed through so a PATCH can't drop
-    // the gallery's linked videos.
+    // Not editable through the API yet; passed through so a PATCH can't drop the gallery's linked videos.
     videos: current.videos,
     newFiles: newFiles.map(uploadedFile),
     removedFileIds: patch.removeFileIds ?? [],

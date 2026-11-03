@@ -1,18 +1,13 @@
 // When a stored Bambu Cloud token stops working, and how close that is.
 //
-// Bambu tokens can't be renewed silently: the community-documented
-// `/v1/user-service/user/refreshtoken` endpoint answers only 401 nowadays
-// (OpenBambuAPI, cloud-http.md), and the refresh token it hands out equals
-// the access token anyway. So "renewing" means logging in again — this module
-// only tells the UI when to ask for that.
+// Bambu tokens can't be renewed silently: the community-documented `/v1/user-service/user/refreshtoken` endpoint answers only 401 nowadays (OpenBambuAPI, cloud-http.md), and the refresh token it hands out equals the access token anyway. So "renewing" means logging in again — this module only tells the UI when to ask for that.
 
 // Start reminding the user this many days before the token expires.
 export const EXPIRY_WARNING_DAYS = 7;
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
-// `exp` claim of a JWT-shaped token (pasted MakerWorld cookies are JWTs), or
-// null when the token isn't a decodable JWT or carries no expiry.
+// `exp` claim of a JWT-shaped token (pasted MakerWorld cookies are JWTs), or null when the token isn't a decodable JWT or carries no expiry.
 export function jwtExpiry(token: string): Date | null {
   const parts = token.split(".");
   if (parts.length !== 3) return null;
@@ -29,9 +24,7 @@ export function jwtExpiry(token: string): Date | null {
   }
 }
 
-// Expiry of a freshly obtained token: the login response's `expiresIn`
-// (seconds, ~90 days) wins; otherwise the token's own JWT claim; otherwise
-// unknown (null) — never a guess, so the UI doesn't nag on a made-up date.
+// Expiry of a freshly obtained token: the login response's `expiresIn` (seconds, ~90 days) wins; otherwise the token's own JWT claim; otherwise unknown (null) — never a guess, so the UI doesn't nag on a made-up date.
 export function resolveTokenExpiry(
   token: string,
   expiresIn: number | undefined,
@@ -51,8 +44,7 @@ export type BambuTokenHealth = {
   daysLeft: number | null;
 };
 
-// `invalidAt` is set when Bambu actually rejected the token (a 401 during an
-// import/sync) — that beats any expiry date, which may be wrong.
+// `invalidAt` is set when Bambu actually rejected the token (a 401 during an import/sync) — that beats any expiry date, which may be wrong.
 export function bambuTokenHealth(
   expiresAt: Date | null,
   invalidAt: Date | null,

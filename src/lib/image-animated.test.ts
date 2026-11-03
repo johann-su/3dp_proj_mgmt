@@ -2,8 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { isAnimatedImage } from "@/lib/image-animated";
 
-// Builds a minimal WebP header: RIFF <size> WEBP <fourcc> … with the VP8X
-// flags byte at offset 20. Only the parts isAnimatedImage inspects matter.
+// Builds a minimal WebP header: RIFF <size> WEBP <fourcc> … with the VP8X flags byte at offset 20. Only the parts isAnimatedImage inspects matter.
 function webp(fourcc: string, flags = 0): Uint8Array {
   const b = new Uint8Array(32);
   b.set([...Buffer.from("RIFF")], 0);
@@ -24,8 +23,7 @@ test("still WebP is not animated (VP8X without the flag, and plain VP8)", () => 
 });
 
 test("GIF89a counts as animated, GIF87a does not", () => {
-  // Freezing a single-frame GIF89a to frame 0 is a no-op, so treating every
-  // GIF89a as animated is safe and avoids scanning for a real second frame.
+  // Freezing a single-frame GIF89a to frame 0 is a no-op, so treating every GIF89a as animated is safe and avoids scanning for a real second frame.
   assert.equal(isAnimatedImage(Buffer.from("GIF89a....")), true);
   assert.equal(isAnimatedImage(Buffer.from("GIF87a....")), false);
 });

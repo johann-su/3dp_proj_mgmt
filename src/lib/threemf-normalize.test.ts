@@ -3,8 +3,7 @@ import assert from "node:assert/strict";
 import { strFromU8, strToU8, unzipSync, zipSync } from "fflate";
 import { normalizeModelXml, normalizeThreeMf } from "@/lib/threemf-normalize";
 
-// A 10×10×10 (in the given unit) cube centered on the XY origin, like
-// Onshape exports it.
+// A 10×10×10 (in the given unit) cube centered on the XY origin, like Onshape exports it.
 function modelXml({
   unit,
   size = 10,
@@ -73,8 +72,7 @@ test("normalizeModelXml scales transform translations but not the linear part", 
   assert.ok(out);
   const t = itemTransform(out);
   assert.deepEqual(t.slice(0, 9), [1, 0, 0, 0, 1, 0, 0, 0, 1]);
-  // z translation: 0.1 m -> 100 mm, then dropped onto the plate (z min was
-  // already 0 + 100, so the delta puts it back at 0 -> net 0).
+  // z translation: 0.1 m -> 100 mm, then dropped onto the plate (z min was already 0 + 100, so the delta puts it back at 0 -> net 0).
   assert.deepEqual(t.slice(9), [128, 128, 0]);
 });
 

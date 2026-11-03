@@ -10,14 +10,9 @@ export const runtime = "nodejs";
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-// Serves a file to an anonymous holder of a public share link: `?share=<token>`
-// (sharedFileSrc) or the token path segment of
+// Serves a file to an anonymous holder of a public share link: `?share=<token>` (sharedFileSrc) or the token path segment of
 // /api/files/shared/[fileId]/[token]/[filename] (slicer deep links). Unlike /api/files/[id]'s week-long
-// file tokens, the share is re-checked on every request — the link still
-// exists, sharing is enabled, and the file's model is the shared model or a
-// current member of the shared collection — so revoking a link (or removing a
-// model from a shared collection) cuts its files off at once. Every failure is
-// the same 404, so the route can't be used to probe which ids exist.
+// file tokens, the share is re-checked on every request — the link still exists, sharing is enabled, and the file's model is the shared model or a current member of the shared collection — so revoking a link (or removing a model from a shared collection) cuts its files off at once. Every failure is the same 404, so the route can't be used to probe which ids exist.
 export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ fileId: string; token?: string }> },
@@ -34,10 +29,7 @@ export async function GET(
   });
   if (!file || !(await shareGrantsModel(share, file.modelId))) return notFound();
 
-  // Never cacheable by shared caches (a CDN would keep serving it after the
-  // link is revoked), and only briefly by the viewer's browser. The next/image
-  // optimizer still keeps its own copy for minimumCacheTTL — an accepted gap,
-  // reachable only through the optimizer URL of someone who had the link.
+  // Never cacheable by shared caches (a CDN would keep serving it after the link is revoked), and only briefly by the viewer's browser. The next/image optimizer still keeps its own copy for minimumCacheTTL — an accepted gap, reachable only through the optimizer URL of someone who had the link.
   return serveModelFile(req, file, {
     cacheControl: "private, max-age=300",
     extraHeaders: { "X-Robots-Tag": "noindex, nofollow" },

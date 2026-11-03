@@ -1,8 +1,4 @@
-// The catalog tools the MCP server exposes (issue #96). Everything here is
-// read-only and metadata-only: the questions this is meant to answer — "which
-// material should I print this in", "does it need supports", "what does the
-// BOM cost", "how long will it take" — are all answered from rows the app
-// already has, plus links the calling model can follow itself.
+// The catalog tools the MCP server exposes (issue #96). Everything here is read-only and metadata-only: the questions this is meant to answer — "which material should I print this in", "does it need supports", "what does the BOM cost", "how long will it take" — are all answered from rows the app already has, plus links the calling model can follow itself.
 //
 // Two things are deliberately NOT here:
 //   * mesh/geometry bytes (.3mf/.step). Useless to a language model. The one
@@ -11,9 +7,7 @@
 //   * scraped BOM prices. Each item carries its vendor link; a client with web
 //     access reads the current price better than per-vendor parsing here would.
 //
-// Access is exactly the browser's: every signed-in user may read the whole
-// catalog (docs/architecture/auth-and-access.md), so holding a token for any
-// user is the same grant. The route checks the token; these functions assume it.
+// Access is exactly the browser's: every signed-in user may read the whole catalog (docs/architecture/auth-and-access.md), so holding a token for any user is the same grant. The route checks the token; these functions assume it.
 
 import { sql } from "drizzle-orm";
 import { db } from "@/db";
@@ -44,22 +38,17 @@ import { reportError } from "@/lib/telemetry";
 
 const SEARCH_DEFAULT_LIMIT = 20;
 const SEARCH_MAX_LIMIT = 50;
-// Matches the per-model cap in normalizeTagNames (src/lib/tags.ts) — more tags
-// than a model can carry can only ever narrow the search to nothing.
+// Matches the per-model cap in normalizeTagNames (src/lib/tags.ts) — more tags than a model can carry can only ever narrow the search to nothing.
 const MAX_TAG_FILTER = 20;
-// Long descriptions are the exception, but a hit list of twenty full ones
-// would crowd out the answer; get_model returns the whole text.
+// Long descriptions are the exception, but a hit list of twenty full ones would crowd out the answer; get_model returns the whole text.
 const SUMMARY_CHARS = 400;
 
-// Every model-shaped answer carries the page URL: it is what a person is
-// ultimately sent to, and it lets the model cite its source.
+// Every model-shaped answer carries the page URL: it is what a person is ultimately sent to, and it lets the model cite its source.
 function modelUrl(id: string): string {
   return appUrl(`/models/${id}`).toString();
 }
 
-// An LLM client's own "fetch this URL" step may decide how (or whether) to
-// handle a link by its apparent extension, so every file URL handed to MCP
-// clients is named rather than a bare UUID — see namedFileSrc.
+// An LLM client's own "fetch this URL" step may decide how (or whether) to handle a link by its apparent extension, so every file URL handed to MCP clients is named rather than a bare UUID — see namedFileSrc.
 function absoluteNamedFileUrl(fileId: string, filename: string): string {
   return appUrl(namedFileSrc(fileId, filename)).toString();
 }
@@ -72,8 +61,7 @@ function summarize(description: string): string | null {
 
 // --- search_models ---------------------------------------------------------
 
-// Category is named, not id'd: a model asking for "the enclosure category"
-// has a word, not a UUID. Slug and name both resolve, case-insensitively.
+// Category is named, not id'd: a model asking for "the enclosure category" has a word, not a UUID. Slug and name both resolve, case-insensitively.
 async function resolveCategoryId(name: string): Promise<string> {
   const wanted = name.trim().toLowerCase();
   const categories = await db.query.categories.findMany({
@@ -114,9 +102,7 @@ async function searchModels(args: Record<string, unknown>) {
     fallback: SEARCH_DEFAULT_LIMIT,
   });
 
-  // Reuses the smart-collection rule compiler (src/lib/collection-rules.ts) so
-  // MCP filtering matches what the app's own saved searches do — including the
-  // typo-tolerant trigram text match.
+  // Reuses the smart-collection rule compiler (src/lib/collection-rules.ts) so MCP filtering matches what the app's own saved searches do — including the typo-tolerant trigram text match.
   const conditions: RuleNode[] = [];
   if (query) conditions.push({ field: "text", value: query });
   if (category) {
@@ -130,8 +116,7 @@ async function searchModels(args: Record<string, unknown>) {
     });
   }
 
-  // Trashed models are hidden from every listing; an empty filter set is a
-  // plain "newest models" browse.
+  // Trashed models are hidden from every listing; an empty filter set is a plain "newest models" browse.
   const where =
     conditions.length > 0
       ? sql`m.deleted_at IS NULL AND ${ruleTreeToSql({ op: "AND", rules: conditions })}`
@@ -179,8 +164,7 @@ async function searchModels(args: Record<string, unknown>) {
 
 // --- per-model lookups -----------------------------------------------------
 
-// Shared first step of every get_model_* tool: resolve the id or fail with a
-// message that tells the model what to do about it.
+// Shared first step of every get_model_* tool: resolve the id or fail with a message that tells the model what to do about it.
 async function requireModel(args: Record<string, unknown>) {
   const modelId = requireUuid(args, "modelId");
   const model = await db.query.models.findFirst({
@@ -201,8 +185,7 @@ async function requireModel(args: Record<string, unknown>) {
 
 async function getModel(args: Record<string, unknown>) {
   const model = await requireModel(args);
-  // Counts, not contents: they tell the model which of the other tools is
-  // worth calling for this particular model.
+  // Counts, not contents: they tell the model which of the other tools is worth calling for this particular model.
   const [{ rows: counts }, { rows: bom }] = await Promise.all([
     db.execute<{ kind: string; n: number }>(sql`
       SELECT kind, COUNT(*)::int AS n FROM model_files
@@ -218,8 +201,7 @@ async function getModel(args: Record<string, unknown>) {
   return {
     modelId: model.id,
     title: model.title,
-    // Markdown as authored — assembly notes, print settings and warnings all
-    // live in here, so it is passed through whole rather than summarized.
+    // Markdown as authored — assembly notes, print settings and warnings all live in here, so it is passed through whole rather than summarized.
     description: model.description,
     category: model.category?.name ?? null,
     tags: model.modelTags.map((mt) => mt.tag.name),
@@ -248,8 +230,7 @@ async function getModelBom(args: Record<string, unknown>) {
   return {
     modelId: model.id,
     title: model.title,
-    // Same grouping the model page shows: ungrouped items first, then each
-    // section in the order it first appears.
+    // Same grouping the model page shows: ungrouped items first, then each section in the order it first appears.
     sections: groupBySection(items).map((group) => ({
       section: group.section,
       items: group.items.map((item) => ({
@@ -269,8 +250,7 @@ async function getModelPrintFiles(args: Record<string, unknown>) {
   const model = await requireModel(args);
   const files = await db.query.modelFiles.findMany({
     where: (f, { and, eq, isNull }) =>
-      // Generated OpenSCAD variants are parameter-specific renders of a file
-      // that is already listed; including them would double the totals.
+      // Generated OpenSCAD variants are parameter-specific renders of a file that is already listed; including them would double the totals.
       and(eq(f.modelId, model.id), eq(f.kind, "model"), isNull(f.generatedFromId)),
     orderBy: (f, { asc }) => asc(f.position),
   });
@@ -292,19 +272,14 @@ async function getModelPrintFiles(args: Record<string, unknown>) {
     files: files.map((file) => ({
       filename: file.filename,
       sizeBytes: file.size,
-      // "ok" numbers are either read from the file's own slice_info
-      // (sliceSource "embedded") or produced by the headless slicer
-      // ("slicer"); "pending" means no estimate yet, "failed" that the file
-      // could not be sliced, null that estimates don't apply (.step/.scad).
+      // "ok" numbers are either read from the file's own slice_info (sliceSource "embedded") or produced by the headless slicer ("slicer"); "pending" means no estimate yet, "failed" that the file could not be sliced, null that estimates don't apply (.step/.scad).
       sliceStatus: file.sliceStatus,
       sliceSource: file.sliceSource,
       sliceError: file.sliceError,
-      // The slicer behind the numbers, and — when the file names no printer
-      // of its own — the generic printer the estimate assumed.
+      // The slicer behind the numbers, and — when the file names no printer of its own — the generic printer the estimate assumed.
       sliceEngine: file.sliceEngine,
       estimatedForPrinter: file.slicePrinter,
-      // True when the numbers rest on assumptions the file didn't make
-      // (generic printer, translated or repaired settings).
+      // True when the numbers rest on assumptions the file didn't make (generic printer, translated or repaired settings).
       approximate: isApproxEstimate(file),
       printTimeSeconds: file.printTimeSeconds,
       printTime: file.printTimeSeconds !== null ? formatDuration(file.printTimeSeconds) : null,
@@ -333,11 +308,7 @@ async function getModelDocuments(args: Record<string, unknown>) {
     documents: files.map((file) => ({
       filename: file.filename,
       sizeBytes: file.size,
-      // A signed, expiring URL (src/lib/file-token.ts) — the only way to hand
-      // a file to a client that has no session cookie. Anyone holding the URL
-      // can fetch that one file until it expires. Named (not the bare-UUID
-      // form) so a client's own fetch step can tell from the URL that this is
-      // a PDF worth reading.
+      // A signed, expiring URL (src/lib/file-token.ts) — the only way to hand a file to a client that has no session cookie. Anyone holding the URL can fetch that one file until it expires. Named (not the bare-UUID form) so a client's own fetch step can tell from the URL that this is a PDF worth reading.
       downloadUrl: absoluteNamedFileUrl(file.id, file.filename),
     })),
     documentCount: files.length,
@@ -347,19 +318,13 @@ async function getModelDocuments(args: Record<string, unknown>) {
   };
 }
 
-// PDFs are read into memory to be parsed, so there is a ceiling. Well above any
-// real manual (the largest in a typical catalog is a few MB) and far below what
-// would threaten the server.
+// PDFs are read into memory to be parsed, so there is a ceiling. Well above any real manual (the largest in a typical catalog is a few MB) and far below what would threaten the server.
 const MAX_READABLE_PDF_BYTES = 50 * 1024 * 1024;
 
-// unpdf carries a full pdf.js build, and this is the only tool that ever needs
-// it — imported on use so the rest of the server (and every other tool call)
-// doesn't pay for loading it.
+// unpdf carries a full pdf.js build, and this is the only tool that ever needs it — imported on use so the rest of the server (and every other tool call) doesn't pay for loading it.
 async function extractPdfPages(bytes: Uint8Array): Promise<string[]> {
   const { extractText, getDocumentProxy } = await import("unpdf");
-  // verbosity 0: pdf.js reports missing fonts and its own polyfill gaps by
-  // writing straight to console, which this codebase doesn't do (the pino
-  // logger owns server output). None of it affects the extracted text.
+  // verbosity 0: pdf.js reports missing fonts and its own polyfill gaps by writing straight to console, which this codebase doesn't do (the pino logger owns server output). None of it affects the extracted text.
   const pdf = await getDocumentProxy(bytes, { verbosity: 0 });
   const { text } = await extractText(pdf, { mergePages: false });
   return text.map(normalizePageText);
@@ -398,10 +363,7 @@ async function readDocument(args: Record<string, unknown>) {
   try {
     pageTexts = await extractPdfPages(bytes);
   } catch (err) {
-    // A file that isn't really a PDF, or one pdf.js can't parse. The model can
-    // act on this (fall back to the download link), so it comes back as a tool
-    // error — but it's still worth recording, since a catalog full of them
-    // would mean something upstream is storing bad files.
+    // A file that isn't really a PDF, or one pdf.js can't parse. The model can act on this (fall back to the download link), so it comes back as a tool error — but it's still worth recording, since a catalog full of them would mean something upstream is storing bad files.
     reportError(`[mcp] could not extract text from ${file.id}`, err);
     throw new ToolError(
       `"${file.filename}" could not be parsed as a PDF. Use its downloadUrl instead.`,
@@ -436,10 +398,7 @@ async function readDocument(args: Record<string, unknown>) {
   };
 }
 
-// Diagrams are re-encoded before they go out: pdf.js hands back raw pixels
-// (a 1583x890 figure is 4.2 MB of them), which would be absurd as base64. 1200px
-// is enough to read part labels and wire colours on a wiring diagram, and WebP
-// suits both the line art and the photos a manual mixes.
+// Diagrams are re-encoded before they go out: pdf.js hands back raw pixels (a 1583x890 figure is 4.2 MB of them), which would be absurd as base64. 1200px is enough to read part labels and wire colours on a wiring diagram, and WebP suits both the line art and the photos a manual mixes.
 const MAX_IMAGE_EDGE = 1200;
 
 async function encodeDiagram(image: {
@@ -456,8 +415,7 @@ async function encodeDiagram(image: {
       channels: image.channels as 1 | 2 | 3 | 4,
     },
   })
-    // Diagrams are routinely drawn on transparency; left alone that renders as
-    // black in a flat format and swallows the linework.
+    // Diagrams are routinely drawn on transparency; left alone that renders as black in a flat format and swallows the linework.
     .flatten({ background: "#ffffff" })
     .resize({
       width: MAX_IMAGE_EDGE,
@@ -510,9 +468,7 @@ async function getDocumentImages(args: Record<string, unknown>) {
   }
 
   const pageImages = await extractImages(pdf, page);
-  // Learn which of this page's images also appear elsewhere: those are the
-  // header/footer furniture, not figures. Matched by dimensions rather than
-  // pdf.js key — see imageSignature for why the keys can't be trusted here.
+  // Learn which of this page's images also appear elsewhere: those are the header/footer furniture, not figures. Matched by dimensions rather than pdf.js key — see imageSignature for why the keys can't be trusted here.
   const onThisPage = new Set(pageImages.map(imageSignature));
   const repeated = new Set<string>();
   for (const other of samplePagesForRepeats(pageCount, page)) {
@@ -528,17 +484,12 @@ async function getDocumentImages(args: Record<string, unknown>) {
     try {
       images.push(await encodeDiagram(image));
     } catch (err) {
-      // One unencodable image (an exotic colour space) shouldn't cost the
-      // caller the rest of the page.
+      // One unencodable image (an exotic colour space) shouldn't cost the caller the rest of the page.
       reportError(`[mcp] could not encode an image from ${file.id} page ${page}`, err);
     }
   }
 
-  // The page's own text goes along as caption context — a diagram is much
-  // easier to read next to the paragraph that refers to it. Extracted the same
-  // way read_document does, whole document and all, so the two tools never
-  // disagree about what page N says; text extraction is cheap next to the image
-  // decoding this call has already done.
+  // The page's own text goes along as caption context — a diagram is much easier to read next to the paragraph that refers to it. Extracted the same way read_document does, whole document and all, so the two tools never disagree about what page N says; text extraction is cheap next to the image decoding this call has already done.
   const { text } = await extractText(pdf, { mergePages: false });
   const pageText = normalizePageText(text[page - 1] ?? "");
 
@@ -734,8 +685,7 @@ export const catalogTools: McpTool[] = [
   },
 ];
 
-// Sent once at initialize. Aimed at the model, not the user: it states the
-// shape of the data and the one workflow that isn't obvious from the schemas.
+// Sent once at initialize. Aimed at the model, not the user: it states the shape of the data and the one workflow that isn't obvious from the schemas.
 export const CATALOG_INSTRUCTIONS = [
   "This server exposes a private, self-hosted 3D-printing catalog (Print Vault).",
   "Resolve a model with search_models first, then call the get_model_* tools with its id.",

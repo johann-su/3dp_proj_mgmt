@@ -21,10 +21,7 @@ export function BomSection({
   interactive = true,
 }: {
   items: BomItem[];
-  // Enables "Download CSV": the CSV is built in the browser from `items`
-  // (bomToCsv) and saved under this name. Client-side for members and the
-  // public share view alike — the page already holds the data, so there is
-  // no route to keep access-checked. Unset in the create/version previews.
+  // Enables "Download CSV": the CSV is built in the browser from `items` (bomToCsv) and saved under this name. Client-side for members and the public share view alike — the page already holds the data, so there is no route to keep access-checked. Unset in the create/version previews.
   csvFilename?: string;
   interactive?: boolean;
 }) {

@@ -19,11 +19,7 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 
-// Restore/purge controls for the trash preview header. Same actions as the
-// trash list rows (restoreModel / deleteModelPermanently), but with explicit
-// navigation instead of a refresh: restoring makes the model live (so this
-// preview would notFound), and purging destroys it — either way we leave the
-// page rather than re-render a model that is no longer here.
+// Restore/purge controls for the trash preview header. Same actions as the trash list rows (restoreModel / deleteModelPermanently), but with explicit navigation instead of a refresh: restoring makes the model live (so this preview would notFound), and purging destroys it — either way we leave the page rather than re-render a model that is no longer here.
 export function TrashPreviewActions({
   modelId,
   title,

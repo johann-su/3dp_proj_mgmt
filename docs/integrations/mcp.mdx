@@ -5,43 +5,24 @@ description: Let Claude and other LLM clients query your catalog over the Model 
 
 # MCP server
 
-Print Vault can expose your catalog to an LLM client — Claude Desktop, Claude
-Code, or anything else that speaks the [Model Context
-Protocol](https://modelcontextprotocol.io) — so you can ask questions about
-your models instead of copying descriptions and BOMs into a chat window:
+Print Vault can expose your catalog to an LLM client — Claude Desktop, Claude Code, or anything else that speaks the [Model Context Protocol](https://modelcontextprotocol.io) — so you can ask questions about your models instead of copying descriptions and BOMs into a chat window:
 
 - *In which material should I print this, and does it need supports?*
 - *What do the components for this build cost?*
 - *How long will printing and assembling it take?*
 - *How does the wiring work on this one?*
 
-The client reads the same things you see when signed in: model descriptions,
-tags and categories, bills of materials, slicer estimates, and the manuals
-attached to a model. It cannot create, change or delete anything, and it never
-downloads meshes.
+The client reads the same things you see when signed in: model descriptions, tags and categories, bills of materials, slicer estimates, and the manuals attached to a model. It cannot create, change or delete anything, and it never downloads meshes.
 
 ## Turning it on
 
-Set `ENABLE_MCP=true` and restart. That is the whole configuration — no
-separate service, no API keys to hand out.
+Set `ENABLE_MCP=true` and restart. That is the whole configuration — no separate service, no API keys to hand out.
 
-**Before enabling it on an internet-facing instance**, know what it opens. The
-MCP server authenticates clients with OAuth and clients register themselves, so
-the registration endpoint is reachable by anyone who can reach your instance —
-that is how an LLM client bootstraps before anyone has signed in. Approving a
-connection then grants that client read access to your **whole catalog** for as
-long as its tokens live, exactly like the account that approved it. So: only
-approve a connection you just started yourself, treat an approval screen you
-didn't trigger as an attempt to phish your catalog, and leave `ENABLE_MCP`
-unset if you don't want that surface exposed at all.
+**Before enabling it on an internet-facing instance**, know what it opens. The MCP server authenticates clients with OAuth and clients register themselves, so the registration endpoint is reachable by anyone who can reach your instance — that is how an LLM client bootstraps before anyone has signed in. Approving a connection then grants that client read access to your **whole catalog** for as long as its tokens live, exactly like the account that approved it. So: only approve a connection you just started yourself, treat an approval screen you didn't trigger as an attempt to phish your catalog, and leave `ENABLE_MCP` unset if you don't want that surface exposed at all.
 
 ## Connecting a client
 
-Connecting always starts **in the assistant**, not in Print Vault — there is no
-"connect" button here, because the assistant is the one that has to be told
-where your catalog lives. Once `ENABLE_MCP` is set, **Settings → AI access**
-shows the server URL to paste (and the `claude mcp add` command), lists the
-assistants you have approved, and can disconnect them again.
+Connecting always starts **in the assistant**, not in Print Vault — there is no "connect" button here, because the assistant is the one that has to be told where your catalog lives. Once `ENABLE_MCP` is set, **Settings → AI access** shows the server URL to paste (and the `claude mcp add` command), lists the assistants you have approved, and can disconnect them again.
 
 Add your instance as a remote MCP server. In Claude Code:
 
@@ -49,33 +30,17 @@ Add your instance as a remote MCP server. In Claude Code:
 claude mcp add --transport http print-vault https://models.example.com/api/mcp
 ```
 
-In Claude Desktop, add it under **Settings → Connectors → Add custom
-connector** with the same URL.
+In Claude Desktop, add it under **Settings → Connectors → Add custom connector** with the same URL.
 
-The client then opens your browser, where you sign in as usual (including via
-[SSO](/sso)) and land on an approval screen naming the client and where its
-answers are sent. Approve it and the client is connected; its short-lived
-access tokens are renewed automatically, so it stays connected until you
-disconnect it.
+The client then opens your browser, where you sign in as usual (including via [SSO](/sso)) and land on an approval screen naming the client and where its answers are sent. Approve it and the client is connected; its short-lived access tokens are renewed automatically, so it stays connected until you disconnect it.
 
-**Upgrading from a release before Better Auth 1.7** drops existing
-connections: the OAuth server was replaced, and neither its tokens nor the
-clients' registrations carry over. Reconnect each assistant once — most
-notice the rejected token and start the sign-in again on their own; one that
-keeps failing (it cached its old registration) needs the server removed and
-added again on its side.
+**Upgrading from a release before Better Auth 1.7** drops existing connections: the OAuth server was replaced, and neither its tokens nor the clients' registrations carry over. Reconnect each assistant once — most notice the rejected token and start the sign-in again on their own; one that keeps failing (it cached its old registration) needs the server removed and added again on its side.
 
 ## Disconnecting
 
-**Settings → AI access** lists everything you have approved, with the date it
-was connected and when it last signed in. **Disconnect** deletes that
-assistant's tokens for your account: it can't renew its access any more, and
-its current access token — valid for at most 15 minutes — runs out soon
-after. Then it has to ask for approval again. Other users' connections are
-untouched, even to the same assistant.
+**Settings → AI access** lists everything you have approved, with the date it was connected and when it last signed in. **Disconnect** deletes that assistant's tokens for your account: it can't renew its access any more, and its current access token — valid for at most 15 minutes — runs out soon after. Then it has to ask for approval again. Other users' connections are untouched, even to the same assistant.
 
-Deleting a user account removes their connections too. Turning `ENABLE_MCP`
-back off disables every connection at once, without deleting anything.
+Deleting a user account removes their connections too. Turning `ENABLE_MCP` back off disables every connection at once, without deleting anything.
 
 ## What the client can call
 
@@ -89,24 +54,10 @@ back off disables every connection at once, without deleting anything.
 | `read_document` | The text of one of those PDFs, returned directly. Long manuals come back a page range at a time. |
 | `get_document_images` | The figures on one page of a PDF — wiring diagrams, exploded views, print orientation — as images the assistant can actually look at. |
 
-**Prices** are left to the client on purpose: they aren't stored, so costing a
-build means following each BOM item's link, which any client with web access
-does well.
+**Prices** are left to the client on purpose: they aren't stored, so costing a build means following each BOM item's link, which any client with web access does well.
 
-**Manuals are served as content, not as links.** A download link that only ever
-appeared inside a tool result isn't something every assistant is allowed to
-fetch — Claude, for one, restricts which URLs it will follow, and reports
-`Failed to fetch` for the rest no matter how the server is configured. So
-`read_document` returns the text and `get_document_images` returns the pictures
-over the same connection the client is already authenticated on. The
-`downloadUrl` from `get_model_documents` is still there for people and for
-clients that can use it.
+**Manuals are served as content, not as links.** A download link that only ever appeared inside a tool result isn't something every assistant is allowed to fetch — Claude, for one, restricts which URLs it will follow, and reports `Failed to fetch` for the rest no matter how the server is configured. So `read_document` returns the text and `get_document_images` returns the pictures over the same connection the client is already authenticated on. The `downloadUrl` from `get_model_documents` is still there for people and for clients that can use it.
 
-Much of a manual's real content is in its diagrams rather than its text, so an
-assistant that has only read the text has usually seen the smaller half. Point
-it at `get_document_images` for any page whose text looks thin.
+Much of a manual's real content is in its diagrams rather than its text, so an assistant that has only read the text has usually seen the smaller half. Point it at `get_document_images` for any page whose text looks thin.
 
-Support-material information (*"does it need supports?"*), the filament colours
-and the multi-nozzle flag are read out of a file's embedded slicer settings when
-it is uploaded. Files that were already in your catalog before those features
-shipped report them as unknown until they are re-uploaded or re-synced.
+Support-material information (*"does it need supports?"*), the filament colours and the multi-nozzle flag are read out of a file's embedded slicer settings when it is uploaded. Files that were already in your catalog before those features shipped report them as unknown until they are re-uploaded or re-synced.

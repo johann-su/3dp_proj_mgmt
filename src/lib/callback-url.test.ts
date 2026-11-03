@@ -2,9 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { safeCallbackPath, signInPath } from "@/lib/callback-url";
 
-// The callback value arrives via the URL bar (?callbackUrl=) and a proxy-set
-// header, so it is attacker-controlled: everything that isn't a plain in-app
-// path must be rejected or the sign-in flow becomes an open redirect.
+// The callback value arrives via the URL bar (?callbackUrl=) and a proxy-set header, so it is attacker-controlled: everything that isn't a plain in-app path must be rejected or the sign-in flow becomes an open redirect.
 
 test("accepts an in-app path and keeps its query and hash", () => {
   assert.equal(

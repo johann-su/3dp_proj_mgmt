@@ -1,6 +1,4 @@
-// Downloads an imported project's remote assets and stages them in S3
-// ("uploads/…" keys, same shape as browser uploads). Shared by the one-shot
-// import route (POST /api/import) and the background collection import job.
+// Downloads an imported project's remote assets and stages them in S3 ("uploads/…" keys, same shape as browser uploads). Shared by the one-shot import route (POST /api/import) and the background collection import job.
 
 import { stageBuffer, stageStream } from "@/lib/storage";
 import { normalizeThreeMf } from "@/lib/threemf-normalize";
@@ -16,9 +14,7 @@ import { IMPORT_USER_AGENT, type ImportedProject, type RemoteAsset } from "./typ
 const MAX_MODEL_BYTES = 1024 * 1024 * 1024; // 1 GB
 const MAX_IMAGE_BYTES = 30 * 1024 * 1024;
 const MAX_PDF_BYTES = 100 * 1024 * 1024;
-// Gallery videos (MakerWorld's design_video). Generous next to an image but
-// far below a model file: these are short clips of a print, and the whole
-// file is served to a <video> element on the model page.
+// Gallery videos (MakerWorld's design_video). Generous next to an image but far below a model file: these are short clips of a print, and the whole file is served to a <video> element on the model page.
 const MAX_VIDEO_BYTES = 200 * 1024 * 1024;
 
 const CONTENT_TYPES: Record<string, string> = {
@@ -37,13 +33,7 @@ const CONTENT_TYPES: Record<string, string> = {
   ".mov": "video/quicktime",
 };
 
-// MakerWorld's raw-model download serves a single .scad or, when a design has
-// several raw files, one zip bundling *all* of them — including hundreds of MB
-// of geometry next to the tiny .scad sources. `extractScadFiles` streams the
-// archive and only decompresses the .scad entries, so a large geometry payload
-// never gets buffered and can't push the source over a size cap (the original
-// bug: a 64 MB whole-archive cap silently dropped the .scad of big parametric
-// models). Each individual .scad is still bounded — sources are text.
+// MakerWorld's raw-model download serves a single .scad or, when a design has several raw files, one zip bundling *all* of them — including hundreds of MB of geometry next to the tiny .scad sources. `extractScadFiles` streams the archive and only decompresses the .scad entries, so a large geometry payload never gets buffered and can't push the source over a size cap (the original bug: a 64 MB whole-archive cap silently dropped the .scad of big parametric models). Each individual .scad is still bounded — sources are text.
 const MAX_SCAD_FILE_BYTES = 32 * 1024 * 1024;
 
 async function stageScadDownload(
@@ -61,8 +51,7 @@ async function stageScadDownload(
       ...(await stageBuffer(name, bytes, CONTENT_TYPES[".scad"])),
       kind: "model" as const,
       imported: true,
-      // Per-entry id from the extracted name; the whole archive shares one
-      // last-modified token (it downloads as a unit).
+      // Per-entry id from the extracted name; the whole archive shares one last-modified token (it downloads as a unit).
       sourceFileId: `scad:${name}`,
       ...(asset.sourceModifiedAt
         ? { sourceModifiedAt: asset.sourceModifiedAt }
@@ -84,24 +73,18 @@ export type StagedImportFile = {
   filename: string;
   size: number;
   contentType: string;
-  // SHA-256 of the staged bytes (see StagedFile) — carried through the draft so
-  // createModel can store it and later uploads of the same file get flagged.
+  // SHA-256 of the staged bytes (see StagedFile) — carried through the draft so createModel can store it and later uploads of the same file get flagged.
   contentHash: string;
   kind: "model" | "image" | "pdf" | "video";
   onshapeElementId?: string;
-  // Upstream identity + last-modified token for the source sync (mirrors
-  // RemoteAsset; scad archive entries derive their id from the entry name).
+  // Upstream identity + last-modified token for the source sync (mirrors RemoteAsset; scad archive entries derive their id from the entry name).
   sourceFileId?: string;
   sourceModifiedAt?: string;
-  // Always true — staging only exists for imports. Carried explicitly so the
-  // create-form draft and the direct-insert paths can record per-file
-  // provenance (model_files.imported) next to manually uploaded files.
+  // Always true — staging only exists for imports. Carried explicitly so the create-form draft and the direct-insert paths can record per-file provenance (model_files.imported) next to manually uploaded files.
   imported: true;
 };
 
-// Best-effort: assets that fail to download become warnings, not errors, so
-// one broken image doesn't sink an otherwise fine import. Takes just the
-// asset list so the source-sync route can stage a hand-picked subset.
+// Best-effort: assets that fail to download become warnings, not errors, so one broken image doesn't sink an otherwise fine import. Takes just the asset list so the source-sync route can stage a hand-picked subset.
 export async function stageImportedAssets(
   project: Pick<ImportedProject, "assets">,
 ): Promise<{ files: StagedImportFile[]; warnings: string[] }> {
@@ -133,10 +116,7 @@ export async function stageImportedAssets(
         continue;
       }
       const ext = fileExtension(asset.filename);
-      // Extension-gate gallery media and PDFs: createModel derives the stored
-      // content type from the extension and rejects a kind/extension
-      // mismatch, so a stray non-.pdf "document", non-image "image" or
-      // non-video "video" must be dropped here.
+      // Extension-gate gallery media and PDFs: createModel derives the stored content type from the extension and rejects a kind/extension mismatch, so a stray non-.pdf "document", non-image "image" or non-video "video" must be dropped here.
       if (asset.kind === "video" && !VIDEO_EXTENSIONS.includes(ext)) {
         continue;
       }
@@ -150,9 +130,7 @@ export async function stageImportedAssets(
         CONTENT_TYPES[ext] ??
         res.headers.get("content-type")?.split(";")[0] ??
         "application/octet-stream";
-      // Onshape 3MF exports come in meters centered on the origin, which
-      // desktop slicers and the estimate service can't handle — normalize
-      // to millimeters on the plate before storing.
+      // Onshape 3MF exports come in meters centered on the origin, which desktop slicers and the estimate service can't handle — normalize to millimeters on the plate before storing.
       const staged = asset.onshapeElementId
         ? await stageBuffer(
             asset.filename,

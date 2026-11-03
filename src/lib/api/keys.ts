@@ -1,7 +1,4 @@
-// The user-facing side of the api-key plugin's table, for Settings → API keys:
-// list a user's keys and revoke one. Creating goes through the plugin
-// (auth.api.createApiKey) because it hashes the key; reading and deleting
-// rows is plain SQL, scoped to the owner.
+// The user-facing side of the api-key plugin's table, for Settings → API keys: list a user's keys and revoke one. Creating goes through the plugin (auth.api.createApiKey) because it hashes the key; reading and deleting rows is plain SQL, scoped to the owner.
 
 import { and, desc, eq } from "drizzle-orm";
 import { db } from "@/db";
@@ -11,8 +8,7 @@ import { permissionsToScopes, type ApiScope } from "./scopes";
 export type ApiKeySummary = {
   id: string;
   name: string | null;
-  // The first characters (prefix included), so a user can match a key in a
-  // config file to its row; the rest is only ever shown once, at creation.
+  // The first characters (prefix included), so a user can match a key in a config file to its row; the rest is only ever shown once, at creation.
   start: string | null;
   scopes: ApiScope[];
   createdAt: Date;
@@ -54,9 +50,7 @@ export async function listApiKeys(userId: string): Promise<ApiKeySummary[]> {
   }));
 }
 
-// Revocation is immediate: every request re-verifies its key against this
-// table. Scoped to the owner, so a key id from the browser can only ever pick
-// one of the caller's own keys.
+// Revocation is immediate: every request re-verifies its key against this table. Scoped to the owner, so a key id from the browser can only ever pick one of the caller's own keys.
 export async function revokeApiKey(userId: string, keyId: string): Promise<boolean> {
   const deleted = await db
     .delete(apikey)

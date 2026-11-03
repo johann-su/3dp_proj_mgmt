@@ -6,14 +6,10 @@ import { getSession } from "@/lib/auth";
 
 export const runtime = "nodejs";
 
-// A "running" job only makes progress while its runner is alive in the server
-// process; after a restart nothing will ever touch it again. The runner
-// heartbeats updatedAt on every design, so anything stale by far more than
-// one design's worth of work is dead.
+// A "running" job only makes progress while its runner is alive in the server process; after a restart nothing will ever touch it again. The runner heartbeats updatedAt on every design, so anything stale by far more than one design's worth of work is dead.
 const STALL_MS = 10 * 60_000;
 
-// Recent import jobs of the signed-in user, newest first — polled by the
-// header progress indicator.
+// Recent import jobs of the signed-in user, newest first — polled by the header progress indicator.
 export async function GET() {
   const session = await getSession();
   if (!session) {

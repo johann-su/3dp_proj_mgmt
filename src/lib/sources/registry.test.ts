@@ -11,9 +11,7 @@ import {
 const DOC = "0123456789abcdef01234567";
 const WS = "0123456789abcdef01234568";
 
-// The sourceUrl allowlist on save: only https links to a known source are
-// stored, with tracking params dropped. The hash stays — on MakerWorld it
-// selects the print profile.
+// The sourceUrl allowlist on save: only https links to a known source are stored, with tracking params dropped. The hash stays — on MakerWorld it selects the print profile.
 test("canonicalSourceUrl strips tracking params but keeps the hash", () => {
   assert.equal(
     canonicalSourceUrl("https://makerworld.com/en/models/123-thing?from=recommend#profileId-9"),
@@ -31,8 +29,7 @@ test("canonicalSourceUrl rejects http, unknown and look-alike hosts", () => {
   assert.equal(canonicalSourceUrl("not a url"), undefined);
 });
 
-// Onshape badges any *.onshape.com page, but only the CAD host can be stored:
-// that is the host sync exports from.
+// Onshape badges any *.onshape.com page, but only the CAD host can be stored: that is the host sync exports from.
 test("Onshape sourceUrls must be on the CAD host", () => {
   assert.equal(sourceForUrl("https://forum.onshape.com/x")?.id, "onshape");
   assert.equal(canonicalSourceUrl("https://forum.onshape.com/x"), undefined);
@@ -42,9 +39,7 @@ test("Onshape sourceUrls must be on the CAD host", () => {
   );
 });
 
-// The smart-collection "source" rule runs the same host test in SQL. Postgres'
-// `~*` is a case-insensitive POSIX regex; for these patterns a JS RegExp with
-// the `i` flag behaves the same, so the two must agree on every sample.
+// The smart-collection "source" rule runs the same host test in SQL. Postgres' `~*` is a case-insensitive POSIX regex; for these patterns a JS RegExp with the `i` flag behaves the same, so the two must agree on every sample.
 test("each source's SQL host regex agrees with its JS host check", () => {
   const samples = [
     "https://makerworld.com/en/models/1",
@@ -66,8 +61,7 @@ test("each source's SQL host regex agrees with its JS host check", () => {
   }
 });
 
-// Duplicate detection compares design ids, not URLs: another tab, branch or
-// version pin of the same Onshape document is the same design.
+// Duplicate detection compares design ids, not URLs: another tab, branch or version pin of the same Onshape document is the same design.
 test("an Onshape design id ignores the branch, version and tab pin", () => {
   const onshape = sourceById("onshape");
   const pinned = new URL(`https://cad.onshape.com/documents/${DOC}/v/${WS}/e/${WS}`);
@@ -75,8 +69,7 @@ test("an Onshape design id ignores the branch, version and tab pin", () => {
   assert.equal(onshape.designId(new URL("https://cad.onshape.com/signin")), null);
 });
 
-// The revision token rides in through the client draft, so its format is
-// checked before it is stored; sources without one accept nothing.
+// The revision token rides in through the client draft, so its format is checked before it is stored; sources without one accept nothing.
 test("only sources with a revision format accept a revision token", () => {
   assert.equal(sourceById("onshape").isRevisionToken?.(WS), true);
   assert.equal(sourceById("onshape").isRevisionToken?.("not-a-microversion"), false);

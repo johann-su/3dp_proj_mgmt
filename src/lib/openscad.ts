@@ -1,9 +1,4 @@
-// Client for the headless OpenSCAD service (./openscad), which wraps the
-// OpenSCAD CLI behind POST /render. Unlike the slicer there is no pending/
-// retry machinery: rendering happens synchronously inside the customize
-// request (src/app/api/models/[id]/customize) and the user sees the result or
-// the error right away. Without OPENSCAD_URL the customizer UI is hidden and
-// .scad files are plain downloads.
+// Client for the headless OpenSCAD service (./openscad), which wraps the OpenSCAD CLI behind POST /render. Unlike the slicer there is no pending/retry machinery: rendering happens synchronously inside the customize request (src/app/api/models/[id]/customize) and the user sees the result or the error right away. Without OPENSCAD_URL the customizer UI is hidden and .scad files are plain downloads.
 
 import { recordOpenscadRender, reportError } from "@/lib/telemetry";
 
@@ -20,8 +15,7 @@ export type RenderResult =
   | { ok: true; data: Uint8Array }
   | { ok: false; status: number; error: string };
 
-// "3mf" for files that get stored; "stl" (binary) for the customize page's
-// browser preview, which three.js parses directly.
+// "3mf" for files that get stored; "stl" (binary) for the customize page's browser preview, which three.js parses directly.
 export type RenderFormat = "3mf" | "stl";
 
 export async function renderScad(

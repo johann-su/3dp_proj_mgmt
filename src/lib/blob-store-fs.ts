@@ -1,5 +1,4 @@
-// BlobStore on the local filesystem (e.g. a Docker volume): each key is a file
-// under `root`, keys' "/" separators becoming directories.
+// BlobStore on the local filesystem (e.g. a Docker volume): each key is a file under `root`, keys' "/" separators becoming directories.
 
 import { createReadStream, createWriteStream } from "node:fs";
 import { mkdir, rename, rm, rmdir, stat, writeFile } from "node:fs/promises";
@@ -18,9 +17,7 @@ export class FsBlobStore implements BlobStore {
     this.root = path.resolve(root);
   }
 
-  // Maps a key to its file, refusing anything that could land outside the
-  // root. Keys are generated server-side, but they round-trip through the DB
-  // and version snapshots, so a traversal attempt must fail here regardless.
+  // Maps a key to its file, refusing anything that could land outside the root. Keys are generated server-side, but they round-trip through the DB and version snapshots, so a traversal attempt must fail here regardless.
   private pathFor(key: string): string {
     const segments = key.split("/");
     if (
@@ -37,14 +34,11 @@ export class FsBlobStore implements BlobStore {
     return resolved;
   }
 
-  // No content type is kept: the file routes derive it from the filename's
-  // allowlisted extension, never from what was stored (see files.md).
+  // No content type is kept: the file routes derive it from the filename's allowlisted extension, never from what was stored (see files.md).
   async put(key: string, body: ReadableStream<Uint8Array> | Uint8Array): Promise<void> {
     const target = this.pathFor(key);
     await mkdir(path.dirname(target), { recursive: true });
-    // Write beside the target and rename into place: rename is atomic within
-    // a filesystem, so a reader never sees a half-written file and a failed
-    // upload leaves nothing behind under the key.
+    // Write beside the target and rename into place: rename is atomic within a filesystem, so a reader never sees a half-written file and a failed upload leaves nothing behind under the key.
     const temp = `${target}.${randomUUID()}.partial`;
     try {
       if (body instanceof Uint8Array) {
@@ -89,9 +83,7 @@ export class FsBlobStore implements BlobStore {
     for (const key of keys) {
       const file = this.pathFor(key);
       await rm(file, { force: true });
-      // Upload keys are "uploads/<uuid>/<name>", one directory per file, so
-      // prune directories the delete emptied rather than accumulating them.
-      // rmdir only removes empty ones; the first non-empty parent stops it.
+      // Upload keys are "uploads/<uuid>/<name>", one directory per file, so prune directories the delete emptied rather than accumulating them. rmdir only removes empty ones; the first non-empty parent stops it.
       let dir = path.dirname(file);
       while (dir !== this.root && dir.startsWith(this.root + path.sep)) {
         try {

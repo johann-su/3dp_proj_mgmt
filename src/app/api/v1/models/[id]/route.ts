@@ -29,9 +29,7 @@ export const GET = apiRoute<Params>("models:read", async ({ params }) => {
   return model ? apiJson(serializeModel(model, url)) : notFound();
 });
 
-// Partial update: only the fields sent change (tags and BOM, when sent,
-// replace the whole list). Recorded as a new version like a browser edit;
-// removed files stay revertable from the model's history.
+// Partial update: only the fields sent change (tags and BOM, when sent, replace the whole list). Recorded as a new version like a browser edit; removed files stay revertable from the model's history.
 export const PATCH = apiRoute<Params>("models:write", async ({ request, params, principal }) => {
   if (!isUuid(params.id)) return notFound();
   const patch = UpdateModelBody.parse(await readJson(request));
@@ -59,8 +57,7 @@ export const PATCH = apiRoute<Params>("models:write", async ({ request, params, 
   return model ? apiJson(serializeModel(model, url)) : notFound();
 });
 
-// Moves the model to its owner's trash (restorable in the app for 30 days).
-// Owner-gated like the browser's delete: the key's owner, or a moderator.
+// Moves the model to its owner's trash (restorable in the app for 30 days). Owner-gated like the browser's delete: the key's owner, or a moderator.
 export const DELETE = apiRoute<Params>("models:write", async ({ params, principal }) => {
   if (!isUuid(params.id)) return notFound();
   const result = await trashModel(principal.user, params.id);

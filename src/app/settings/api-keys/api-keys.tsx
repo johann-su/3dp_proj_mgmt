@@ -36,8 +36,7 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 
-// Dates cross the server/client boundary as ISO strings and render through
-// formatDate, which is pinned to UTC so server and client agree.
+// Dates cross the server/client boundary as ISO strings and render through formatDate, which is pinned to UTC so server and client agree.
 export type ApiKeyView = {
   id: string;
   name: string | null;

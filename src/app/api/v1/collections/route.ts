@@ -10,8 +10,7 @@ export const dynamic = "force-dynamic";
 
 const url = (path: string) => appUrl(path).toString();
 
-// Every collection, newest first. Members are listed through
-// GET /models?collection=<id>, with all of that endpoint's filters.
+// Every collection, newest first. Members are listed through GET /models?collection=<id>, with all of that endpoint's filters.
 export const GET = apiRoute("collections:read", async ({ request }) => {
   const sp = request.nextUrl.searchParams;
   const limit = parseLimit(sp.get("limit"));

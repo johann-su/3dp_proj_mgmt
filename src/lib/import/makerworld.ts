@@ -1,16 +1,10 @@
-// MakerWorld importer — reads metadata + images from the public Bambu design
-// API (api.bambulab.com), which returns JSON anonymously and is NOT behind the
-// Cloudflare bot wall that guards makerworld.com HTML pages.
+// MakerWorld importer — reads metadata + images from the public Bambu design API (api.bambulab.com), which returns JSON anonymously and is NOT behind the Cloudflare bot wall that guards makerworld.com HTML pages.
 //
-// File downloads require an authenticated Bambu Cloud account. When the user
-// has connected one (Settings → Bambu Cloud), each print profile is exchanged
-// for a short-lived presigned URL and imported as a .3mf; otherwise only
-// metadata + images are imported and the user adds the .3mf manually.
+// File downloads require an authenticated Bambu Cloud account. When the user has connected one (Settings → Bambu Cloud), each print profile is exchanged for a short-lived presigned URL and imported as a .3mf; otherwise only metadata + images are imported and the user adds the .3mf manually.
 
 import { htmlishToMarkdown } from "@/lib/html";
 import type { BomItemInput } from "@/lib/bom";
-// From file-kind directly: this module is unit-tested and must not pull in
-// server-only modules such as @/lib/storage.
+// From file-kind directly: this module is unit-tested and must not pull in server-only modules such as @/lib/storage.
 import { fileExtension, VIDEO_EXTENSIONS } from "@/lib/file-kind";
 import {
   apiBase,
@@ -28,31 +22,22 @@ import {
 import type { UpstreamFile } from "./sync-diff";
 import { parseMakerworldUrl } from "@/lib/sources/registry";
 
-// Exact warning pushed when the stored Bambu token stops working. The
-// collection import job matches on it to abort early (every following
-// download would fail the same way) — keep the two in sync via this constant.
+// Exact warning pushed when the stored Bambu token stops working. The collection import job matches on it to abort early (every following download would fail the same way) — keep the two in sync via this constant.
 export const BAMBU_EXPIRED_WARNING =
   "Your Bambu Cloud login has expired — reconnect it in Settings → Bambu Cloud, then import again.";
 
-// The URL parser lives with the source registry so client components can use
-// it; re-exported here for the importer's existing callers.
+// The URL parser lives with the source registry so client components can use it; re-exported here for the importer's existing callers.
 export { parseMakerworldUrl };
 
 type DesignPicture = { url?: string; name?: string };
-// A MakerWorld user (design author or the author of an individual print
-// profile). Only the numeric `uid` matters for telling the designer's own
-// profiles apart from community-contributed ones.
+// A MakerWorld user (design author or the author of an individual print profile). Only the numeric `uid` matters for telling the designer's own profiles apart from community-contributed ones.
 type DesignUser = { uid?: number };
 type DesignInstance = {
   id?: number;
   profileId?: number;
   title?: string;
   instanceCreator?: DesignUser;
-  // Designer-action timestamps used as the profile's last-modified token for
-  // source sync. `updateTime` exists too but is deliberately ignored — it is
-  // touched by counter/boost activity (verified live: an untouched 2024
-  // design showed today's updateTime), so it would re-download everything on
-  // every sync.
+  // Designer-action timestamps used as the profile's last-modified token for source sync. `updateTime` exists too but is deliberately ignored — it is touched by counter/boost activity (verified live: an untouched 2024 design showed today's updateTime), so it would re-download everything on every sync.
   publishTime?: string;
   createTime?: string;
 };
@@ -60,10 +45,7 @@ type DesignInstance = {
 // A downloadable document attached to a design (assembly guide / BOM sheet).
 type DesignDoc = { name?: string; url?: string };
 
-// One purchasable BOM entry from the MakerWorld store (hardware kit, filament,
-// material). The `*_v2` arrays all share this shape; the human-facing product
-// name is `spuName`, the store product page is keyed by `handle`, and the
-// gallery/thumbnail image lives on the first concrete SKU.
+// One purchasable BOM entry from the MakerWorld store (hardware kit, filament, material). The `*_v2` arrays all share this shape; the human-facing product name is `spuName`, the store product page is keyed by `handle`, and the gallery/thumbnail image lives on the first concrete SKU.
 type BomProduct = {
   spuName?: string;
   handle?: string;
@@ -78,22 +60,16 @@ type BomOtherPart = {
   quantity?: number;
 };
 
-// One raw model file of a design (the "raw model files" panel): unsliced
-// geometry or, for parametric models, the OpenSCAD source (modelType "scad").
-// The panel is a tree — a maker can group files under labelled folders
-// (`isDir`), so a .scad often sits nested under `children` rather than at the
-// top level (e.g. a "SCAD File" folder); walk the whole tree to find them.
+// One raw model file of a design (the "raw model files" panel): unsliced geometry or, for parametric models, the OpenSCAD source (modelType "scad"). The panel is a tree — a maker can group files under labelled folders (`isDir`), so a .scad often sits nested under `children` rather than at the top level (e.g. a "SCAD File" folder); walk the whole tree to find them.
 type DesignModelFile = {
   modelName?: string;
   modelType?: string;
-  // Per-file last-modified timestamp — a genuine designer-edit signal,
-  // unlike the design-level updateTime.
+  // Per-file last-modified timestamp — a genuine designer-edit signal, unlike the design-level updateTime.
   modelUpdateTime?: string;
   children?: DesignModelFile[];
 };
 
-// Flattens the (possibly nested) raw-model-file tree into just its .scad
-// entries, wherever they live in the folder hierarchy.
+// Flattens the (possibly nested) raw-model-file tree into just its .scad entries, wherever they live in the folder hierarchy.
 export function collectScadModelFiles(
   files: DesignModelFile[] | undefined,
 ): DesignModelFile[] {
@@ -110,14 +86,10 @@ export function collectScadModelFiles(
 
 type DesignExtension = {
   design_pictures?: DesignPicture[];
-  // Gallery videos the designer uploaded — direct file links (an .mp4 on
-  // MakerWorld's CDN), same shape as design_pictures. Downloaded and stored
-  // like a photo rather than hotlinked: the CDN URL is not guaranteed stable
-  // and the model page must keep working without makerworld.com.
+  // Gallery videos the designer uploaded — direct file links (an .mp4 on MakerWorld's CDN), same shape as design_pictures. Downloaded and stored like a photo rather than hotlinked: the CDN URL is not guaranteed stable and the model page must keep working without makerworld.com.
   design_video?: DesignPicture[];
   model_files?: DesignModelFile[];
-  // Attached documents: assembly guide(s) and, when the maker uploads one, a
-  // BOM sheet. Both are download links (usually PDFs).
+  // Attached documents: assembly guide(s) and, when the maker uploads one, a BOM sheet. Both are download links (usually PDFs).
   design_guide?: DesignDoc[];
   design_bom?: DesignDoc[];
   // Structured bill of materials, split by product kind.
@@ -127,8 +99,7 @@ type DesignExtension = {
   boms_of_other_part_list?: BomOtherPart[];
 };
 
-// MakerWorld's own category taxonomy entry. `categories` lists the leaf
-// first, then its parents (e.g. "Signs & Logos", then "Art").
+// MakerWorld's own category taxonomy entry. `categories` lists the leaf first, then its parents (e.g. "Signs & Logos", then "Art").
 type DesignCategory = { name?: string };
 
 export type MakerworldDesign = {
@@ -151,18 +122,11 @@ export type MakerworldDesign = {
 export type MakerworldOptions = {
   token?: string;
   region?: BambuRegion;
-  // Skip the "a lot of files" confirmation and download every profile. Set by
-  // the route once the user has agreed, and always by the bulk collection job.
+  // Skip the "a lot of files" confirmation and download every profile. Set by the route once the user has agreed, and always by the bulk collection job.
   confirmManyFiles?: boolean;
 };
 
-// Restricts a design's print-profile instances to the designer's own — an
-// instance whose author matches the design's author. This author filter (not
-// an arbitrary file count) is the primary limit on how much a single import
-// downloads: a popular model can carry dozens of community-uploaded remix
-// profiles we don't want. `restrictedToCreator` is false when we can't apply
-// it (missing author, or the designer published none of their own), in which
-// case every profile is kept rather than importing zero.
+// Restricts a design's print-profile instances to the designer's own — an instance whose author matches the design's author. This author filter (not an arbitrary file count) is the primary limit on how much a single import downloads: a popular model can carry dozens of community-uploaded remix profiles we don't want. `restrictedToCreator` is false when we can't apply it (missing author, or the designer published none of their own), in which case every profile is kept rather than importing zero.
 export function selectDesignerInstances(design: MakerworldDesign): {
   instances: (DesignInstance & { profileId: number })[];
   restrictedToCreator: boolean;
@@ -183,13 +147,7 @@ export function selectDesignerInstances(design: MakerworldDesign): {
   return { instances, restrictedToCreator };
 }
 
-// MakerWorld's API returns each text field twice: the author's original plus a
-// single pre-computed English machine-translation (`*Translated`). That English
-// variant is the same regardless of Accept-Language — it is not a language
-// picker — and it is empty for models the author already wrote in English. We
-// mirror the site's default ("Content has been automatically translated") by
-// preferring the English translation whenever it is present and falling back to
-// the original otherwise.
+// MakerWorld's API returns each text field twice: the author's original plus a single pre-computed English machine-translation (`*Translated`). That English variant is the same regardless of Accept-Language — it is not a language picker — and it is empty for models the author already wrote in English. We mirror the site's default ("Content has been automatically translated") by preferring the English translation whenever it is present and falling back to the original otherwise.
 export function preferEnglish(
   translated: string | undefined,
   original: string | undefined,
@@ -197,10 +155,7 @@ export function preferEnglish(
   return (translated?.trim() || original?.trim()) ?? "";
 }
 
-// Picks the ordered, deduped list of image URLs for a design. The cover (often
-// an animated GIF) lives in `coverUrl`, separate from the `design_pictures`
-// gallery — it is the model's first piece of media on the site, so it leads the
-// list rather than only being a fallback when the gallery is empty.
+// Picks the ordered, deduped list of image URLs for a design. The cover (often an animated GIF) lives in `coverUrl`, separate from the `design_pictures` gallery — it is the model's first piece of media on the site, so it leads the list rather than only being a fallback when the gallery is empty.
 export function selectImageUrls(design: MakerworldDesign): string[] {
   const pictures = design.designExtension?.design_pictures ?? [];
   const urls = [design.coverUrl, ...pictures.map((p) => p.url)].filter(
@@ -209,11 +164,7 @@ export function selectImageUrls(design: MakerworldDesign): string[] {
   return [...new Set(urls)];
 }
 
-// The design's gallery videos, deduped and in upstream order. Only entries
-// that actually name a video file are kept: `design_video` is the only place
-// MakerWorld hands out a media URL whose extension we don't otherwise
-// constrain, and staging would drop a non-video anyway — filtering here keeps
-// the import from reporting a download it was never going to keep.
+// The design's gallery videos, deduped and in upstream order. Only entries that actually name a video file are kept: `design_video` is the only place MakerWorld hands out a media URL whose extension we don't otherwise constrain, and staging would drop a non-video anyway — filtering here keeps the import from reporting a download it was never going to keep.
 export function selectVideoUrls(design: MakerworldDesign): string[] {
   const videos = design.designExtension?.design_video ?? [];
   const urls = videos
@@ -227,9 +178,7 @@ export function selectVideoUrls(design: MakerworldDesign): string[] {
   return [...new Set(urls)];
 }
 
-// Picks the design's attached documents (assembly guide + BOM sheet) as PDF
-// assets. Both live under `designExtension` as {name, url} download links; the
-// staging step drops anything that isn't actually a .pdf.
+// Picks the design's attached documents (assembly guide + BOM sheet) as PDF assets. Both live under `designExtension` as {name, url} download links; the staging step drops anything that isn't actually a .pdf.
 export function selectDocs(design: MakerworldDesign): RemoteAsset[] {
   const ext = design.designExtension;
   const docs = [...(ext?.design_guide ?? []), ...(ext?.design_bom ?? [])];
@@ -245,25 +194,20 @@ export function selectDocs(design: MakerworldDesign): RemoteAsset[] {
       url,
       filename,
       kind: "pdf",
-      // Docs carry no timestamp, so the name is both identity and change
-      // signal (sync adds/removes by name, never re-downloads a match).
+      // Docs carry no timestamp, so the name is both identity and change signal (sync adds/removes by name, never re-downloads a match).
       sourceFileId: `doc:${filename}`,
     });
   }
   return assets;
 }
 
-// Bill of materials link on the Bambu store. `store.bambulab.com` 302-redirects
-// to the visitor's regional store, so a single handle-based URL works globally.
+// Bill of materials link on the Bambu store. `store.bambulab.com` 302-redirects to the visitor's regional store, so a single handle-based URL works globally.
 function storeUrl(handle: string | undefined): string | null {
   const clean = handle?.trim();
   return clean ? `https://store.bambulab.com/products/${clean}` : null;
 }
 
-// Flattens MakerWorld's structured bill of materials into the app's BOM rows.
-// The store products (hardware kits, filaments, materials) carry a name, a
-// purchase link and a product image; hand-listed "other parts" are name +
-// quantity only. Each group becomes a titled section, mirroring the site.
+// Flattens MakerWorld's structured bill of materials into the app's BOM rows. The store products (hardware kits, filaments, materials) carry a name, a purchase link and a product image; hand-listed "other parts" are name + quantity only. Each group becomes a titled section, mirroring the site.
 export function selectBomItems(design: MakerworldDesign): BomItemInput[] {
   const ext = design.designExtension;
   const items: BomItemInput[] = [];
@@ -307,17 +251,12 @@ export function ensure3mf(name: string, fallback: string): string {
   return `${(clean || fallback).replace(/\.[^.]*$/, "")}.3mf`;
 }
 
-// A print profile's last-modified token for source sync: when the designer
-// last (re)published it. NOT updateTime — see the DesignInstance comment.
+// A print profile's last-modified token for source sync: when the designer last (re)published it. NOT updateTime — see the DesignInstance comment.
 function profileToken(instance: DesignInstance): string | null {
   return instance.publishTime ?? instance.createTime ?? null;
 }
 
-// The .scad group's shared last-modified token: the newest modelUpdateTime of
-// any raw .scad entry. Shared because the raw-files download is one zip — any
-// change re-downloads and re-stages all entries, and a newly added file moves
-// the max, so every entry flips to "changed" together. Lexicographic max is
-// safe: the API always sends the same ISO-8601 UTC format.
+// The .scad group's shared last-modified token: the newest modelUpdateTime of any raw .scad entry. Shared because the raw-files download is one zip — any change re-downloads and re-stages all entries, and a newly added file moves the max, so every entry flips to "changed" together. Lexicographic max is safe: the API always sends the same ISO-8601 UTC format.
 function scadGroupToken(design: MakerworldDesign): string | null {
   let max: string | null = null;
   for (const f of collectScadModelFiles(design.designExtension?.model_files)) {
@@ -327,9 +266,7 @@ function scadGroupToken(design: MakerworldDesign): string | null {
   return max;
 }
 
-// One entry of the platform's current file list, with what the sync route
-// needs to resolve its download: profiles resolve individually, all scads
-// come from the single raw-files zip, docs are direct URLs.
+// One entry of the platform's current file list, with what the sync route needs to resolve its download: profiles resolve individually, all scads come from the single raw-files zip, docs are direct URLs.
 export type MakerworldUpstreamFile = UpstreamFile &
   (
     | { group: "profile"; profileId: number }
@@ -337,10 +274,7 @@ export type MakerworldUpstreamFile = UpstreamFile &
     | { group: "doc"; url: string }
   );
 
-// Pure listing of the design's current downloadable files (print profiles,
-// raw .scad sources, attached PDFs) with the ids/tokens the sync planner
-// diffs against model_files. Must stay in lockstep with the ids the import
-// path stamps (resolveDownloads / selectDocs / stage.ts scad entries).
+// Pure listing of the design's current downloadable files (print profiles, raw .scad sources, attached PDFs) with the ids/tokens the sync planner diffs against model_files. Must stay in lockstep with the ids the import path stamps (resolveDownloads / selectDocs / stage.ts scad entries).
 export function listMakerworldUpstreamFiles(
   design: MakerworldDesign,
 ): MakerworldUpstreamFile[] {
@@ -355,8 +289,7 @@ export function listMakerworldUpstreamFiles(
       group: "profile",
       profileId: instance.profileId,
       sourceFileId: `profile:${instance.profileId}`,
-      // Display name for the preview dialog; the stored filename comes from
-      // the download itself (matching is by id, not name).
+      // Display name for the preview dialog; the stored filename comes from the download itself (matching is by id, not name).
       filename: ensure3mf(instance.title ?? "", `profile-${instance.profileId}`),
       kind: "model",
       modifiedAt: profileToken(instance),
@@ -385,8 +318,7 @@ export function listMakerworldUpstreamFiles(
       sourceFileId: `doc:${doc.filename}`,
       filename: doc.filename,
       kind: "pdf",
-      // No timestamp on attached documents — matched docs count as unchanged;
-      // sync still adds new ones and removes ones gone upstream.
+      // No timestamp on attached documents — matched docs count as unchanged; sync still adds new ones and removes ones gone upstream.
       modifiedAt: null,
     });
   }
@@ -394,8 +326,7 @@ export function listMakerworldUpstreamFiles(
   return files;
 }
 
-// Fetches + validates the anonymous design JSON. Shared by the importer and
-// the source-sync route.
+// Fetches + validates the anonymous design JSON. Shared by the importer and the source-sync route.
 export async function fetchMakerworldDesign(
   id: string,
   region: BambuRegion,
@@ -428,8 +359,7 @@ export async function fetchMakerworldDesign(
   return design;
 }
 
-// Resolves each print profile to a presigned download URL. Returns the model
-// assets plus any warnings (e.g. an expired login) to surface to the user.
+// Resolves each print profile to a presigned download URL. Returns the model assets plus any warnings (e.g. an expired login) to surface to the user.
 async function resolveDownloads(
   design: MakerworldDesign,
   token: string,
@@ -486,14 +416,10 @@ async function resolveDownloads(
     warnings.push("No .3mf files could be downloaded for this model.");
   }
 
-  // Parametric designs also carry their OpenSCAD source as a raw model file —
-  // import it so the model can be customized here (see AGENTS.md, OpenSCAD
-  // service). Skipped silently when absent; failures are warnings like any
-  // other download.
+  // Parametric designs also carry their OpenSCAD source as a raw model file — import it so the model can be customized here (see AGENTS.md, OpenSCAD service). Skipped silently when absent; failures are warnings like any other download.
   const scadFiles = collectScadModelFiles(design.designExtension?.model_files);
   if (scadFiles.length > 0 && typeof design.id === "number") {
-    // Only modelType=all exists — the download is a zip of every raw file
-    // (geometry included); staging extracts just the .scad entries from it.
+    // Only modelType=all exists — the download is a zip of every raw file (geometry included); staging extracts just the .scad entries from it.
     const result = await fetchRawModelDownload(design.id, "all", token, region);
     if (result === "unauthorized") {
       if (!warnings.includes(BAMBU_EXPIRED_WARNING)) {
@@ -511,8 +437,7 @@ async function resolveDownloads(
           "raw-files.zip",
         kind: "model",
         extractScad: true,
-        // Per-entry ids ("scad:<name>") are derived at staging; the whole
-        // archive shares this last-modified token.
+        // Per-entry ids ("scad:<name>") are derived at staging; the whole archive shares this last-modified token.
         ...(groupToken ? { sourceModifiedAt: groupToken } : {}),
       });
     }
@@ -548,9 +473,7 @@ export async function importFromMakerworld(
     kind: "image",
   }));
 
-  // Videos follow the photos: MakerWorld shows its video first, but the cover
-  // is what browse cards render, and a design's cover image is the picture the
-  // designer chose for exactly that. The order stays editable in the wizard.
+  // Videos follow the photos: MakerWorld shows its video first, but the cover is what browse cards render, and a design's cover image is the picture the designer chose for exactly that. The order stays editable in the wizard.
   assets.push(
     ...selectVideoUrls(design).map((videoUrl, i) => ({
       url: videoUrl,
@@ -583,9 +506,7 @@ export async function importFromMakerworld(
     return base;
   }
 
-  // A popular parametric model can carry ~100 of the designer's own print
-  // profiles. Downloading them all is slow and rarely wanted, so stop before
-  // resolving any download and let the user confirm (or cancel) first.
+  // A popular parametric model can carry ~100 of the designer's own print profiles. Downloading them all is slow and rarely wanted, so stop before resolving any download and let the user confirm (or cancel) first.
   const projected = selectDesignerInstances(design).instances.length;
   if (!options.confirmManyFiles && projected >= IMPORT_CONFIRM_FILE_THRESHOLD) {
     return { ...base, needsConfirmation: true, fileCount: projected };

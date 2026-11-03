@@ -1,23 +1,14 @@
 // Extraction of slicer metadata from a .3mf (ZIP) archive via ranged reads.
-// A .3mf can be up to 1 GB, so instead of reading the whole archive the ZIP
-// central directory is located from the tail and only the tiny slicer config
-// entries are fetched:
+// A .3mf can be up to 1 GB, so instead of reading the whole archive the ZIP central directory is located from the tail and only the tiny slicer config entries are fetched:
 //
-// - Metadata/model_settings.config    one <plate> block per plate (present
-//                                     even unsliced) + per-object extruders
-// - Metadata/slice_info.config        <metadata key="prediction"/"weight">
-//                                     per plate, only once the file was sliced
-// - Metadata/project_settings.config  Bambu/Orca print+printer+filament
-//                                     settings (JSON)
+// - Metadata/model_settings.config    one <plate> block per plate (present even unsliced) + per-object extruders
+// - Metadata/slice_info.config        <metadata key="prediction"/"weight"> per plate, only once the file was sliced
+// - Metadata/project_settings.config  Bambu/Orca print+printer+filament settings (JSON)
 // - Metadata/Slic3r_PE.config         PrusaSlicer project settings (ini)
-// - Metadata/Slic3r_PE_model.config   PrusaSlicer's per-object extruders (the
-//                                     equivalent of model_settings.config)
-// - 3D/3dmodel.model                  only its head: the <metadata> naming the
-//                                     app that created the file (the geometry
-//                                     after it can be hundreds of MB)
+// - Metadata/Slic3r_PE_model.config   PrusaSlicer's per-object extruders (the equivalent of model_settings.config)
+// - 3D/3dmodel.model                  only its head: the <metadata> naming the app that created the file (the geometry after it can be hundreds of MB)
 //
-// The caller supplies the byte source (S3 ranged GETs in production, an
-// in-memory buffer in tests) — see src/lib/threemf-remote.ts for the S3 side.
+// The caller supplies the byte source (S3 ranged GETs in production, an in-memory buffer in tests) — see src/lib/threemf-remote.ts for the S3 side.
 
 import { Inflate, inflateSync } from "fflate";
 import type { PrinterInfo } from "@/db/schema";
@@ -30,8 +21,7 @@ export type SliceInfo = {
   // Sums over all plates; null for unsliced files (no predictions).
   printTimeSeconds: number | null;
   filamentGrams: number | null;
-  // The slicer that wrote the predictions ("Bambu Studio 02.08.02.61"); null
-  // for unsliced files.
+  // The slicer that wrote the predictions ("Bambu Studio 02.08.02.61"); null for unsliced files.
   engine: string | null;
 };
 
@@ -75,8 +65,7 @@ function viewOf(bytes: Uint8Array) {
   return new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
 }
 
-// Locates the central directory from the archive tail. Handles ZIP64 offsets:
-// with a 1 GB upload cap the ZIP64 EOCD record always sits inside the tail.
+// Locates the central directory from the archive tail. Handles ZIP64 offsets: with a 1 GB upload cap the ZIP64 EOCD record always sits inside the tail.
 function findCentralDirectory(
   tail: Uint8Array,
 ): { offset: number; size: number } | null {
@@ -132,8 +121,7 @@ function scanCentralDirectory(cd: Uint8Array) {
 }
 
 async function readEntry(readRange: RangeReader, entry: CentralEntry) {
-  // Name/extra lengths in the local header can differ from the central
-  // directory copy, so read them from the local header itself.
+  // Name/extra lengths in the local header can differ from the central directory copy, so read them from the local header itself.
   const header = viewOf(
     await readRange(entry.localOffset, entry.localOffset + 29),
   );
@@ -144,9 +132,7 @@ async function readEntry(readRange: RangeReader, entry: CentralEntry) {
   return new TextDecoder().decode(entry.method === 8 ? inflateSync(raw) : raw);
 }
 
-// The model's <metadata> elements come before any geometry, but the entry can
-// be hundreds of MB when meshes are inline (PrusaSlicer, CAD exports), so only
-// a bounded prefix is fetched and inflated — enough for the metadata.
+// The model's <metadata> elements come before any geometry, but the entry can be hundreds of MB when meshes are inline (PrusaSlicer, CAD exports), so only a bounded prefix is fetched and inflated — enough for the metadata.
 const MODEL_HEAD_COMPRESSED_BYTES = 64 * 1024;
 const MODEL_HEAD_BYTES = 16 * 1024;
 
@@ -190,11 +176,7 @@ function cleanLabel(value: unknown): string | undefined {
   return label || undefined;
 }
 
-// The filament slots the objects are actually assigned to (the model config's
-// per-object/per-part `extruder` keys, 1-based) — an AMS project may park 5
-// filaments while everything prints with one, and PrusaSlicer writes an entry
-// per physical extruder whether or not it is used. Falls back to the first slot
-// when the archive carries no assignment.
+// The filament slots the objects are actually assigned to (the model config's per-object/per-part `extruder` keys, 1-based) — an AMS project may park 5 filaments while everything prints with one, and PrusaSlicer writes an entry per physical extruder whether or not it is used. Falls back to the first slot when the archive carries no assignment.
 function usedFilamentSlots(modelXml: string | null): number[] {
   const used = new Set<number>();
   for (const m of modelXml?.matchAll(/key="extruder"\s+value="(\d+)"/g) ?? []) {
@@ -204,8 +186,7 @@ function usedFilamentSlots(modelXml: string | null): number[] {
   return used.size > 0 ? [...used].sort((a, b) => a - b) : [1];
 }
 
-// Both slicers spell filament colours "#RRGGBB" (Bambu sometimes appends an
-// alpha pair, which a swatch doesn't need).
+// Both slicers spell filament colours "#RRGGBB" (Bambu sometimes appends an alpha pair, which a swatch doesn't need).
 const HEX_COLOR_RE = /^#?([0-9a-f]{6})(?:[0-9a-f]{2})?$/i;
 
 function hexColor(value: unknown): string | undefined {
@@ -220,14 +201,8 @@ type UsedFilaments = {
   missing: number[]; // assigned slots the config defines no filament for
 };
 
-// The filaments the print actually uses, one entry per slot. Types are *not*
-// deduped: two slots of the same material in different colours is a two-colour
-// print, and collapsing it to ["PLA"] loses exactly the distinction the badges
-// exist to show. Colours are all-or-nothing so the arrays always zip 1:1.
-// An assigned slot with no filament behind it (objects still on AMS slot 5
-// after the project was cut down to one filament) is reported as `missing`
-// rather than guessed at: the slicer would print it with whatever it falls back
-// to, which may be a different material entirely.
+// The filaments the print actually uses, one entry per slot. Types are *not* deduped: two slots of the same material in different colours is a two-colour print, and collapsing it to ["PLA"] loses exactly the distinction the badges exist to show. Colours are all-or-nothing so the arrays always zip 1:1.
+// An assigned slot with no filament behind it (objects still on AMS slot 5 after the project was cut down to one filament) is reported as `missing` rather than guessed at: the slicer would print it with whatever it falls back to, which may be a different material entirely.
 function usedFilaments(
   slots: number[],
   types: unknown,
@@ -252,10 +227,7 @@ function usedFilaments(
   return used;
 }
 
-// Per-extruder numeric settings — Bambu writes an array (one entry per physical
-// extruder), PrusaSlicer a comma-joined string the caller splits. Kept
-// positional, with unparseable entries as undefined, because the index *is* the
-// extruder number.
+// Per-extruder numeric settings — Bambu writes an array (one entry per physical extruder), PrusaSlicer a comma-joined string the caller splits. Kept positional, with unparseable entries as undefined, because the index *is* the extruder number.
 function numberList(value: unknown): (number | undefined)[] {
   const raw = Array.isArray(value) ? value : value == null ? [] : [value];
   return raw.map((v) => {
@@ -264,9 +236,7 @@ function numberList(value: unknown): (number | undefined)[] {
   });
 }
 
-// Both slicers spell booleans as "0"/"1" (Bambu wraps per-extruder settings in
-// an array, PrusaSlicer writes a bare ini value). Anything else — including a
-// missing key — is "the config doesn't say", not "false".
+// Both slicers spell booleans as "0"/"1" (Bambu wraps per-extruder settings in an array, PrusaSlicer writes a bare ini value). Anything else — including a missing key — is "the config doesn't say", not "false".
 function boolSetting(value: unknown): boolean | undefined {
   const raw = Array.isArray(value) ? value[0] : value;
   if (typeof raw === "boolean") return raw;
@@ -275,11 +245,7 @@ function boolSetting(value: unknown): boolean | undefined {
   return undefined;
 }
 
-// Both slicers describe the bed as a polygon of "XxY" mm points — Bambu/Orca as
-// a `printable_area` array, PrusaSlicer as a comma-joined `bed_shape` string. We
-// only need the plate size, so we take the polygon's bounding box (which also
-// gives a sane square for circular/delta beds). Returns undefined for missing,
-// malformed, or implausibly sized shapes so callers can fall back.
+// Both slicers describe the bed as a polygon of "XxY" mm points — Bambu/Orca as a `printable_area` array, PrusaSlicer as a comma-joined `bed_shape` string. We only need the plate size, so we take the polygon's bounding box (which also gives a sane square for circular/delta beds). Returns undefined for missing, malformed, or implausibly sized shapes so callers can fall back.
 const BED_POINT_RE = /^\s*(-?[\d.]+)\s*x\s*(-?[\d.]+)\s*$/i;
 
 function bedSizeFromPoints(points: unknown): { x: number; y: number } | undefined {
@@ -301,8 +267,7 @@ function bedSizeFromPoints(points: unknown): { x: number; y: number } | undefine
   }
   const x = Math.round(maxX - minX);
   const y = Math.round(maxY - minY);
-  // Reject degenerate / implausible plates: real FDM beds run from ~120 mm
-  // hobby printers up to large-format machines, comfortably inside this range.
+  // Reject degenerate / implausible plates: real FDM beds run from ~120 mm hobby printers up to large-format machines, comfortably inside this range.
   if (x < 20 || y < 20 || x > 2000 || y > 2000) return undefined;
   return { x, y };
 }
@@ -319,10 +284,7 @@ function printerInfoFromBambu(
     settings.filament_colour, // British spelling, in both slicers
   );
   const nozzles = numberList(settings.nozzle_diameter);
-  // `filament_map` assigns each slot to a physical extruder (1-based); Bambu/
-  // Orca only writes it for dual-nozzle machines. Without it, a print using a
-  // single slot needs a single nozzle either way, and a lone nozzle_diameter
-  // entry proves the machine only has one — anything else is unknowable.
+  // `filament_map` assigns each slot to a physical extruder (1-based); Bambu/Orca only writes it for dual-nozzle machines. Without it, a print using a single slot needs a single nozzle either way, and a lone nozzle_diameter entry proves the machine only has one — anything else is unknowable.
   const map = numberList(settings.filament_map);
   const usedExtruders = !filaments?.slots.length
     ? undefined
@@ -335,8 +297,7 @@ function printerInfoFromBambu(
         : undefined;
   const info: PrinterInfo = {
     model,
-    // One nozzle_diameter entry per physical extruder: report the nozzle the
-    // objects actually print from, not just the first one on the machine.
+    // One nozzle_diameter entry per physical extruder: report the nozzle the objects actually print from, not just the first one on the machine.
     nozzleDiameterMm: nozzles[(usedExtruders?.[0] ?? 1) - 1] ?? nozzles[0],
     bedType: cleanLabel(settings.curr_bed_type),
     filamentTypes: filaments?.types.length ? filaments.types : undefined,
@@ -368,9 +329,7 @@ function printerInfoFromPrusaIni(
     values.get("filament_colour")?.split(";"),
   );
   const nozzles = numberList(values.get("nozzle_diameter")?.split(","));
-  // PrusaSlicer says it outright: single_extruder_multi_material is an MMU-style
-  // multiplexer feeding one nozzle, so only a multi-slot print *without* that
-  // flag needs a real toolchanger (Prusa XL, IDEX).
+  // PrusaSlicer says it outright: single_extruder_multi_material is an MMU-style multiplexer feeding one nozzle, so only a multi-slot print *without* that flag needs a real toolchanger (Prusa XL, IDEX).
   const semm = boolSetting(values.get("single_extruder_multi_material"));
   const usedExtruders = !filaments?.slots.length
     ? undefined
@@ -387,9 +346,7 @@ function printerInfoFromPrusaIni(
     // Only present when there is something to warn about.
     ...(filaments?.missing.length && { missingFilamentSlots: filaments.missing }),
     requiresMultiNozzle: usedExtruders && usedExtruders.length > 1,
-    // support_material is the master switch; support_material_auto only picks
-    // "everywhere" vs "painted enforcers only" — either way the print has
-    // supports, so it doesn't change the answer.
+    // support_material is the master switch; support_material_auto only picks "everywhere" vs "painted enforcers only" — either way the print has supports, so it doesn't change the answer.
     usesSupport: boolSetting(values.get("support_material")),
     bedSizeMm:
       bedSizeFromPoints(values.get("bed_shape")?.split(",")) ??
@@ -398,10 +355,7 @@ function printerInfoFromPrusaIni(
   return Object.values(info).some((v) => v !== undefined) ? info : null;
 }
 
-// The slicer that wrote a slice_info.config, from its <header>: OrcaSlicer
-// adds its own version item; Bambu Studio only writes the X-BBL client version
-// (which Orca copies over from the project, so it must be checked last).
-// Mirrors sliceEngine in slicer/lib.mjs, which reads the service's output.
+// The slicer that wrote a slice_info.config, from its <header>: OrcaSlicer adds its own version item; Bambu Studio only writes the X-BBL client version (which Orca copies over from the project, so it must be checked last). Mirrors sliceEngine in slicer/lib.mjs, which reads the service's output.
 function sliceEngine(xml: string): string | null {
   const item = (key: string) =>
     xml.match(new RegExp(`<header_item key="${key}" value="([^"]*)"`))?.[1] || null;
@@ -411,8 +365,7 @@ function sliceEngine(xml: string): string | null {
   return bambu ? `Bambu Studio ${bambu}` : null;
 }
 
-// Filament types each *sliced* plate prints from — only plates that carry a
-// prediction, since an unsliced plate lists nothing (or stale data).
+// Filament types each *sliced* plate prints from — only plates that carry a prediction, since an unsliced plate lists nothing (or stale data).
 function slicedPlateFilaments(xml: string): string[][] {
   const plates: string[][] = [];
   for (const [, plate] of xml.matchAll(/<plate>([\s\S]*?)<\/plate>/g)) {
@@ -424,8 +377,7 @@ function slicedPlateFilaments(xml: string): string[][] {
   return plates;
 }
 
-// Returns null for archives without the relevant metadata (plain core-spec
-// 3mf, non-3mf input).
+// Returns null for archives without the relevant metadata (plain core-spec 3mf, non-3mf input).
 export async function readSliceData(
   readRange: RangeReader,
   size: number,
@@ -463,8 +415,7 @@ export async function readSliceData(
       filamentGrams = (filamentGrams ?? 0) + Number(match[1]);
     }
   }
-  // Unsliced project files have an empty slice_info.config but still define
-  // their plates in model_settings.config.
+  // Unsliced project files have an empty slice_info.config but still define their plates in model_settings.config.
   if (plateCount === 0 && modelXml) plateCount = countPlates(modelXml);
   if (plateCount === 0) plateCount = platePngCount;
   const sliceInfo =
@@ -489,8 +440,7 @@ export async function readSliceData(
   const prusaIni = await entryText(PRUSA_CONFIG_PATH);
   if (!printerInfo) {
     const ini = prusaIni;
-    // PrusaSlicer keeps its per-object extruders in its own model config, not
-    // in Bambu's model_settings.config.
+    // PrusaSlicer keeps its per-object extruders in its own model config, not in Bambu's model_settings.config.
     if (ini) {
       printerInfo = printerInfoFromPrusaIni(
         ini,

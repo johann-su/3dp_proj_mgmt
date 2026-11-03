@@ -1,17 +1,6 @@
-// Default categories with their match keywords — the canonical list used by
-// the seeder (src/db/seed.ts) and the suggestion tests. Migration
-// 0015_category_keywords.sql mirrors this data for existing databases; keep
-// the two in sync when editing.
+// Default categories with their match keywords — the canonical list used by the seeder (src/db/seed.ts) and the suggestion tests. Migration 0015_category_keywords.sql mirrors this data for existing databases; keep the two in sync when editing.
 //
-// Keywords drive category suggestion (src/lib/category-suggest.ts): they are
-// matched against a model's title, tags and — for imports — the source
-// platform's own category names. The lists therefore include the MakerWorld
-// taxonomy (and Printables' near-identical one) mapped onto our smaller set:
-// e.g. MakerWorld's "Signs & Logos"/"Sculptures" → Art, "3D printer parts" →
-// Functional, "Props & Cosplay" → Fashion. We deliberately do NOT create new
-// categories from source data — source categories only rank the existing
-// ones, so imports can't sprawl the taxonomy. "Other" has no keywords: it is
-// the fallback when nothing matches, never a positive suggestion.
+// Keywords drive category suggestion (src/lib/category-suggest.ts): they are matched against a model's title, tags and — for imports — the source platform's own category names. The lists therefore include the MakerWorld taxonomy (and Printables' near-identical one) mapped onto our smaller set: e.g. MakerWorld's "Signs & Logos"/"Sculptures" → Art, "3D printer parts" → Functional, "Props & Cosplay" → Fashion. We deliberately do NOT create new categories from source data — source categories only rank the existing ones, so imports can't sprawl the taxonomy. "Other" has no keywords: it is the fallback when nothing matches, never a positive suggestion.
 export type DefaultCategory = {
   name: string;
   slug: string;
@@ -236,8 +225,7 @@ export const DEFAULT_CATEGORIES: DefaultCategory[] = [
       "sorter",
     ],
   },
-  // The fallback — deliberately no keywords, so it never wins a suggestion
-  // but every model without a match lands here instead of staying blank.
+  // The fallback — deliberately no keywords, so it never wins a suggestion but every model without a match lands here instead of staying blank.
   { name: "Other", slug: "other", keywords: [] },
 ];
 

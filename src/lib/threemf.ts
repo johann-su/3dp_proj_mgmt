@@ -85,10 +85,7 @@ function unzipWanted(data: Uint8Array): Promise<Unzipped> {
   });
 }
 
-// Bambu Studio double-escapes the metadata and stores HTML in it
-// (e.g. "&amp;lt;h3&amp;gt;...") — both converters handle the unescaping. The
-// title is flattened to plain text; the description keeps its formatting as
-// Markdown (see the Description call site).
+// Bambu Studio double-escapes the metadata and stores HTML in it (e.g. "&amp;lt;h3&amp;gt;...") — both converters handle the unescaping. The title is flattened to plain text; the description keeps its formatting as Markdown (see the Description call site).
 function coreMetadata(
   xmlHead: string,
   name: string,
@@ -131,8 +128,7 @@ export async function extract3mfMetadata(file: File): Promise<ThreeMfMetadata> {
   let description: string | undefined;
   const modelXml = byLowerName.get("3d/3dmodel.model");
   if (modelXml) {
-    // The <metadata> block sits at the top of the document, before the
-    // (potentially enormous) geometry — only decode the head.
+    // The <metadata> block sits at the top of the document, before the (potentially enormous) geometry — only decode the head.
     const head = decoder.decode(modelXml.data.subarray(0, METADATA_SCAN_BYTES));
     title = coreMetadata(head, "Title");
     description = coreMetadata(head, "Description", htmlishToMarkdown);
@@ -164,8 +160,7 @@ export async function extract3mfMetadata(file: File): Promise<ThreeMfMetadata> {
     }
   }
 
-  // Auxiliary pictures (Makerworld renders) first, then plate previews, then
-  // generic thumbnails.
+  // Auxiliary pictures (Makerworld renders) first, then plate previews, then generic thumbnails.
   const imageEntries = [...byLowerName.entries()]
     .filter(([lower]) => extensionOf(lower) in IMAGE_MIME)
     .sort(([a], [b]) => {

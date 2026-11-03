@@ -7,9 +7,7 @@ import {
   sliceFailureMessage,
 } from "@/lib/printer-info";
 
-// The whole point of storing filaments per slot: the same material in two slots
-// is a colour change (an AMS/MMU swap), two different materials mean the
-// printer needs both loaded. Neither is a plain single-filament print.
+// The whole point of storing filaments per slot: the same material in two slots is a colour change (an AMS/MMU swap), two different materials mean the printer needs both loaded. Neither is a plain single-filament print.
 test("filamentSummary tells multi-colour and multi-material apart", () => {
   assert.equal(filamentSummary({ filamentTypes: ["PLA", "PLA"] })?.multi, "color");
   assert.equal(
@@ -34,8 +32,7 @@ test("filamentSummary zips colours onto their slots", () => {
   );
 });
 
-// Files sliced before colours were parsed (and non-print files) still render:
-// the slots come back uncoloured rather than the summary vanishing.
+// Files sliced before colours were parsed (and non-print files) still render: the slots come back uncoloured rather than the summary vanishing.
 test("filamentSummary handles files without colour or filament data", () => {
   assert.deepEqual(filamentSummary({ filamentTypes: ["PETG"] })?.slots, [
     { type: "PETG", color: undefined },
@@ -44,8 +41,7 @@ test("filamentSummary handles files without colour or filament data", () => {
   assert.equal(filamentSummary(null), null);
 });
 
-// MakerWorld's "AMS" tag semantics: a filament change *within one print*.
-// Several plates each printing a different filament need no AMS.
+// MakerWorld's "AMS" tag semantics: a filament change *within one print*. Several plates each printing a different filament need no AMS.
 test("filamentChangesFromPlates only counts changes within a plate", () => {
   assert.equal(filamentChangesFromPlates([["PLA"], ["PETG"], ["PLA"]]), "none");
   assert.equal(filamentChangesFromPlates([["PLA"], ["PLA", "PLA", "PLA"]]), "color");

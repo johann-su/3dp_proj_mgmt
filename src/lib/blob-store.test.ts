@@ -2,8 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { resolveStorageConfig } from "@/lib/blob-store";
 
-// Instances configured before the filesystem backend existed set only S3_*
-// variables; they must keep storing to S3 without touching their config.
+// Instances configured before the filesystem backend existed set only S3_* variables; they must keep storing to S3 without touching their config.
 test("no STORAGE_BACKEND means S3, configured from the S3_* variables", () => {
   const config = resolveStorageConfig({
     S3_ENDPOINT: "http://garage:3900",
@@ -24,9 +23,7 @@ test("no STORAGE_BACKEND means S3, configured from the S3_* variables", () => {
   });
 });
 
-// compose.yml no longer enforces the S3_* variables (they're unused with the
-// filesystem backend), so a missing credential must fail loudly here instead
-// of sending unsigned requests.
+// compose.yml no longer enforces the S3_* variables (they're unused with the filesystem backend), so a missing credential must fail loudly here instead of sending unsigned requests.
 test("S3 without credentials is a configuration error", () => {
   assert.throws(() => resolveStorageConfig({ S3_ENDPOINT: "http://minio:9000" }));
   assert.throws(() =>
@@ -41,8 +38,7 @@ test("filesystem backend stores under STORAGE_PATH", () => {
   );
 });
 
-// Silently falling back to some default directory would put uploads on the
-// container's ephemeral layer, where the next redeploy deletes them.
+// Silently falling back to some default directory would put uploads on the container's ephemeral layer, where the next redeploy deletes them.
 test("filesystem backend without STORAGE_PATH is a configuration error", () => {
   assert.throws(() => resolveStorageConfig({ STORAGE_BACKEND: "filesystem" }));
   assert.throws(() =>

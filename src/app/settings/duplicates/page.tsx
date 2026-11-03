@@ -6,10 +6,7 @@ import { DuplicatesList } from "./duplicates-list";
 
 export const dynamic = "force-dynamic";
 
-// Moderator/admin-only duplicate worklist (issue #118). Detection at import
-// and upload time only *flags* — every signed-in user can wave a flag away and
-// add the copy anyway — so this page is where those dismissed matches pile up
-// for someone to actually resolve.
+// Moderator/admin-only duplicate worklist (issue #118). Detection at import and upload time only *flags* — every signed-in user can wave a flag away and add the copy anyway — so this page is where those dismissed matches pile up for someone to actually resolve.
 export default async function DuplicatesSettingsPage() {
   const session = await getSession();
   if (!session) redirect(await signInRedirect());

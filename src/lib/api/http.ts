@@ -1,7 +1,4 @@
-// Response conventions of /api/v1, in one place: JSON bodies, the error
-// envelope `{ error, code }` (schemas.ts › ApiError), and how the mutation
-// core's outcomes map onto status codes. Pure — plain `Response`, no Next.js —
-// so the mapping is unit-tested.
+// Response conventions of /api/v1, in one place: JSON bodies, the error envelope `{ error, code }` (schemas.ts › ApiError), and how the mutation core's outcomes map onto status codes. Pure — plain `Response`, no Next.js — so the mapping is unit-tested.
 
 import type { ZodError } from "zod";
 import type { MutationError } from "@/lib/model-mutations";
@@ -70,8 +67,7 @@ export function mutationError(err: MutationError): Response {
   return apiError(status, code, err.error);
 }
 
-// The flag-only duplicate prompt (issue #118) as an HTTP conflict: nothing was
-// saved, and repeating the request with confirmDuplicate saves anyway.
+// The flag-only duplicate prompt (issue #118) as an HTTP conflict: nothing was saved, and repeating the request with confirmDuplicate saves anyway.
 export function duplicateConflict(
   duplicates: { id: string; title: string }[],
   url: (path: string) => string,

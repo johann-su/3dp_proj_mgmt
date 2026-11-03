@@ -33,16 +33,11 @@ test("formatGrams keeps a decimal only below 10 g", () => {
 });
 
 test("formatDate is pinned to UTC regardless of the host timezone", () => {
-  // model-view.tsx renders this in a "use client" component that's both
-  // server- and client-rendered; a timestamp near midnight UTC would format
-  // to different calendar days on a UTC server vs. a UTC+ browser (or vice
-  // versa) if the zone weren't fixed, tripping a React hydration mismatch.
+  // model-view.tsx renders this in a "use client" component that's both server- and client-rendered; a timestamp near midnight UTC would format to different calendar days on a UTC server vs. a UTC+ browser (or vice versa) if the zone weren't fixed, tripping a React hydration mismatch.
   assert.equal(formatDate(new Date("2026-07-06T23:30:00Z")), "Jul 6, 2026");
 });
 
-// The gallery video player's clock. Unlike formatDuration (which rounds to
-// "1 h 31 min" for print estimates) this shows the exact second, because it
-// tracks a playhead.
+// The gallery video player's clock. Unlike formatDuration (which rounds to "1 h 31 min" for print estimates) this shows the exact second, because it tracks a playhead.
 test("formatClock pads seconds and only shows hours when there are some", () => {
   assert.equal(formatClock(4), "0:04");
   assert.equal(formatClock(65), "1:05");
@@ -51,8 +46,7 @@ test("formatClock pads seconds and only shows hours when there are some", () => 
   assert.equal(formatClock(3725), "1:02:05");
 });
 
-// A <video> reports NaN duration until metadata loads and Infinity for a
-// stream; neither may render as "NaN:aN" in the control bar.
+// A <video> reports NaN duration until metadata loads and Infinity for a stream; neither may render as "NaN:aN" in the control bar.
 test("formatClock renders a placeholder for durations that aren't a number", () => {
   assert.equal(formatClock(NaN), "0:00");
   assert.equal(formatClock(Infinity), "0:00");

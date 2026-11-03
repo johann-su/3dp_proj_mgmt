@@ -7,9 +7,7 @@ import { Loader2, RotateCcw } from "lucide-react";
 import { revertModelVersion } from "@/app/models/actions";
 import { Button } from "@/components/ui/button";
 
-// Restores the previewed version and returns to the model page. Same policy
-// and mechanics as the History panel's revert: open to any signed-in user,
-// append-only (the restore itself becomes a new version).
+// Restores the previewed version and returns to the model page. Same policy and mechanics as the History panel's revert: open to any signed-in user, append-only (the restore itself becomes a new version).
 export function RestoreVersionButton({
   modelId,
   versionId,

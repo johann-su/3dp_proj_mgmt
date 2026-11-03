@@ -1,14 +1,6 @@
-// The model mutations themselves — create, edit, trash/restore/purge, revert,
-// like — independent of who is asking. The server actions in
-// src/app/models/actions.ts and the public API (src/app/api/v1/) both call
-// these, so validation, the versioning invariants (ensureBaselineVersion
-// first, recordVersion last, S3-delete only what they return — see
-// docs/architecture/versioning.md), duplicate flagging, slicing and page
-// revalidation are the same on every path. Don't add a model write that
-// bypasses them.
+// The model mutations themselves — create, edit, trash/restore/purge, revert, like — independent of who is asking. The server actions in src/app/models/actions.ts and the public API (src/app/api/v1/) both call these, so validation, the versioning invariants (ensureBaselineVersion first, recordVersion last, S3-delete only what they return — see docs/architecture/versioning.md), duplicate flagging, slicing and page revalidation are the same on every path. Don't add a model write that bypasses them.
 //
-// Callers authenticate; these functions authorize. `actor` is whoever the
-// change is attributed to: a session's user, or an API key's owner.
+// Callers authenticate; these functions authorize. `actor` is whoever the change is attributed to: a session's user, or an API key's owner.
 
 import { revalidatePath } from "next/cache";
 import { after } from "next/server";
@@ -68,20 +60,12 @@ export type UploadedFile = {
   kind: FileKind;
   // Set on files exported by the Onshape importer; lets sync replace them.
   onshapeElementId?: string;
-  // Set on files staged by the URL importer (the create form passes draft
-  // files through unchanged). Only honored when the model actually has a
-  // sourceUrl to attribute the provenance to.
+  // Set on files staged by the URL importer (the create form passes draft files through unchanged). Only honored when the model actually has a sourceUrl to attribute the provenance to.
   imported?: boolean;
-  // Upstream identity + last-modified token stamped by the MakerWorld/
-  // Printables importers (see src/lib/import/sync-diff.ts); lets the source
-  // sync match this file against the platform's current file list. Honored
-  // under the same sourceUrl gate as `imported`.
+  // Upstream identity + last-modified token stamped by the MakerWorld/Printables importers (see src/lib/import/sync-diff.ts); lets the source sync match this file against the platform's current file list. Honored under the same sourceUrl gate as `imported`.
   sourceFileId?: string;
   sourceModifiedAt?: string;
-  // SHA-256 of the uploaded/staged bytes, produced server-side by
-  // stageStream/stageBuffer and echoed back through the client. Only stored
-  // for kind "model", where it powers upload duplicate detection; re-validated
-  // as hex, since it travels through the client like every other field here.
+  // SHA-256 of the uploaded/staged bytes, produced server-side by stageStream/stageBuffer and echoed back through the client. Only stored for kind "model", where it powers upload duplicate detection; re-validated as hex, since it travels through the client like every other field here.
   contentHash?: string;
 };
 
@@ -92,27 +76,20 @@ export type CreateModelInput = {
   tags: string[];
   files: UploadedFile[];
   bom?: BomItemInput[];
-  // Gallery videos, each with its slot in the combined image+video order.
-  // Re-validated and canonicalized here — see src/lib/video.ts.
+  // Gallery videos, each with its slot in the combined image+video order. Re-validated and canonicalized here — see src/lib/video.ts.
   videos?: ModelVideo[];
   sourceUrl?: string | null;
-  // Upstream revision token at import time (models.source_revision); only
-  // kept when the source defines one and it has that source's format.
+  // Upstream revision token at import time (models.source_revision); only kept when the source defines one and it has that source's format.
   sourceRevision?: string | null;
-  // S3 keys within `files` that should NOT be queued for slicing — every new
-  // .3mf is queued unless the uploader turns it off in the wizard.
+  // S3 keys within `files` that should NOT be queued for slicing — every new .3mf is queued unless the uploader turns it off in the wizard.
   skipSliceKeys?: string[];
-  // Set once the user has answered the duplicate prompt with "save anyway";
-  // the matches are then recorded instead of blocking the save.
+  // Set once the user has answered the duplicate prompt with "save anyway"; the matches are then recorded instead of blocking the save.
   confirmDuplicate?: boolean;
-  // Models the URL importer already flagged this import against (carried in
-  // the import draft). Recorded alongside any file-hash matches.
+  // Models the URL importer already flagged this import against (carried in the import draft). Recorded alongside any file-hash matches.
   duplicateOfIds?: string[];
 };
 
-// Reference to one file in the order chosen in the wizard: either a file
-// that already exists on the model, or an index into `newFiles`. Used
-// per-kind (model files and images each keep their own relative order).
+// Reference to one file in the order chosen in the wizard: either a file that already exists on the model, or an index into `newFiles`. Used per-kind (model files and images each keep their own relative order).
 export type FileOrderRef = { existingId: string } | { newIndex: number };
 
 export type UpdateModelInput = {
@@ -123,37 +100,29 @@ export type UpdateModelInput = {
   tags: string[];
   newFiles: UploadedFile[];
   removedFileIds: string[];
-  // Filenames edited for files that already exist on the model (kept, not
-  // removed). Ids outside the kept set are ignored.
+  // Filenames edited for files that already exist on the model (kept, not removed). Ids outside the kept set are ignored.
   renamedFiles?: { id: string; filename: string }[];
   modelFileOrder?: FileOrderRef[];
-  // The gallery order — images and videos interleaved, since they share one
-  // carousel and one `position` sequence.
+  // The gallery order — images and videos interleaved, since they share one carousel and one `position` sequence.
   mediaOrder?: FileOrderRef[];
   bom?: BomItemInput[];
   // See CreateModelInput — the full list, not a delta.
   videos?: ModelVideo[];
-  // Kept .3mf files to hand back to the slicer: their estimates and printer
-  // info are re-read from scratch. Ids outside the kept set are ignored.
+  // Kept .3mf files to hand back to the slicer: their estimates and printer info are re-read from scratch. Ids outside the kept set are ignored.
   resliceFileIds?: string[];
-  // S3 keys within newFiles that should NOT be queued for slicing — the
-  // wizard queues every new .3mf unless the uploader turns it off.
+  // S3 keys within newFiles that should NOT be queued for slicing — the wizard queues every new .3mf unless the uploader turns it off.
   skipSliceKeys?: string[];
-  // See CreateModelInput — a new file matching another model's is flagged the
-  // same way on edit.
+  // See CreateModelInput — a new file matching another model's is flagged the same way on edit.
   confirmDuplicate?: boolean;
 };
 
-// Why a mutation didn't happen. `code` is for callers that answer in HTTP
-// (invalid → 400, not_found → 404, forbidden → 403); `error` is safe to show.
+// Why a mutation didn't happen. `code` is for callers that answer in HTTP (invalid → 400, not_found → 404, forbidden → 403); `error` is safe to show.
 export type MutationError = {
   error: string;
   code: "invalid" | "not_found" | "forbidden";
 };
 
-// A save that didn't happen is an error or the flag-only duplicate prompt
-// (issue #118): the catalog already holds these models, and re-submitting
-// with `confirmDuplicate` saves anyway.
+// A save that didn't happen is an error or the flag-only duplicate prompt (issue #118): the catalog already holds these models, and re-submitting with `confirmDuplicate` saves anyway.
 export type SaveOutcome =
   | { modelId: string }
   | MutationError
@@ -166,13 +135,7 @@ const notFound = (error = "Model not found"): MutationError => ({
 });
 const notYours = (): MutationError => ({ error: "Not your model", code: "forbidden" });
 
-// Merges a client-supplied order (kept-file ids interleaved with indices into
-// newFiles) with any files of those kinds the client didn't reference, which
-// are appended at the end. Takes a *set* of kinds so model files and gallery
-// media can each keep their own relative order within the shared,
-// otherwise-flat `position` column — images and videos pass GALLERY_KINDS
-// together, because the carousel interleaves them into one sequence and a
-// video dragged between two photos has to keep that slot.
+// Merges a client-supplied order (kept-file ids interleaved with indices into newFiles) with any files of those kinds the client didn't reference, which are appended at the end. Takes a *set* of kinds so model files and gallery media can each keep their own relative order within the shared, otherwise-flat `position` column — images and videos pass GALLERY_KINDS together, because the carousel interleaves them into one sequence and a video dragged between two photos has to keep that slot.
 function resolveFileOrder(
   kinds: readonly FileKind[],
   kept: { id: string; kind: FileKind }[],
@@ -206,8 +169,7 @@ function resolveFileOrder(
 
 function validateUploads(files: UploadedFile[]): string | null {
   for (const file of files) {
-    // Only accept keys minted by our upload route; anything else could point
-    // at objects the user doesn't own.
+    // Only accept keys minted by our upload route; anything else could point at objects the user doesn't own.
     if (!/^uploads\/[0-9a-f-]{36}\/[a-zA-Z0-9._-]+$/.test(file.key)) {
       return "Invalid file reference";
     }
@@ -218,9 +180,7 @@ function validateUploads(files: UploadedFile[]): string | null {
   return null;
 }
 
-// Content hashes of the model files in an upload set. Only kind "model" is
-// hashed for dedup (images and PDFs are legitimately shared between models),
-// and the value is re-validated because it round-trips through the client.
+// Content hashes of the model files in an upload set. Only kind "model" is hashed for dedup (images and PDFs are legitimately shared between models), and the value is re-validated because it round-trips through the client.
 function modelFileHashes(files: UploadedFile[]): string[] {
   return files.flatMap((f) =>
     f.kind === "model" && isContentHash(f.contentHash) ? [f.contentHash] : [],
@@ -253,9 +213,7 @@ export async function createModelRecord(
     return invalid(`Source URL must be a ${supportedSourceNames()} link`);
   }
 
-  // Revision/element metadata only makes sense on models from a source that
-  // has it, and only in that source's format — it rides in through the
-  // client draft.
+  // Revision/element metadata only makes sense on models from a source that has it, and only in that source's format — it rides in through the client draft.
   const source = sourceForUrl(sourceUrl);
   const sourceRevision =
     input.sourceRevision && source?.isRevisionToken?.(input.sourceRevision)
@@ -266,28 +224,18 @@ export async function createModelRecord(
 
   const tagNames = normalizeTagNames(input.tags);
 
-  // Duplicate detection, raw-upload half: is one of these model files already
-  // in the catalog? Flags, never blocks. /api/import covers the sourceUrl half
-  // before it stages anything and hands its matches over as duplicateOfIds —
-  // filtered here against real, untrashed models, since those ids ride in
-  // through the client draft and a bogus one would fail the FK and take the
-  // whole save down with it.
+  // Duplicate detection, raw-upload half: is one of these model files already in the catalog? Flags, never blocks. /api/import covers the sourceUrl half before it stages anything and hands its matches over as duplicateOfIds — filtered here against real, untrashed models, since those ids ride in through the client draft and a bogus one would fail the FK and take the whole save down with it.
   const sourceMatchIds = await existingModelIds(input.duplicateOfIds ?? []);
   const hashMatches = await findDuplicatesByContentHash(modelFileHashes(uploads));
 
-  // A design imported past the URL prompt usually hash-matches that same
-  // model's files as well — asking again here would be the same question
-  // twice. Only genuinely new matches get a prompt.
+  // A design imported past the URL prompt usually hash-matches that same model's files as well — asking again here would be the same question twice. Only genuinely new matches get a prompt.
   const answered = new Set(sourceMatchIds);
   const unanswered = hashMatches.filter((m) => !answered.has(m.id));
   if (unanswered.length > 0 && !input.confirmDuplicate) {
     return { duplicates: unanswered };
   }
 
-  // Everything this model was flagged against and saved anyway, for the
-  // moderator worklist. Source-URL matches first — recordDuplicateMatches
-  // keeps one row per pair, and "same upstream design" is the better
-  // explanation to keep when both signals fired.
+  // Everything this model was flagged against and saved anyway, for the moderator worklist. Source-URL matches first — recordDuplicateMatches keeps one row per pair, and "same upstream design" is the better explanation to keep when both signals fired.
   const dismissedMatches: { duplicateOfId: string; via: DuplicateVia }[] = [
     ...sourceMatchIds.map((id) => ({
       duplicateOfId: id,
@@ -296,13 +244,11 @@ export async function createModelRecord(
     ...hashMatches.map((d) => ({ duplicateOfId: d.id, via: "file_hash" as const })),
   ];
 
-  // Sniff image headers up front (outside the transaction) so animated covers
-  // can be frozen to a poster frame in browse cards.
+  // Sniff image headers up front (outside the transaction) so animated covers can be frozen to a poster frame in browse cards.
   const animatedKeys = await animatedImageKeys(uploads);
   const skipSlice = new Set(input.skipSliceKeys ?? []);
 
-  // No model stays uncategorized — the form preselects a suggestion, but a
-  // stale/hand-crafted request still lands in "Other".
+  // No model stays uncategorized — the form preselects a suggestion, but a stale/hand-crafted request still lands in "Other".
   const categoryId = input.categoryId || (await otherCategoryId());
 
   const modelId = await db.transaction(async (tx) => {
@@ -324,9 +270,7 @@ export async function createModelRecord(
       uploads.map((file) => {
         const elementId =
           file.kind === "model" ? onshapeElementId(file.onshapeElementId) : null;
-        // Like `imported`, upstream sync ids are only meaningful with a
-        // source to sync against; length-capped since they travel through
-        // the client draft.
+        // Like `imported`, upstream sync ids are only meaningful with a source to sync against; length-capped since they travel through the client draft.
         const sourceString = (value: string | undefined, max: number) =>
           sourceUrl && typeof value === "string" && value.length <= max
             ? value
@@ -337,8 +281,7 @@ export async function createModelRecord(
           filename: file.filename,
           s3Key: file.key,
           size: file.size,
-          // Never store the client-claimed type; derive from the validated
-          // extension (an inline-served text/html "image" would be stored XSS).
+          // Never store the client-claimed type; derive from the validated extension (an inline-served text/html "image" would be stored XSS).
           contentType: contentTypeForFilename(file.filename),
           animated: animatedKeys.has(file.key),
           position: position++,
@@ -413,13 +356,10 @@ export async function updateModelRecord(
     with: { files: true },
   });
   if (!model || model.deletedAt) return notFound();
-  // Editing is open to any signed-in user (collaborative library for a trusted
-  // self-hosted group) — only deletion stays owner-only. See trashModel.
+  // Editing is open to any signed-in user (collaborative library for a trusted self-hosted group) — only deletion stays owner-only. See trashModel.
 
   const removedIds = new Set(input.removedFileIds);
-  // Removing a parametric .scad also removes the .3mf variants generated from
-  // it. The DB FK cascade would drop the rows anyway, but the ids must be in
-  // the removed set so the S3 cleanup below deletes their objects too.
+  // Removing a parametric .scad also removes the .3mf variants generated from it. The DB FK cascade would drop the rows anyway, but the ids must be in the removed set so the S3 cleanup below deletes their objects too.
   for (const f of model.files) {
     if (f.generatedFromId !== null && removedIds.has(f.generatedFromId)) {
       removedIds.add(f.id);
@@ -436,9 +376,7 @@ export async function updateModelRecord(
     return invalid("At least one model file (.3mf, .scad or .step) is required");
   }
 
-  // A file added here may already live on a *different* model — same prompt as
-  // createModelRecord, scoped to exclude this one (re-adding a file the model
-  // already has is the user's business, not a cross-model duplicate).
+  // A file added here may already live on a *different* model — same prompt as createModelRecord, scoped to exclude this one (re-adding a file the model already has is the user's business, not a cross-model duplicate).
   const duplicates = await findDuplicatesByContentHash(
     modelFileHashes(input.newFiles),
     { excludeModelId: model.id },
@@ -447,8 +385,7 @@ export async function updateModelRecord(
     return { duplicates };
   }
 
-  // Sniff new image headers up front (outside the transaction) so animated
-  // covers are frozen to a poster frame in browse cards.
+  // Sniff new image headers up front (outside the transaction) so animated covers are frozen to a poster frame in browse cards.
   const animatedKeys = await animatedImageKeys(input.newFiles);
   const skipSlice = new Set(input.skipSliceKeys ?? []);
 
@@ -456,8 +393,7 @@ export async function updateModelRecord(
   const categoryId = input.categoryId || (await otherCategoryId());
 
   const s3KeysToDelete = await db.transaction(async (tx) => {
-    // Models that predate versioning get their pre-edit state recorded as
-    // version 1 first, so this edit stays revertable (issue #55).
+    // Models that predate versioning get their pre-edit state recorded as version 1 first, so this edit stays revertable (issue #55).
     await ensureBaselineVersion(tx, model.id, model.userId);
 
     await tx
@@ -480,9 +416,7 @@ export async function updateModelRecord(
       );
     }
 
-    // Insert new files; the temporary position doubles as the index into
-    // input.newFiles so returned ids can be mapped back regardless of the
-    // order RETURNING yields them in.
+    // Insert new files; the temporary position doubles as the index into input.newFiles so returned ids can be mapped back regardless of the order RETURNING yields them in.
     const insertedIds: string[] = [];
     if (input.newFiles.length > 0) {
       const inserted = await tx
@@ -511,10 +445,7 @@ export async function updateModelRecord(
       for (const row of inserted) insertedIds[row.position] = row.id;
     }
 
-    // Recompute positions: model files and gallery media each follow the
-    // order chosen in the wizard (resolveFileOrder appends anything the
-    // client didn't reference); PDFs just keep kept-then-new, since there's
-    // no reorder UI for them.
+    // Recompute positions: model files and gallery media each follow the order chosen in the wizard (resolveFileOrder appends anything the client didn't reference); PDFs just keep kept-then-new, since there's no reorder UI for them.
     const orderedModelIds = resolveFileOrder(
       ["model"],
       kept,
@@ -522,8 +453,7 @@ export async function updateModelRecord(
       insertedIds,
       input.modelFileOrder,
     );
-    // Images and videos resolve as one group: `mediaOrder` interleaves them,
-    // and the first entry is the model's cover whichever kind it is.
+    // Images and videos resolve as one group: `mediaOrder` interleaves them, and the first entry is the model's cover whichever kind it is.
     const orderedMediaIds = resolveFileOrder(
       GALLERY_KINDS,
       kept,
@@ -540,8 +470,7 @@ export async function updateModelRecord(
       ...orderedMediaIds,
     ];
     for (const [position, id] of orderedIds.entries()) {
-      // Only kept (pre-existing) files can be renamed; newly inserted ones
-      // already carry their desired filename from the upload step.
+      // Only kept (pre-existing) files can be renamed; newly inserted ones already carry their desired filename from the upload step.
       const keptFile = keptById.get(id);
       const proposedName = keptFile && renameById.get(id);
       const filename = proposedName && sanitizeRename(keptFile.filename, proposedName);
@@ -575,11 +504,7 @@ export async function updateModelRecord(
       duplicates.map((d) => ({ duplicateOfId: d.id, via: "file_hash" })),
     );
 
-    // Snapshot the post-edit state. Removed files keep their S3 objects —
-    // earlier versions still reference the keys, so they stay revertable.
-    // Only generated variants (never referenced by snapshots) lose their
-    // bytes when their .scad source is removed, plus whatever version
-    // pruning orphaned.
+    // Snapshot the post-edit state. Removed files keep their S3 objects — earlier versions still reference the keys, so they stay revertable. Only generated variants (never referenced by snapshots) lose their bytes when their .scad source is removed, plus whatever version pruning orphaned.
     const pruned = await recordVersion(tx, model.id, actor.id, "edit");
     const variantKeys = removed
       .filter((f) => f.generatedFromId !== null)
@@ -589,11 +514,7 @@ export async function updateModelRecord(
 
   await deleteS3Keys(s3KeysToDelete);
 
-  // Files the editor put back in the slice queue: "pending" is all it takes —
-  // the pass below (and any later model-page view) picks them up and rewrites
-  // the estimates and printer_info. Deliberately outside the transaction, so
-  // re-slicing on its own doesn't record a version: the snapshot covers
-  // sliceStatus, and the slicer's own writes land outside versioning too.
+  // Files the editor put back in the slice queue: "pending" is all it takes — the pass below (and any later model-page view) picks them up and rewrites the estimates and printer_info. Deliberately outside the transaction, so re-slicing on its own doesn't record a version: the snapshot covers sliceStatus, and the slicer's own writes land outside versioning too.
   // The old estimates stay visible until the new ones replace them.
   const resliceIds = (input.resliceFileIds ?? []).filter((id) => {
     const file = keptById.get(id);
@@ -616,10 +537,7 @@ export async function updateModelRecord(
   return { modelId: model.id };
 }
 
-// Moves the model to the trash (soft delete). Nothing is destroyed: the rows,
-// version history and S3 objects stay, the model just disappears from every
-// listing. The owner can restore it from /models/trash for
-// TRASH_RETENTION_DAYS; after that the lazy sweep purges it for real.
+// Moves the model to the trash (soft delete). Nothing is destroyed: the rows, version history and S3 objects stay, the model just disappears from every listing. The owner can restore it from /models/trash for TRASH_RETENTION_DAYS; after that the lazy sweep purges it for real.
 export async function trashModel(
   actor: Actor,
   modelId: string,
@@ -629,9 +547,7 @@ export async function trashModel(
     columns: { userId: true, deletedAt: true },
   });
   if (!model || model.deletedAt) return notFound();
-  // Deletion stays owner-gated even though editing is open to everyone —
-  // trashing removes the model from the shared library, unlike an edit.
-  // Moderators/admins pass as owner-equivalent (issue #54).
+  // Deletion stays owner-gated even though editing is open to everyone — trashing removes the model from the shared library, unlike an edit. Moderators/admins pass as owner-equivalent (issue #54).
   if (!canActAsOwner(actor, model.userId)) return notYours();
 
   await db
@@ -644,9 +560,7 @@ export async function trashModel(
   return { ok: true };
 }
 
-// Takes a model back out of the trash — deletion is just deleted_at, so
-// restoring is clearing it. Gated like the deletion it undoes: the owner, or
-// a moderator/admin.
+// Takes a model back out of the trash — deletion is just deleted_at, so restoring is clearing it. Gated like the deletion it undoes: the owner, or a moderator/admin.
 export async function restoreTrashedModel(
   actor: Actor,
   modelId: string,
@@ -668,8 +582,7 @@ export async function restoreTrashedModel(
   return { ok: true };
 }
 
-// The old hard delete, opt-in from the trash page only: removes the rows,
-// the version history and every S3 object any of them reference.
+// The old hard delete, opt-in from the trash page only: removes the rows, the version history and every S3 object any of them reference.
 export async function purgeTrashedModel(
   actor: Actor,
   modelId: string,
@@ -678,8 +591,7 @@ export async function purgeTrashedModel(
     where: eq(models.id, modelId),
     columns: { userId: true, deletedAt: true },
   });
-  // Only trashed models can be purged — the trash is the single doorway to
-  // destroying data.
+  // Only trashed models can be purged — the trash is the single doorway to destroying data.
   if (!model || !model.deletedAt) return notFound("Model not found in trash");
   if (!canActAsOwner(actor, model.userId)) return notYours();
 
@@ -689,11 +601,8 @@ export async function purgeTrashedModel(
   return { ok: true };
 }
 
-// Restores the state a version snapshot recorded — fields, tags, BOM and
-// files (previously removed files come back; their bytes never left S3).
-// Open to any signed-in user like editing itself, and append-only: the revert
-// writes a new version instead of rewriting history, so reverting a revert
-// always works.
+// Restores the state a version snapshot recorded — fields, tags, BOM and files (previously removed files come back; their bytes never left S3).
+// Open to any signed-in user like editing itself, and append-only: the revert writes a new version instead of rewriting history, so reverting a revert always works.
 export async function revertModelToVersion(
   actor: Actor,
   modelId: string,
@@ -734,10 +643,7 @@ export async function revertModelToVersion(
   return { ok: true };
 }
 
-// Like/unlike a model for the actor. A like is per-user metadata, not a
-// model mutation, so it deliberately skips the versioning machinery — no
-// snapshot, no S3 bookkeeping. Anyone may like any (non-trashed) model; the
-// liked list lives at /models/liked.
+// Like/unlike a model for the actor. A like is per-user metadata, not a model mutation, so it deliberately skips the versioning machinery — no snapshot, no S3 bookkeeping. Anyone may like any (non-trashed) model; the liked list lives at /models/liked.
 export async function setModelLike(
   actor: Actor,
   modelId: string,

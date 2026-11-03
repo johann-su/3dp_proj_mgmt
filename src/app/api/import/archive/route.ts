@@ -11,13 +11,10 @@ export const runtime = "nodejs";
 // Every file in the archive is uploaded to S3 before the draft comes back.
 export const maxDuration = 300;
 
-// Matches the export route's MAX_EXPORT_BYTES: nothing this instance produced
-// can be bigger, and the whole archive is buffered in memory to unzip it.
+// Matches the export route's MAX_EXPORT_BYTES: nothing this instance produced can be bigger, and the whole archive is buffered in memory to unzip it.
 const MAX_ARCHIVE_BYTES = 250 * 1024 * 1024;
 
-// Reads the whole body, refusing to buffer past the cap. Content-Length is
-// only a hint (a client can understate or omit it), so the running total is
-// what actually enforces the limit.
+// Reads the whole body, refusing to buffer past the cap. Content-Length is only a hint (a client can understate or omit it), so the running total is what actually enforces the limit.
 async function readBody(req: NextRequest): Promise<Uint8Array | null> {
   if (Number(req.headers.get("content-length") ?? 0) > MAX_ARCHIVE_BYTES) {
     return null;
@@ -45,15 +42,9 @@ async function readBody(req: NextRequest): Promise<Uint8Array | null> {
   return body;
 }
 
-// Imports a .zip previously produced by GET /api/models/[id]/export (issue
-// #94): the archive is unpacked, its files are staged to S3 and the result
-// comes back as the same draft the URL importers return, which the create
-// form prefills from. Nothing is written to the catalog here — the user still
-// reviews and saves the form.
+// Imports a .zip previously produced by GET /api/models/[id]/export (issue #94): the archive is unpacked, its files are staged to S3 and the result comes back as the same draft the URL importers return, which the create form prefills from. Nothing is written to the catalog here — the user still reviews and saves the form.
 //
-// The zip arrives as the raw request body (like /api/upload) rather than
-// multipart: there is exactly one file, and streaming it saves parsing a
-// wrapper around bytes we already have to buffer whole to unzip.
+// The zip arrives as the raw request body (like /api/upload) rather than multipart: there is exactly one file, and streaming it saves parsing a wrapper around bytes we already have to buffer whole to unzip.
 export async function POST(req: NextRequest) {
   const session = await getSession();
   if (!session) {
@@ -76,8 +67,7 @@ export async function POST(req: NextRequest) {
       fallbackTitle: req.nextUrl.searchParams.get("filename") ?? undefined,
     });
 
-    // Staged sequentially: a file-heavy archive would otherwise open one S3
-    // upload per file at once, and the bytes are all in memory already.
+    // Staged sequentially: a file-heavy archive would otherwise open one S3 upload per file at once, and the bytes are all in memory already.
     const files: UploadedFile[] = [];
     for (const file of archive.files) {
       const staged = await stageBuffer(
@@ -88,8 +78,7 @@ export async function POST(req: NextRequest) {
       files.push({
         ...staged,
         kind: file.kind,
-        // Provenance is only meaningful with a source to attribute it to;
-        // createModel applies the same gate again on the way in.
+        // Provenance is only meaningful with a source to attribute it to; createModel applies the same gate again on the way in.
         ...(file.imported ? { imported: true } : {}),
         ...(file.sourceFileId ? { sourceFileId: file.sourceFileId } : {}),
         ...(file.sourceModifiedAt

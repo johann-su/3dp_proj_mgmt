@@ -1,7 +1,4 @@
-// The read side of /api/v1. Filtering reuses the smart-collection rule
-// compiler (src/lib/collection-rules.ts), as the MCP search does, so the API
-// filters exactly like the app's own saved searches. Every model listing
-// filters `deleted_at IS NULL` (see docs/architecture/versioning.md).
+// The read side of /api/v1. Filtering reuses the smart-collection rule compiler (src/lib/collection-rules.ts), as the MCP search does, so the API filters exactly like the app's own saved searches. Every model listing filters `deleted_at IS NULL` (see docs/architecture/versioning.md).
 
 import { and, asc, eq, inArray, isNull, sql, type SQL } from "drizzle-orm";
 import { db } from "@/db";
@@ -19,8 +16,7 @@ import {
 } from "./params";
 import type { ModelDetailRow, ModelSummaryRow } from "./serialize";
 
-// Exact, DateStyle-independent text form of a timestamp for cursors — see
-// params.ts for why it isn't a JS Date.
+// Exact, DateStyle-independent text form of a timestamp for cursors — see params.ts for why it isn't a JS Date.
 const cursorText = (col: SQL) => sql`to_char(${col}, 'YYYY-MM-DD HH24:MI:SS.US')`;
 
 const SORT_COLUMN: Record<ModelSort, { col: SQL; desc: boolean }> = {
@@ -38,10 +34,7 @@ function keyset(col: SQL, idCol: SQL, desc: boolean, cursor: Cursor | null): SQL
     : sql`(${col} > ${at} OR (${col} = ${at} AND ${idCol} > ${cursor.id}::uuid))`;
 }
 
-// Membership of a collection as a predicate over `models m`: rows for a
-// hand-picked one, its live rule tree for a smart one (never materialized —
-// see src/lib/smart-collections.ts). An unparsable stored tree matches
-// nothing rather than reaching the compiler.
+// Membership of a collection as a predicate over `models m`: rows for a hand-picked one, its live rule tree for a smart one (never materialized — see src/lib/smart-collections.ts). An unparsable stored tree matches nothing rather than reaching the compiler.
 export async function collectionMembershipSql(collectionId: string): Promise<SQL | null> {
   const collection = await db.query.collections.findFirst({
     where: eq(collections.id, collectionId),
@@ -55,8 +48,7 @@ export async function collectionMembershipSql(collectionId: string): Promise<SQL
   return "error" in parsed ? sql`false` : ruleTreeToSql(parsed.tree);
 }
 
-// Summary rows for these ids in the given order — the second half of a
-// ranked listing, one query per relation rather than one per row.
+// Summary rows for these ids in the given order — the second half of a ranked listing, one query per relation rather than one per row.
 async function modelSummaries(ids: string[]): Promise<ModelSummaryRow[]> {
   if (ids.length === 0) return [];
   const rows = await db.query.models.findMany({

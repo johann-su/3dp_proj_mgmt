@@ -1,16 +1,6 @@
-// Background runner for MakerWorld collection imports. Started via
-// next/server `after()` from POST /api/import/collection, so it survives the
-// response but dies with the server process — the header indicator's poll
-// (GET /api/import-jobs) marks heartbeat-stale jobs failed so they don't spin
-// forever after a restart.
+// Background runner for MakerWorld collection imports. Started via next/server `after()` from POST /api/import/collection, so it survives the response but dies with the server process — the header indicator's poll (GET /api/import-jobs) marks heartbeat-stale jobs failed so they don't spin forever after a restart.
 //
-// Each listed design runs through the normal single-model import path
-// (importFromMakerworld → stageImportedAssets) and is then inserted directly
-// as a finished model — no create-form step, since editing dozens of models
-// by hand is exactly what this feature avoids. Models land in the local
-// collection created for the job as they finish. Designs the user already
-// imported (same sourceUrl) are only linked into the collection, which also
-// makes a re-run after a failure resume where it left off.
+// Each listed design runs through the normal single-model import path (importFromMakerworld → stageImportedAssets) and is then inserted directly as a finished model — no create-form step, since editing dozens of models by hand is exactly what this feature avoids. Models land in the local collection created for the job as they finish. Designs the user already imported (same sourceUrl) are only linked into the collection, which also makes a re-run after a failure resume where it left off.
 
 import { after } from "next/server";
 import { and, eq } from "drizzle-orm";
@@ -44,8 +34,7 @@ import { animatedImageKeys } from "@/lib/storage";
 import { ImportError, type ImportedProject } from "./types";
 
 const MAX_WARNINGS = 50;
-// Pause between designs — the whole job is one client hammering Bambu's API
-// and CDN, so give them room to breathe.
+// Pause between designs — the whole job is one client hammering Bambu's API and CDN, so give them room to breathe.
 const DELAY_BETWEEN_DESIGNS_MS = 500;
 
 type JobRow = typeof importJobs.$inferSelect;
@@ -54,12 +43,7 @@ export type StartCollectionImport =
   | { ok: true; jobId: string; collectionId: string; title: string; total: number }
   | { ok: false; status: number; error: string };
 
-// Validates and starts a collection import job, scheduling the runner via
-// after(). With `existingCollectionId` (the "Sync" flow) new remote designs
-// land in that collection instead of a freshly created one — the runner's
-// dedup-by-sourceUrl turns the re-run into "import what's new, link the
-// rest". Must be called from a request scope (route handler / server action)
-// for after() to work.
+// Validates and starts a collection import job, scheduling the runner via after(). With `existingCollectionId` (the "Sync" flow) new remote designs land in that collection instead of a freshly created one — the runner's dedup-by-sourceUrl turns the re-run into "import what's new, link the rest". Must be called from a request scope (route handler / server action) for after() to work.
 export async function startCollectionImport(
   userId: string,
   url: URL,
@@ -75,8 +59,7 @@ export async function startCollectionImport(
     };
   }
 
-  // Bulk-importing metadata-only models (no .3mf) would leave dozens of
-  // shells to fix by hand, so a connected Bambu account is required up front.
+  // Bulk-importing metadata-only models (no .3mf) would leave dozens of shells to fix by hand, so a connected Bambu account is required up front.
   const cred = await getBambuCredential(userId);
   if (!cred) {
     return {
@@ -87,8 +70,7 @@ export async function startCollectionImport(
     };
   }
 
-  // One import at a time per user; a second job would fight the first for
-  // Bambu API rate limits and make the progress indicator ambiguous.
+  // One import at a time per user; a second job would fight the first for Bambu API rate limits and make the progress indicator ambiguous.
   const running = await db.query.importJobs.findFirst({
     where: and(eq(importJobs.userId, userId), eq(importJobs.status, "running")),
     columns: { id: true },
@@ -144,8 +126,7 @@ export async function startCollectionImport(
   };
 }
 
-// Jobs currently running in this process (double-start guard, mirrors the
-// inFlight set in src/lib/slicer.ts).
+// Jobs currently running in this process (double-start guard, mirrors the inFlight set in src/lib/slicer.ts).
 const inFlight = new Set<string>();
 
 async function updateJob(jobId: string, values: Partial<JobRow>) {
@@ -163,8 +144,7 @@ async function isCanceled(jobId: string): Promise<boolean> {
   return !row || row.status === "canceled";
 }
 
-// Inserts an imported project as a finished model owned by the job's user and
-// links it into the job's collection. Returns the new model id.
+// Inserts an imported project as a finished model owned by the job's user and links it into the job's collection. Returns the new model id.
 async function createImportedModel(
   userId: string,
   collectionId: string | null,
@@ -177,8 +157,7 @@ async function createImportedModel(
   const bom = "items" in bomResult ? bomResult.items : [];
   // Sniff image headers up front so animated covers freeze to a poster frame.
   const animatedKeys = await animatedImageKeys(files);
-  // No form step to pick a category, so suggest one from MakerWorld's own
-  // categories (plus tags/title); "Other" when nothing matches.
+  // No form step to pick a category, so suggest one from MakerWorld's own categories (plus tags/title); "Other" when nothing matches.
   const categoryId = await pickCategoryId({
     title: project.title,
     tags: project.tags,
@@ -270,8 +249,7 @@ async function runJob(jobId: string) {
   });
   if (!job || job.status !== "running") return;
 
-  // The start route requires a connected Bambu account; it can still have
-  // been disconnected between then and now.
+  // The start route requires a connected Bambu account; it can still have been disconnected between then and now.
   const cred = await getBambuCredential(job.userId);
   if (!cred) {
     throw new ImportError(
@@ -314,8 +292,7 @@ async function runJob(jobId: string) {
         warn(`${design.title}: ${outcome.reason}`);
       }
     } catch (err) {
-      // An expired login fails every remaining download the same way — stop
-      // instead of burning through the rest of the list.
+      // An expired login fails every remaining download the same way — stop instead of burning through the rest of the list.
       if (err instanceof ImportError && err.message === BAMBU_EXPIRED_WARNING) {
         await markBambuCredentialInvalid(job.userId);
         throw err;
@@ -337,10 +314,7 @@ async function runJob(jobId: string) {
 
   await updateJob(jobId, { status: "done", currentItem: null, warnings });
 
-  // Estimate print time & filament sequentially once the job is done (most
-  // MakerWorld profiles carry embedded slice_info, so this is usually just a
-  // couple of ranged S3 reads per model). Kept out of the import loop so a
-  // slow slicer service doesn't stretch the visible progress.
+  // Estimate print time & filament sequentially once the job is done (most MakerWorld profiles carry embedded slice_info, so this is usually just a couple of ranged S3 reads per model). Kept out of the import loop so a slow slicer service doesn't stretch the visible progress.
   for (const modelId of createdModelIds) {
     await processPendingSlices(modelId);
   }

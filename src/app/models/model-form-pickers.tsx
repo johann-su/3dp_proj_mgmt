@@ -1,9 +1,6 @@
 "use client";
 
-// The create/edit wizard's file-picking UI: dashed-border pickers plus the
-// row/tile lists they render (rename-in-place, drag + button reordering).
-// All state lives in ModelForm (model-form.tsx); these components only
-// receive entries and callbacks.
+// The create/edit wizard's file-picking UI: dashed-border pickers plus the row/tile lists they render (rename-in-place, drag + button reordering). All state lives in ModelForm (model-form.tsx); these components only receive entries and callbacks.
 
 import { useRef, useState } from "react";
 import {
@@ -297,9 +294,7 @@ function ModelFileRow({
       onDragEnter={onDragEnter}
       onDrop={(e) => e.preventDefault()}
     >
-      {/* Only the grip starts the drag, so dragging doesn't fight with
-          selecting text in the rename input. The up/down buttons below cover
-          reordering for keyboard/touch use, where dragging is impractical. */}
+      {/* Only the grip starts the drag, so dragging doesn't fight with selecting text in the rename input. The up/down buttons below cover reordering for keyboard/touch use, where dragging is impractical. */}
       <span
         draggable
         onDragStart={(e) => {
@@ -375,11 +370,7 @@ function ModelFileRow({
         </TooltipTrigger>
         <TooltipContent>Move down</TooltipContent>
       </Tooltip>
-      {/* Slicing is queued by the save, not by this click, so the whole edit
-          stays one action — the hourglass shows what the save will hand over.
-          New files start queued (an upload slices them anyway) and can be
-          taken out; files already on the model start out of the queue, and
-          adding them back re-slices to refresh estimates and printer info. */}
+      {/* Slicing is queued by the save, not by this click, so the whole edit stays one action — the hourglass shows what the save will hand over. New files start queued (an upload slices them anyway) and can be taken out; files already on the model start out of the queue, and adding them back re-slices to refresh estimates and printer info. */}
       {sliceable &&
         (alreadyPending ? (
           <Tooltip>
@@ -540,13 +531,7 @@ export function ModelFilePicker({
   );
 }
 
-// The gallery: uploaded photos and videos plus linked YouTube videos in one
-// grid, because the model page shows them as one carousel — anything dragged
-// between two photos stays there (an uploaded file's index here is its
-// `position`; a linked video's is the `position` saved with it, see
-// mediaLinkedVideos). A linked video has no file behind it, so the picker
-// carries two add affordances: the file input (photos *and* video files), and
-// a URL field that only accepts a link src/lib/video.ts recognizes.
+// The gallery: uploaded photos and videos plus linked YouTube videos in one grid, because the model page shows them as one carousel — anything dragged between two photos stays there (an uploaded file's index here is its `position`; a linked video's is the `position` saved with it, see mediaLinkedVideos). A linked video has no file behind it, so the picker carries two add affordances: the file input (photos *and* video files), and a URL field that only accepts a link src/lib/video.ts recognizes.
 export function MediaPicker({
   media,
   onAddImages,
@@ -568,8 +553,7 @@ export function MediaPicker({
   const [draggedKey, setDraggedKey] = useState<string | null>(null);
   const [videoDraft, setVideoDraft] = useState("");
   const [videoError, setVideoError] = useState<string | null>(null);
-  // Only *linked* videos count against the cap — uploaded video files are
-  // model_files like any photo, bounded by the upload size limit instead.
+  // Only *linked* videos count against the cap — uploaded video files are model_files like any photo, bounded by the upload size limit instead.
   const videoCount = media.filter(isLinkedVideo).length;
 
   function addVideo() {
@@ -615,8 +599,7 @@ export function MediaPicker({
             setVideoDraft(e.target.value);
             setVideoError(null);
           }}
-          // The picker sits inside the wizard's form, where Enter would
-          // otherwise submit the whole model.
+          // The picker sits inside the wizard's form, where Enter would otherwise submit the whole model.
           onKeyDown={(e) => {
             if (e.key === "Enter") {
               e.preventDefault();
@@ -674,8 +657,7 @@ export function MediaPicker({
             >
               {isLinkedVideo(entry) ? (
                 <>
-                  {/* Remote host — next/image would need its own allowlist to
-                      add nothing at this size. */}
+                  {/* Remote host — next/image would need its own allowlist to add nothing at this size. */}
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img
                     src={youTubeThumbnailUrl(entry.video)}
@@ -690,9 +672,7 @@ export function MediaPicker({
                 </>
               ) : isVideoFile(entry) ? (
                 <>
-                  {/* preload="metadata" is enough for the browser to paint the
-                      first frame as a poster; the tile never plays, so there
-                      is no reason to fetch more of the file than that. */}
+                  {/* preload="metadata" is enough for the browser to paint the first frame as a poster; the tile never plays, so there is no reason to fetch more of the file than that. */}
                   <video
                     src={entry.src}
                     muted
@@ -714,9 +694,7 @@ export function MediaPicker({
                   className="aspect-square w-full object-cover"
                 />
               )}
-              {/* The cover is the first uploaded file — photo or video. A
-                  linked video can't be one: browse cards show a stored file,
-                  and there is nothing of a YouTube link to show there. */}
+              {/* The cover is the first uploaded file — photo or video. A linked video can't be one: browse cards show a stored file, and there is nothing of a YouTube link to show there. */}
               {!isLinkedVideo(entry) && mediaFiles(media)[0]?.key === entry.key && (
                 <span className="absolute top-1 left-1 rounded bg-primary text-primary-foreground text-[10px] font-medium px-1.5 py-0.5">
                   Cover

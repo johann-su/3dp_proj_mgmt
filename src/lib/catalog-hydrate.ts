@@ -8,16 +8,12 @@ import { smartCollectionPreviews } from "@/lib/smart-collections";
 
 // A single hit in a combined (models ∪ collections) result stream — shared by
 // /search and the homepage feed, both of which rank the two tables together
-// and need the same two card shapes. The discriminant lets each grid pick the
-// right component.
+// and need the same two card shapes. The discriminant lets each grid pick the right component.
 export type CatalogItem =
   | { kind: "model"; model: ModelCardData }
   | { kind: "collection"; collection: CollectionCardData };
 
-// Turns the bare (id, kind) rows of a ranked models∪collections query into
-// fully-populated card data, preserving the ranked order. Models and
-// collections are fetched in one query each (not one-per-row) and stitched
-// back together by id.
+// Turns the bare (id, kind) rows of a ranked models∪collections query into fully-populated card data, preserving the ranked order. Models and collections are fetched in one query each (not one-per-row) and stitched back together by id.
 export async function hydrateCatalogRows(
   rows: { id: string; kind: "model" | "collection" }[],
 ): Promise<CatalogItem[]> {
@@ -85,8 +81,7 @@ export async function hydrateCatalogRows(
       },
     ]),
   );
-  // Smart collections have no collection_models rows — their covers and count
-  // come from evaluating the stored rules (see smart-collections.ts).
+  // Smart collections have no collection_models rows — their covers and count come from evaluating the stored rules (see smart-collections.ts).
   const smartPreviews = await smartCollectionPreviews(
     collectionRows.filter((c) => c.smart).map((c) => ({ id: c.id, rules: c.rules })),
   );

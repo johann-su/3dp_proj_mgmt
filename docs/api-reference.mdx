@@ -7,35 +7,20 @@ description: The public REST API (/api/v1, API keys) and the internal HTTP endpo
 
 Print Vault has two HTTP surfaces:
 
-- **The REST API under `/api/v1`** — for scripts and integrations (n8n, Home
-  Assistant, a CAD add-in, a browser extension). Versioned, authenticated with
-  personal **API keys**, described by an OpenAPI document. Off unless
-  `ENABLE_API=true`. [Jump to it](#rest-api-v1).
-- **The app's own routes under `/api/*`** — the endpoints the browser UI
-  calls, documented further down. They are **not a stable public API**: no
-  versioning guarantee, session-cookie auth only. Treat them as internal and
-  expect them to change alongside the app.
+- **The REST API under `/api/v1`** — for scripts and integrations (n8n, Home Assistant, a CAD add-in, a browser extension). Versioned, authenticated with personal **API keys**, described by an OpenAPI document. Off unless `ENABLE_API=true`. [Jump to it](#rest-api-v1).
+- **The app's own routes under `/api/*`** — the endpoints the browser UI calls, documented further down. They are **not a stable public API**: no versioning guarantee, session-cookie auth only. Treat them as internal and expect them to change alongside the app.
 
 ## REST API (v1)
 
 ### Turning it on and getting a key
 
-Set `ENABLE_API=true` and restart (see [Configuration](/configuration#rest-api-optional)).
-Every user then finds **Settings → API keys**, where they create keys for
-themselves: a name, the scopes it may use, and an expiry (30 days to never).
-The key (`pv_…`) is shown **once** — only a hash is stored. A key acts as the
-user who created it, so it can never do more than they can; deleting the user
-deletes their keys, and **Revoke** takes effect on the very next request.
+Set `ENABLE_API=true` and restart (see [Configuration](/configuration#rest-api-optional)). Every user then finds **Settings → API keys**, where they create keys for themselves: a name, the scopes it may use, and an expiry (30 days to never). The key (`pv_…`) is shown **once** — only a hash is stored. A key acts as the user who created it, so it can never do more than they can; deleting the user deletes their keys, and **Revoke** takes effect on the very next request.
 
-An API key is a long-lived bearer credential that bypasses SSO and its MFA.
-On an internet-facing instance that relies on
-[`DISABLE_PASSWORD_LOGIN`](/sso) to keep a single, MFA-protected door, think
-about whether you want that second door before enabling it.
+An API key is a long-lived bearer credential that bypasses SSO and its MFA. On an internet-facing instance that relies on [`DISABLE_PASSWORD_LOGIN`](/sso) to keep a single, MFA-protected door, think about whether you want that second door before enabling it.
 
 ### Authentication and scopes
 
-Send the key as `Authorization: Bearer pv_…` (or in an `x-api-key` header).
-Each key carries a set of scopes:
+Send the key as `Authorization: Bearer pv_…` (or in an `x-api-key` header). Each key carries a set of scopes:
 
 | Scope | Allows |
 |---|---|
@@ -46,22 +31,13 @@ Each key carries a set of scopes:
 | `collections:read` | List and read collections |
 | `collections:write` | Add models to and remove them from collections |
 
-A write scope implies read on the same resource. `files:read` is listed
-separately on purpose: many integrations only need metadata, and model files
-can be paid content. Like the browser, editing is collaborative — any key with
-`models:write` can edit any model — while trashing a model stays limited to its
-owner (or a [moderator](/roles)).
+A write scope implies read on the same resource. `files:read` is listed separately on purpose: many integrations only need metadata, and model files can be paid content. Like the browser, editing is collaborative — any key with `models:write` can edit any model — while trashing a model stays limited to its owner (or a [moderator](/roles)).
 
 ### Conventions
 
-- **Base URL** — `{BETTER_AUTH_URL}/api/v1`. The machine-readable description
-  is at **`GET /api/v1/openapi.json`** (OpenAPI 3.1, readable without a key) —
-  point Swagger UI, n8n's HTTP node or a client generator at it.
-- **JSON in and out**, except uploads (raw bytes in) and downloads (bytes out).
-  Responses are never cacheable (`Cache-Control: no-store`).
-- **Errors** are `{ "error": "…", "code": "…" }` with a matching status;
-  `code` is stable, `error` is human-readable. Validation errors add
-  `issues: [{ path, message }]`.
+- **Base URL** — `{BETTER_AUTH_URL}/api/v1`. The machine-readable description is at **`GET /api/v1/openapi.json`** (OpenAPI 3.1, readable without a key) — point Swagger UI, n8n's HTTP node or a client generator at it.
+- **JSON in and out**, except uploads (raw bytes in) and downloads (bytes out). Responses are never cacheable (`Cache-Control: no-store`).
+- **Errors** are `{ "error": "…", "code": "…" }` with a matching status; `code` is stable, `error` is human-readable. Validation errors add `issues: [{ path, message }]`.
 
 | Status | `code` | Meaning |
 |---|---|---|
@@ -73,9 +49,7 @@ owner (or a [moderator](/roles)).
 | `409` | `duplicate` | A model file matches one already in the catalog; nothing was saved |
 | `429` | `rate_limited` | More than 600 requests in a minute for this key; see `Retry-After` |
 
-- **Pagination** — list endpoints return `{ data, nextCursor }`; pass
-  `?cursor=<nextCursor>` (with the same `sort`) for the next page and stop at
-  `null`. `limit` is 1–100, default 24.
+- **Pagination** — list endpoints return `{ data, nextCursor }`; pass `?cursor=<nextCursor>` (with the same `sort`) for the next page and stop at `null`. `limit` is 1–100, default 24.
 
 ### Endpoints
 
@@ -109,67 +83,34 @@ curl -s -H "Authorization: Bearer $KEY" -H 'Content-Type: application/json' \
   "$API/models"
 ```
 
-An upload handle is valid for 24 hours and only for the key's own user. A
-`.3mf` is queued for [print estimates](/features/slicing) like a browser
-upload unless its attachment says `"slice": false`. Models created or edited
-through the API are [versioned](/features/versioning) and attributed to the
-key's user exactly like edits in the app.
+An upload handle is valid for 24 hours and only for the key's own user. A `.3mf` is queued for [print estimates](/features/slicing) like a browser upload unless its attachment says `"slice": false`. Models created or edited through the API are [versioned](/features/versioning) and attributed to the key's user exactly like edits in the app.
 
-Not covered yet: restoring from the trash, version history, collection
-create/edit, the customizer, and importing from MakerWorld/Printables/Onshape —
-those stay in the app (or its internal routes below) for now. Deletions don't
-show up in `updatedSince` listings; poll a model by id if you need to notice
-one.
+Not covered yet: restoring from the trash, version history, collection create/edit, the customizer, and importing from MakerWorld/Printables/Onshape — those stay in the app (or its internal routes below) for now. Deletions don't show up in `updatedSince` listings; poll a model by id if you need to notice one.
 
 ## Internal routes
 
-The rest of this page documents the routes the web UI calls. A few
-conventions hold across them:
+The rest of this page documents the routes the web UI calls. A few conventions hold across them:
 
-- **Base URL.** Every path below is relative to your deployment's public origin
-  (`BETTER_AUTH_URL`, e.g. `https://models.example.com`) — so
-  `POST /api/import` means `POST https://models.example.com/api/import`.
-- **Authentication is by session cookie.** Almost every endpoint requires a
-  signed-in [session](/roles) and returns `401 {"error":"Unauthorized"}`
-  without one — the whole catalog is private. The only alternative credential
-  is the **signed file token** accepted by the file-serving routes (for the
-  cookie-less consumers: the image optimizer and slicer deep links); it is
-  minted by the app, not something a client requests. API keys are **not**
-  accepted here — a programmatic client uses [the REST API](#rest-api-v1).
-- **JSON in and out.** Request and response bodies are JSON unless noted (file
-  uploads send raw bytes; downloads and the STL preview return binary). Errors are `{ "error": "<message>" }` with a matching
-  status code.
-- **This is not the whole surface.** Most mutations — creating and editing
-  models and collections, trash and restore, user roles, connecting Bambu/
-  Onshape accounts — run through **Next.js Server Actions**, not REST routes,
-  so they don't appear here. This page covers the `/api/*` routes only.
+- **Base URL.** Every path below is relative to your deployment's public origin (`BETTER_AUTH_URL`, e.g. `https://models.example.com`) — so `POST /api/import` means `POST https://models.example.com/api/import`.
+- **Authentication is by session cookie.** Almost every endpoint requires a signed-in [session](/roles) and returns `401 {"error":"Unauthorized"}` without one — the whole catalog is private. The only alternative credential is the **signed file token** accepted by the file-serving routes (for the cookie-less consumers: the image optimizer and slicer deep links); it is minted by the app, not something a client requests. API keys are **not** accepted here — a programmatic client uses [the REST API](#rest-api-v1).
+- **JSON in and out.** Request and response bodies are JSON unless noted (file uploads send raw bytes; downloads and the STL preview return binary). Errors are `{ "error": "<message>" }` with a matching status code.
+- **This is not the whole surface.** Most mutations — creating and editing models and collections, trash and restore, user roles, connecting Bambu/Onshape accounts — run through **Next.js Server Actions**, not REST routes, so they don't appear here. This page covers the `/api/*` routes only.
 
 ## Authentication
 
 ### `GET|POST /api/auth/*`
 
-All authentication is delegated to [Better Auth](https://www.better-auth.com/),
-which mounts its own handler under this catch-all: email/password sign-up and
-sign-in, sign-out, the session endpoint, and the [OIDC single sign-on](/sso)
-authorize/callback when configured. Request and response shapes are Better
-Auth's own; the app does not add routes here. Self-registration can be turned
-off with `DISABLE_SIGNUP` (see [Configuration](/configuration)).
+All authentication is delegated to [Better Auth](https://www.better-auth.com/), which mounts its own handler under this catch-all: email/password sign-up and sign-in, sign-out, the session endpoint, and the [OIDC single sign-on](/sso) authorize/callback when configured. Request and response shapes are Better Auth's own; the app does not add routes here. Self-registration can be turned off with `DISABLE_SIGNUP` (see [Configuration](/configuration)).
 
 ## File uploads & downloads
 
 ### `POST /api/upload`
 
-Stages a single uploaded file into S3 under an unguessable `uploads/…` key and
-returns a descriptor. This is the first half of the create/edit flow — the
-returned `key` is later committed to a model by a server action. The upload is
-**streamed**, so large `.3mf` files never buffer in memory.
+Stages a single uploaded file into S3 under an unguessable `uploads/…` key and returns a descriptor. This is the first half of the create/edit flow — the returned `key` is later committed to a model by a server action. The upload is **streamed**, so large `.3mf` files never buffer in memory.
 
-- **Query params** — `filename` (required) and `kind` (required, one of
-  `model` | `image` | `pdf`).
+- **Query params** — `filename` (required) and `kind` (required, one of `model` | `image` | `pdf`).
 - **Body** — the raw file bytes.
-- The extension must be allowed for the `kind` (e.g. an image `kind` rejects a
-  `.3mf`); the served content type is derived from the extension, never the
-  request header.
+- The extension must be allowed for the `kind` (e.g. an image `kind` rejects a `.3mf`); the served content type is derived from the extension, never the request header.
 
 | Status | Meaning |
 |---|---|
@@ -179,24 +120,15 @@ returned `key` is later committed to a model by a server action. The upload is
 
 ### `GET /api/uploads/preview?key=<key>`
 
-Serves a **staged image** (an `uploads/…` object) so the create form can show a
-thumbnail of a file imported by URL before the model exists. Restricted to
-images with a well-formed staging key — it is deliberately not a general S3
-proxy. Returns the image inline, or `404` for a non-image, malformed key, or
-missing object.
+Serves a **staged image** (an `uploads/…` object) so the create form can show a thumbnail of a file imported by URL before the model exists. Restricted to images with a well-formed staging key — it is deliberately not a general S3 proxy. Returns the image inline, or `404` for a non-image, malformed key, or missing object.
 
 ### `GET /api/files/<id>`
 
-Serves a stored model file, image, or PDF by its file `id` (a UUID). This is the
-main download/serve route.
+Serves a stored model file, image, or PDF by its file `id` (a UUID). This is the main download/serve route.
 
 - **Auth** — a **session cookie** *or* a signed file token via `?token=<token>`.
-- **Query params** — `token` (optional; the cookie-less credential) and
-  `download=1` (optional; forces an attachment download of an otherwise-inline
-  image/PDF).
-- Model files are always sent as an attachment; images and PDFs stream inline
-  unless `download=1`. The content type comes from the file's allowlisted
-  extension (never a stored value) and downloads are counted as a metric.
+- **Query params** — `token` (optional; the cookie-less credential) and `download=1` (optional; forces an attachment download of an otherwise-inline image/PDF).
+- Model files are always sent as an attachment; images and PDFs stream inline unless `download=1`. The content type comes from the file's allowlisted extension (never a stored value) and downloads are counted as a metric.
 
 | Status | Meaning |
 |---|---|
@@ -206,37 +138,19 @@ main download/serve route.
 
 ### `GET /api/files/<id>/<token>/<filename>`
 
-The same file as `/api/files/<id>`, addressed with the token as a **path
-segment** and a trailing filename. This form exists for **slicer deep links**
-(OrcaSlicer, Bambu Studio), which download the URL without cookies and derive a
-real `.3mf` name from the last path segment — and which don't strip the query
-string, so the token can't live in `?token=`. The `id` UUID is authoritative;
-the `filename` is cosmetic. See
-[Open in slicer](/features/slicing#open-in-slicer).
+The same file as `/api/files/<id>`, addressed with the token as a **path segment** and a trailing filename. This form exists for **slicer deep links** (OrcaSlicer, Bambu Studio), which download the URL without cookies and derive a real `.3mf` name from the last path segment — and which don't strip the query string, so the token can't live in `?token=`. The `id` UUID is authoritative; the `filename` is cosmetic. See [Open in slicer](/features/slicing#open-in-slicer).
 
 ### `GET /api/files/versions/<versionId>/<index>`
 
-Serves one file of a **version snapshot** (see [Versioning](/features/versioning))
-for the version-preview page. Historical files have no stable `id`, so they are
-addressed as `(version row, index into that snapshot's file list)` — both
-immutable. Auth mirrors `/api/files/<id>` (session cookie or `?token=`);
-`download=1` forces an attachment. Snapshot views are **not** counted as
-downloads. Returns `404` for a non-positive/out-of-range index or unknown
-version.
+Serves one file of a **version snapshot** (see [Versioning](/features/versioning)) for the version-preview page. Historical files have no stable `id`, so they are addressed as `(version row, index into that snapshot's file list)` — both immutable. Auth mirrors `/api/files/<id>` (session cookie or `?token=`); `download=1` forces an attachment. Snapshot views are **not** counted as downloads. Returns `404` for a non-positive/out-of-range index or unknown version.
 
 ## Platform import
 
-See [MakerWorld & Printables](/integrations/makerworld-printables) and
-[Onshape](/integrations/onshape) for what these importers do; the contracts here
-are just the HTTP shapes.
+See [MakerWorld & Printables](/integrations/makerworld-printables) and [Onshape](/integrations/onshape) for what these importers do; the contracts here are just the HTTP shapes.
 
 ### `POST /api/import`
 
-Imports a **single model** from a MakerWorld, Printables, or Onshape URL. It
-resolves and stages the files, then returns a *draft* the create form
-pre-fills — nothing is saved to the catalog until the user completes the form.
-The route is multi-phase to handle confirmation prompts and Onshape's tab
-picker; the client re-POSTs with extra fields as prompted.
+Imports a **single model** from a MakerWorld, Printables, or Onshape URL. It resolves and stages the files, then returns a *draft* the create form pre-fills — nothing is saved to the catalog until the user completes the form. The route is multi-phase to handle confirmation prompts and Onshape's tab picker; the client re-POSTs with extra fields as prompted.
 
 **Request body**
 
@@ -247,17 +161,11 @@ picker; the client re-POSTs with extra fields as prompted.
 | `onshapeElements` | string[] | Onshape only: the element (tab) ids picked in the selection dialog. |
 | `onshapeWvm` / `onshapeWvmId` | string | Onshape only: a branch (`w`) or version (`v`) and its id, overriding the URL's pin. |
 
-**Responses** — all `200` unless the URL is unusable; the body's shape tells the
-client which phase it's in:
+**Responses** — all `200` unless the URL is unusable; the body's shape tells the client which phase it's in:
 
-- **Draft** (the success case) — `{ source, sourceUrl, title, description, tags,
-  categories, files, bom, warnings, sourceRevision }`.
-- **Needs confirmation** — `{ needsConfirmation: true, fileCount, title }` when
-  the model has a lot of files. Re-POST with `confirm: true`.
-- **Needs Onshape selection** — `{ needsOnshapeSelection: true, title, tabs,
-  maxTabs, branches, selected }` for a multi-tab or multi-branch document
-  (`maxTabs` is the server-side export cap, currently **8**). Re-POST with
-  `onshapeElements` (and optionally a branch).
+- **Draft** (the success case) — `{ source, sourceUrl, title, description, tags, categories, files, bom, warnings, sourceRevision }`.
+- **Needs confirmation** — `{ needsConfirmation: true, fileCount, title }` when the model has a lot of files. Re-POST with `confirm: true`.
+- **Needs Onshape selection** — `{ needsOnshapeSelection: true, title, tabs, maxTabs, branches, selected }` for a multi-tab or multi-branch document (`maxTabs` is the server-side export cap, currently **8**). Re-POST with `onshapeElements` (and optionally a branch).
 
 | Status | Meaning |
 |---|---|
@@ -268,64 +176,39 @@ client which phase it's in:
 
 ### `POST /api/import/archive`
 
-Imports a **`.zip` exported by `GET /api/models/<id>/export`** (this instance or
-another one) and returns the same *draft* the create form pre-fills from —
-nothing is saved to the catalog. The archive's files are unpacked and staged to
-S3; its `metadata.json` supplies the title, description, tags, category name,
-BOM (sections included) and per-file provenance. Archives predating that
-manifest fall back to the folder names, `README.md` and `bom.csv`.
+Imports a **`.zip` exported by `GET /api/models/<id>/export`** (this instance or another one) and returns the same *draft* the create form pre-fills from — nothing is saved to the catalog. The archive's files are unpacked and staged to S3; its `metadata.json` supplies the title, description, tags, category name, BOM (sections included) and per-file provenance. Archives predating that manifest fall back to the folder names, `README.md` and `bom.csv`.
 
-- **Body** — the raw `.zip` bytes (not multipart), like `POST /api/upload`.
-  `?filename=` is optional and only used as the title when the archive names
-  the model nowhere.
-- **`200`** — a draft: `{ source: "archive", sourceUrl, title, description,
-  tags, categories, files, bom, warnings, sourceRevision }`. Files the
-  OpenSCAD customizer generated are omitted and reported in `warnings`.
-- **`400`** not a readable zip, no archive uploaded, or no model files inside ·
-  **`401`** not signed in · **`413`** larger than 250 MB · **`500`** unexpected
-  failure.
+- **Body** — the raw `.zip` bytes (not multipart), like `POST /api/upload`. `?filename=` is optional and only used as the title when the archive names the model nowhere.
+- **`200`** — a draft: `{ source: "archive", sourceUrl, title, description, tags, categories, files, bom, warnings, sourceRevision }`. Files the OpenSCAD customizer generated are omitted and reported in `warnings`.
+- **`400`** not a readable zip, no archive uploaded, or no model files inside · **`401`** not signed in · **`413`** larger than 250 MB · **`500`** unexpected failure.
 
 ### `POST /api/import/collection`
 
-Starts a **background import of a whole MakerWorld collection**. It validates the
-URL and the user's Bambu connection, creates a local collection plus an
-`import_jobs` row, kicks off the runner, and returns immediately — progress is
-polled from `GET /api/import-jobs`.
+Starts a **background import of a whole MakerWorld collection**. It validates the URL and the user's Bambu connection, creates a local collection plus an `import_jobs` row, kicks off the runner, and returns immediately — progress is polled from `GET /api/import-jobs`.
 
 - **Body** — `{ url }` (a MakerWorld collection URL).
 - **`200`** — `{ jobId, collectionId, title, total }`.
-- **`400`** invalid URL · **`401`** not signed in · **`502`** platform error ·
-  **`500`** unexpected failure. A validation failure from the job starter (e.g.
-  no Bambu account) comes back as `{ error }` with its own status.
+- **`400`** invalid URL · **`401`** not signed in · **`502`** platform error · **`500`** unexpected failure. A validation failure from the job starter (e.g. no Bambu account) comes back as `{ error }` with its own status.
 
 ### `GET /api/import-jobs`
 
-Returns the signed-in user's **3 most recent import jobs**, newest first —
-polled by the header progress indicator. On each poll it also self-heals:
-`running` jobs whose runner has gone silent for over 10 minutes (a server
-restart) are marked `failed`.
+Returns the signed-in user's **3 most recent import jobs**, newest first — polled by the header progress indicator. On each poll it also self-heals: `running` jobs whose runner has gone silent for over 10 minutes (a server restart) are marked `failed`.
 
-- **`200`** — `{ jobs: [{ id, status, sourceUrl, collectionId, total,
-  completed, failed, skipped, currentItem, error, warnings, createdAt }] }`.
-  `status` is one of `running` | `completed` | `failed` | `canceled`.
+- **`200`** — `{ jobs: [{ id, status, sourceUrl, collectionId, total, completed, failed, skipped, currentItem, error, warnings, createdAt }] }`. `status` is one of `running` | `completed` | `failed` | `canceled`.
 - **`401`** not signed in.
 
 ### `POST /api/import-jobs/<id>/cancel`
 
-Flags a **running** job as `canceled`; its runner notices between designs and
-stops. Models imported so far are kept. Only the job's owner can cancel it.
+Flags a **running** job as `canceled`; its runner notices between designs and stops. Models imported so far are kept. Only the job's owner can cancel it.
 
 - **`200`** — `{ ok: true }`.
-- **`404`** — no *running* job with that id owned by the caller · **`401`** not
-  signed in.
+- **`404`** — no *running* job with that id owned by the caller · **`401`** not signed in.
 
 ## Models
 
 ### `GET /api/models/<id>/export`
 
-Downloads everything attached to a model as a single **`.zip`**
-(`Content-Disposition: attachment`, named `<model-title>_v<version>.zip` after
-the model title and the [version](/features/versioning) being exported):
+Downloads everything attached to a model as a single **`.zip`** (`Content-Disposition: attachment`, named `<model-title>_v<version>.zip` after the model title and the [version](/features/versioning) being exported):
 
 ```
 metadata.json  manifest — read back by POST /api/import/archive
@@ -336,32 +219,15 @@ documents/     PDF manuals
 images/        gallery images
 ```
 
-`metadata.json` holds what the folder tree can't: tags, the category *name*,
-the BOM with its sections, `sourceUrl`, the
-[gallery videos](/features/models#gallery-videos) with their carousel slots, and
-one entry per file naming its kind,
-its real filename, its sync provenance and whether the customizer generated it.
+`metadata.json` holds what the folder tree can't: tags, the category *name*, the BOM with its sections, `sourceUrl`, the [gallery videos](/features/models#gallery-videos) with their carousel slots, and one entry per file naming its kind, its real filename, its sync provenance and whether the customizer generated it.
 
-The export is always the model's **current state** — earlier versions can't be
-exported — and requires only a session, like the per-file downloads it bundles.
-The version number in the filename (and in `README.md`) is the one the model
-page's History panel shows for the current version. Names that collide inside a folder get a `-2`,
-`-3` suffix. Returns `404` for a bad UUID, an unknown or trashed model; `413`
-when the model's files together exceed the export size limit (250 MB); `401`
-when not signed in.
+The export is always the model's **current state** — earlier versions can't be exported — and requires only a session, like the per-file downloads it bundles. The version number in the filename (and in `README.md`) is the one the model page's History panel shows for the current version. Names that collide inside a folder get a `-2`, `-3` suffix. Returns `404` for a bad UUID, an unknown or trashed model; `413` when the model's files together exceed the export size limit (250 MB); `401` when not signed in.
 
 ### `POST /api/models/<id>/customize`
 
-Renders a [parametric OpenSCAD](/features/parametric) `.scad` file with the
-submitted customizer values and stores the result as a generated `.3mf`
-**variant** of that file. Open to any signed-in user (the variant lands on the
-owner's model); the generator is recorded so a non-owner can later delete their
-own variants. Re-submitting an identical parameter set returns the existing
-variant instead of re-rendering.
+Renders a [parametric OpenSCAD](/features/parametric) `.scad` file with the submitted customizer values and stores the result as a generated `.3mf` **variant** of that file. Open to any signed-in user (the variant lands on the owner's model); the generator is recorded so a non-owner can later delete their own variants. Re-submitting an identical parameter set returns the existing variant instead of re-rendering.
 
-- **Body** — `{ fileId, values }` where `fileId` is the `.scad` file and
-  `values` is a map of customizer parameter → value (coerced against the file's
-  parsed schema).
+- **Body** — `{ fileId, values }` where `fileId` is the `.scad` file and `values` is a map of customizer parameter → value (coerced against the file's parsed schema).
 
 | Status | Meaning |
 |---|---|
@@ -375,31 +241,18 @@ variant instead of re-rendering.
 
 ### `DELETE /api/models/<id>/customize`
 
-Deletes **one generated variant** (never the `.scad` source itself). The model
-owner (or a [moderator/admin](/roles)) can delete any variant; anyone else only
-the variants they generated.
+Deletes **one generated variant** (never the `.scad` source itself). The model owner (or a [moderator/admin](/roles)) can delete any variant; anyone else only the variants they generated.
 
 - **Body** — `{ fileId }` (the variant to delete).
-- **`200`** `{ status: "deleted" }` · **`400`** not a generated variant of this
-  model · **`403`** not allowed · **`404`** model not found · **`401`** not
-  signed in.
+- **`200`** `{ status: "deleted" }` · **`400`** not a generated variant of this model · **`403`** not allowed · **`404`** model not found · **`401`** not signed in.
 
 ### `POST /api/models/<id>/customize/preview`
 
-Renders the same `.scad` + `values` as `customize` but streams the result
-straight back as **binary STL** (`application/octet-stream`, `no-store`) for the
-customize page's 3D preview. Nothing is stored — previews don't count against the
-variant cap or leave S3 objects behind. Errors match `customize`
-(`400`/`401`/`404`/`422`/`502`).
+Renders the same `.scad` + `values` as `customize` but streams the result straight back as **binary STL** (`application/octet-stream`, `no-store`) for the customize page's 3D preview. Nothing is stored — previews don't count against the variant cap or leave S3 objects behind. Errors match `customize` (`400`/`401`/`404`/`422`/`502`).
 
 ### `POST /api/models/<id>/onshape-sync`
 
-Re-exports the model's [Onshape](/integrations/onshape) source and replaces the
-files that came from Onshape, keeping the pre-sync state as a version. Open to
-any signed-in user (uses **their own** Onshape connection). Two-phase: a POST
-with no `addElementIds` is the **preview**; when the document has gained tabs the
-model doesn't carry, it answers `needs-selection` and the client re-POSTs with
-the picked tabs (an empty array declines).
+Re-exports the model's [Onshape](/integrations/onshape) source and replaces the files that came from Onshape, keeping the pre-sync state as a version. Open to any signed-in user (uses **their own** Onshape connection). Two-phase: a POST with no `addElementIds` is the **preview**; when the document has gained tabs the model doesn't carry, it answers `needs-selection` and the client re-POSTs with the picked tabs (an empty array declines).
 
 - **Body** — `{ addElementIds? }` (the new tabs to add on the apply POST).
 
@@ -416,11 +269,7 @@ Version pins (`/v/…`) are immutable and always answer `up-to-date`.
 
 ### `POST /api/models/<id>/source-sync`
 
-Syncs a model imported from **MakerWorld or Printables** against the platform's
-current file list. Imported files mirror upstream; manual files and all metadata
-are left untouched. Two-phase like Onshape sync: POST without `confirm` returns a
-**preview** of the plan; POST `{ confirm: true }` downloads the new/changed files
-and applies it, keeping the pre-sync state as a version.
+Syncs a model imported from **MakerWorld or Printables** against the platform's current file list. Imported files mirror upstream; manual files and all metadata are left untouched. Two-phase like Onshape sync: POST without `confirm` returns a **preview** of the plan; POST `{ confirm: true }` downloads the new/changed files and applies it, keeping the pre-sync state as a version.
 
 - **Body** — `{ confirm? }`.
 
@@ -437,74 +286,39 @@ and applies it, keeping the pre-sync state as a version.
 
 ### `POST /api/collections/<id>/sync`
 
-Re-runs a [collection](/features/collections) import against its stored MakerWorld
-source URL. Designs added remotely since the last run import as new models;
-everything already in the library is just re-linked into the collection. **Nothing
-is deleted** — models removed from the remote collection stay local. Open to any
-signed-in user (uses their own Bambu connection); like the collection import it
-runs in the background and returns a job to poll.
+Re-runs a [collection](/features/collections) import against its stored MakerWorld source URL. Designs added remotely since the last run import as new models; everything already in the library is just re-linked into the collection. **Nothing is deleted** — models removed from the remote collection stay local. Open to any signed-in user (uses their own Bambu connection); like the collection import it runs in the background and returns a job to poll.
 
 - **`200`** — `{ jobId, total }`.
-- **`400`** the collection wasn't imported from MakerWorld · **`404`** collection
-  not found · **`401`** not signed in · **`502`**/**`500`** platform/unexpected
-  error.
+- **`400`** the collection wasn't imported from MakerWorld · **`404`** collection not found · **`401`** not signed in · **`502`**/**`500`** platform/unexpected error.
 
 ## Onshape OAuth
 
-These two routes implement the "Sign in with Onshape" flow (see
-[Onshape integration](/integrations/onshape)). They are browser redirects, not
-JSON endpoints, and are inert unless `ONSHAPE_CLIENT_ID`/`ONSHAPE_CLIENT_SECRET`
-are configured.
+These two routes implement the "Sign in with Onshape" flow (see [Onshape integration](/integrations/onshape)). They are browser redirects, not JSON endpoints, and are inert unless `ONSHAPE_CLIENT_ID`/`ONSHAPE_CLIENT_SECRET` are configured.
 
 ### `GET /api/onshape/authorize`
 
-Starts the flow: stores a CSRF `state` in a short-lived cookie and redirects the
-signed-in user to Onshape's consent screen. Redirects to `/sign-in` when not
-signed in, or to `/settings/onshape?error=not-configured` when OAuth isn't set
-up.
+Starts the flow: stores a CSRF `state` in a short-lived cookie and redirects the signed-in user to Onshape's consent screen. Redirects to `/sign-in` when not signed in, or to `/settings/onshape?error=not-configured` when OAuth isn't set up.
 
 ### `GET /api/onshape/callback`
 
-Onshape's registered redirect target. Verifies the `state` cookie, exchanges the
-`code` for tokens, and stores them **encrypted** for the signed-in user, then
-redirects to `/settings/onshape`. On failure it redirects there with an `?error=`
-code (`denied`, `state-mismatch`, `connect-failed`, `not-configured`).
+Onshape's registered redirect target. Verifies the `state` cookie, exchanges the `code` for tokens, and stores them **encrypted** for the signed-in user, then redirects to `/settings/onshape`. On failure it redirects there with an `?error=` code (`denied`, `state-mismatch`, `connect-failed`, `not-configured`).
 
 ## MCP server
 
-All of the following are **404 unless `ENABLE_MCP=true`** (see the
-[MCP integration](/integrations/mcp)). Besides the [REST API](#rest-api-v1),
-this is the only part meant to be called by something other than the app's
-own UI, and it accepts an OAuth bearer token instead of a session cookie.
+All of the following are **404 unless `ENABLE_MCP=true`** (see the [MCP integration](/integrations/mcp)). Besides the [REST API](#rest-api-v1), this is the only part meant to be called by something other than the app's own UI, and it accepts an OAuth bearer token instead of a session cookie.
 
 ### `POST /api/mcp`
 
-The Model Context Protocol endpoint: JSON-RPC 2.0 over HTTP with a single JSON
-response (no event stream), exposing read-only catalog tools —
-`search_models`, `get_model`, `get_model_bom`, `get_model_print_files`,
-`get_model_documents`, `read_document`, `get_document_images`.
+The Model Context Protocol endpoint: JSON-RPC 2.0 over HTTP with a single JSON response (no event stream), exposing read-only catalog tools — `search_models`, `get_model`, `get_model_bom`, `get_model_print_files`, `get_model_documents`, `read_document`, `get_document_images`.
 
-- **Authentication** — `Authorization: Bearer <token>`, issued by the OAuth
-  flow below. A session cookie is *not* accepted here. Without a valid token
-  the response is **`401`** with a `WWW-Authenticate` header naming the
-  metadata document to start discovery from.
-- A token carries the same read access as the user who approved it: the whole
-  catalog, no mutations.
-- **`GET`**/**`DELETE`** return **`405`** — the server never pushes messages,
-  so there is no stream to open and no session to end.
+- **Authentication** — `Authorization: Bearer <token>`, issued by the OAuth flow below. A session cookie is *not* accepted here. Without a valid token the response is **`401`** with a `WWW-Authenticate` header naming the metadata document to start discovery from.
+- A token carries the same read access as the user who approved it: the whole catalog, no mutations.
+- **`GET`**/**`DELETE`** return **`405`** — the server never pushes messages, so there is no stream to open and no session to end.
 
 ### `GET /.well-known/oauth-authorization-server/api/auth`, `GET /.well-known/openid-configuration/api/auth`, `GET /.well-known/oauth-protected-resource/api/mcp`
 
-Public OAuth discovery documents (RFC 8414 / OpenID / RFC 9728) an MCP client
-reads before it has any credential. The issuer is `{BETTER_AUTH_URL}/api/auth`;
-the bare `/.well-known/…` spellings answer too.
+Public OAuth discovery documents (RFC 8414 / OpenID / RFC 9728) an MCP client reads before it has any credential. The issuer is `{BETTER_AUTH_URL}/api/auth`; the bare `/.well-known/…` spellings answer too.
 
 ### `GET|POST /api/auth/oauth2/*`, `GET /api/auth/jwks`
 
-Better Auth's OAuth provider endpoints: `register` (RFC 7591 dynamic client
-registration, **unauthenticated** — this is how a client bootstraps),
-`authorize`, `consent`, `token`, `userinfo`, `revoke`, `introspect`. Access
-tokens are JWTs signed with the key published at `/api/auth/jwks` and expire
-after 15 minutes; clients renew them with their refresh token. The
-browser-facing pages are `/mcp/authorize` (sign-in hand-off) and
-`/mcp/consent` (the approval screen).
+Better Auth's OAuth provider endpoints: `register` (RFC 7591 dynamic client registration, **unauthenticated** — this is how a client bootstraps), `authorize`, `consent`, `token`, `userinfo`, `revoke`, `introspect`. Access tokens are JWTs signed with the key published at `/api/auth/jwks` and expire after 15 minutes; clients renew them with their refresh token. The browser-facing pages are `/mcp/authorize` (sign-in hand-off) and `/mcp/consent` (the approval screen).

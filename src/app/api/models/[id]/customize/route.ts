@@ -18,8 +18,7 @@ export const runtime = "nodejs";
 // Rendering waits on the OpenSCAD service (2 min timeout plus queueing).
 export const maxDuration = 300;
 
-// Generated variants a single .scad file may accumulate before we ask the
-// owner to clean up — a hard stop against unbounded S3/DB growth.
+// Generated variants a single .scad file may accumulate before we ask the owner to clean up — a hard stop against unbounded S3/DB growth.
 const MAX_VARIANTS_PER_SOURCE = 20;
 
 function paramsHash(parameters: Record<string, string>): string {
@@ -29,8 +28,7 @@ function paramsHash(parameters: Record<string, string>): string {
   return createHash("sha256").update(JSON.stringify(canonical)).digest("hex");
 }
 
-// "<base> (arm_count=4, length=30).3mf", falling back to a short hash when
-// there are no overrides or the summary would blow past a sane length.
+// "<base> (arm_count=4, length=30).3mf", falling back to a short hash when there are no overrides or the summary would blow past a sane length.
 function variantFilename(
   sourceFilename: string,
   parameters: Record<string, string>,
@@ -44,9 +42,7 @@ function variantFilename(
   return `${base} (${suffix}).3mf`.slice(0, 255);
 }
 
-// Renders a parametric .scad model file with the submitted customizer values
-// and stores the result as a generated .3mf variant of that file. Identical
-// parameter sets return the existing variant instead of re-rendering.
+// Renders a parametric .scad model file with the submitted customizer values and stores the result as a generated .3mf variant of that file. Identical parameter sets return the existing variant instead of re-rendering.
 export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
@@ -88,9 +84,7 @@ export async function POST(
     return NextResponse.json({ error: rendered.error }, { status });
   }
 
-  // OpenSCAD writes millimeter coordinates but centers the mesh on the
-  // origin; normalize onto the plate like Onshape exports so slicers (ours
-  // and the user's) accept it.
+  // OpenSCAD writes millimeter coordinates but centers the mesh on the origin; normalize onto the plate like Onshape exports so slicers (ours and the user's) accept it.
   const filename = variantFilename(source.filename, values, hash);
   const staged = await stageBuffer(
     filename,
@@ -128,8 +122,7 @@ export async function POST(
   });
 }
 
-// Deletes one generated variant (never the .scad source itself — that goes
-// through the regular edit flow, which also removes its variants).
+// Deletes one generated variant (never the .scad source itself — that goes through the regular edit flow, which also removes its variants).
 export async function DELETE(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
@@ -159,9 +152,7 @@ export async function DELETE(
       { status: 400 },
     );
   }
-  // The model owner (or a moderator/admin) can delete any variant; anyone
-  // else only the variants they generated themselves (generatedBy). Legacy
-  // variants (null generatedBy) are owner-only.
+  // The model owner (or a moderator/admin) can delete any variant; anyone else only the variants they generated themselves (generatedBy). Legacy variants (null generatedBy) are owner-only.
   const canDelete =
     canActAsOwner(session.user, model.userId) ||
     file.generatedBy === session.user.id;

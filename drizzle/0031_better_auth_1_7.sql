@@ -1,13 +1,6 @@
--- BetterAuth 1.7 dropped the built-in `mcp` plugin (and the oidc-provider
--- schema it wrote to). The MCP server now runs on `@better-auth/mcp` (on
--- `@better-auth/oauth-provider`) plus the `jwt` plugin, whose tables have a
--- different shape — see the OAuth provider tables in src/db/schema.ts.
+-- BetterAuth 1.7 dropped the built-in `mcp` plugin (and the oidc-provider schema it wrote to). The MCP server now runs on `@better-auth/mcp` (on `@better-auth/oauth-provider`) plus the `jwt` plugin, whose tables have a different shape — see the OAuth provider tables in src/db/schema.ts.
 --
--- The old tables are dropped rather than migrated: their opaque tokens can't
--- become the JWTs the new plugin issues, and clients registered dynamically,
--- so they re-register and the user re-approves them on their next request
--- (a 401 with the WWW-Authenticate discovery header starts that by itself).
--- Inert on instances that leave ENABLE_MCP unset.
+-- The old tables are dropped rather than migrated: their opaque tokens can't become the JWTs the new plugin issues, and clients registered dynamically, so they re-register and the user re-approves them on their next request (a 401 with the WWW-Authenticate discovery header starts that by itself). Inert on instances that leave ENABLE_MCP unset.
 DROP TABLE IF EXISTS "oauth_consent";
 --> statement-breakpoint
 DROP TABLE IF EXISTS "oauth_access_token";
@@ -176,10 +169,7 @@ CREATE INDEX "oauth_access_token_auth_code_idx" ON "oauth_access_token" USING bt
 CREATE INDEX "oauth_client_user_idx" ON "oauth_client" USING btree ("user_id");--> statement-breakpoint
 CREATE INDEX "oauth_client_resource_client_idx" ON "oauth_client_resource" USING btree ("client_id");--> statement-breakpoint
 CREATE INDEX "oauth_client_resource_resource_idx" ON "oauth_client_resource" USING btree ("resource_id");--> statement-breakpoint
--- API keys for /api/v1 (@better-auth/api-key, docs/architecture/api.md). The
--- key itself is stored hashed. reference_id is the owning user; the plugin
--- declares it as a plain string, the FK is ours so deleting a user also
--- deletes their keys. Inert on instances that leave ENABLE_API unset.
+-- API keys for /api/v1 (@better-auth/api-key, docs/architecture/api.md). The key itself is stored hashed. reference_id is the owning user; the plugin declares it as a plain string, the FK is ours so deleting a user also deletes their keys. Inert on instances that leave ENABLE_API unset.
 CREATE TABLE "apikey" (
 	"id" text PRIMARY KEY NOT NULL,
 	"config_id" text DEFAULT 'default' NOT NULL,

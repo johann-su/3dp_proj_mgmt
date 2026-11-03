@@ -52,8 +52,7 @@ function modelRow(over: Partial<ModelDetailRow> = {}): ModelDetailRow {
   };
 }
 
-// The serializer projects field by field: an S3 key, content hash or other
-// internal column on the row must never reach a response.
+// The serializer projects field by field: an S3 key, content hash or other internal column on the row must never reach a response.
 test("internal file columns never leak into the response", () => {
   const row = { ...fileRow(), s3Key: "uploads/secret/part.3mf", contentHash: "a".repeat(64) };
   const out = serializeFile(row, url) as Record<string, unknown>;
@@ -62,8 +61,7 @@ test("internal file columns never leak into the response", () => {
   assert.equal(out.downloadUrl, "https://prints.example/api/v1/files/f0000000-0000-4000-8000-000000000001");
 });
 
-// null sliceStatus means estimates don't apply (images, .step), which a
-// client must be able to tell apart from "pending".
+// null sliceStatus means estimates don't apply (images, .step), which a client must be able to tell apart from "pending".
 test("files without estimates have print: null; sliced ones carry the numbers", () => {
   assert.equal(serializeFile(fileRow({ kind: "image", filename: "a.png" }), url).print, null);
   const sliced = serializeFile(

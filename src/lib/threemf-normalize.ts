@@ -1,14 +1,6 @@
-// Normalizes a 3MF archive for slicing: converts the model to millimeters and
-// moves the build onto the positive plate area.
+// Normalizes a 3MF archive for slicing: converts the model to millimeters and moves the build onto the positive plate area.
 //
-// Both steps exist because of Onshape exports: Onshape writes 3MF in meters
-// (regardless of the `unit` translation parameter) with parts modeled around
-// the coordinate origin. That file is spec-valid, but PrusaSlicer, Bambu
-// Studio and OrcaSlicer all ignore the 3MF `unit` attribute and read
-// coordinates as millimeters (a 25 mm part becomes 0.025 mm), and they reject
-// geometry at negative X/Y as "outside of the print volume". Normalizing at
-// import fixes the stored file for the estimate slicer *and* for users who
-// download it into their own slicer.
+// Both steps exist because of Onshape exports: Onshape writes 3MF in meters (regardless of the `unit` translation parameter) with parts modeled around the coordinate origin. That file is spec-valid, but PrusaSlicer, Bambu Studio and OrcaSlicer all ignore the 3MF `unit` attribute and read coordinates as millimeters (a 25 mm part becomes 0.025 mm), and they reject geometry at negative X/Y as "outside of the print volume". Normalizing at import fixes the stored file for the estimate slicer *and* for users who download it into their own slicer.
 //
 // Uses fflate only (no load-time side effects) so it stays unit-testable.
 
@@ -24,15 +16,10 @@ const UNIT_TO_MM: Record<string, number> = {
   meter: 1000,
 };
 
-// Where to put the XY center of the build: middle of a 256 mm plate — dead
-// center for Bambu-size beds and still well inside smaller ones. The estimate
-// slicer's virtual bed is far larger, so the exact value only affects how the
-// file looks when opened in a desktop slicer.
+// Where to put the XY center of the build: middle of a 256 mm plate — dead center for Bambu-size beds and still well inside smaller ones. The estimate slicer's virtual bed is far larger, so the exact value only affects how the file looks when opened in a desktop slicer.
 const TARGET_CENTER_MM = 128;
 
-// A 3MF transform is 12 numbers (4×3 row-major); rows 0–2 are the linear part
-// and row 3 (indices 9–11) is the translation. Points are row vectors:
-// p' = p·M + t.
+// A 3MF transform is 12 numbers (4×3 row-major); rows 0–2 are the linear part and row 3 (indices 9–11) is the translation. Points are row vectors: p' = p·M + t.
 type Mat = number[];
 
 const IDENTITY: Mat = [1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0];
@@ -64,8 +51,7 @@ function parseMat(attr: string): Mat | null {
   return nums.length === 12 && nums.every(Number.isFinite) ? nums : null;
 }
 
-// XML attribute values must not use scientific notation some consumers choke
-// on; fixed decimals trimmed of trailing zeros are safe everywhere.
+// XML attribute values must not use scientific notation some consumers choke on; fixed decimals trimmed of trailing zeros are safe everywhere.
 function fmt(value: number): string {
   const s = value.toFixed(6).replace(/0+$/, "").replace(/\.$/, "");
   return s === "" || s === "-" || s === "-0" ? "0" : s;
@@ -127,9 +113,7 @@ function parseObjects(xml: string): Map<string, ParsedObject> {
   return objects;
 }
 
-// Bounding box of one object under `matrix`, following component references.
-// Transforming the 8 corners of a mesh's local box yields a valid (possibly
-// loose) bound because affine maps preserve convexity.
+// Bounding box of one object under `matrix`, following component references. Transforming the 8 corners of a mesh's local box yields a valid (possibly loose) bound because affine maps preserve convexity.
 function objectBox(
   objects: Map<string, ParsedObject>,
   id: string,
@@ -159,9 +143,7 @@ function scaleTransformAttr(attr: string, scale: number): string {
   return mat.map(fmt).join(" ");
 }
 
-// Rewrites the model XML: scales to millimeters and translates the build so
-// its XY center sits at TARGET_CENTER_MM and its lowest point at z=0.
-// Exported for tests; use normalizeThreeMf for archives.
+// Rewrites the model XML: scales to millimeters and translates the build so its XY center sits at TARGET_CENTER_MM and its lowest point at z=0. Exported for tests; use normalizeThreeMf for archives.
 export function normalizeModelXml(xml: string): string | null {
   const unit = xml.match(/<model\b[^>]*?\bunit="([^"]+)"/)?.[1] ?? "millimeter";
   const scale = UNIT_TO_MM[unit] ?? 1;
@@ -178,8 +160,7 @@ export function normalizeModelXml(xml: string): string | null {
         (_, axis, value) => `${axis}="${fmt(Number(value) * scale)}"`,
       ),
     );
-    // Translation parts of every transform are lengths too (the linear 3×3
-    // part is unitless and stays).
+    // Translation parts of every transform are lengths too (the linear 3×3 part is unitless and stays).
     out = out.replace(
       /\btransform="([^"]+)"/g,
       (_, attr) => `transform="${scaleTransformAttr(attr, scale)}"`,
@@ -221,9 +202,7 @@ export function normalizeModelXml(xml: string): string | null {
   return out;
 }
 
-// Returns a normalized copy of the archive, or the input unchanged when the
-// file already is in millimeters and placed, or when it cannot be parsed
-// (a broken archive should surface downstream, not here).
+// Returns a normalized copy of the archive, or the input unchanged when the file already is in millimeters and placed, or when it cannot be parsed (a broken archive should surface downstream, not here).
 export function normalizeThreeMf(data: Uint8Array): Uint8Array {
   try {
     const entries = unzipSync(data);

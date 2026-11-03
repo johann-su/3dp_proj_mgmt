@@ -8,10 +8,7 @@ import {
 
 const img = (key: string, width: number, height: number) => ({ key, width, height });
 
-// The regression this whole signature scheme exists for. pdf.js gave the same
-// 474x120 banner a different key on every page of the Stallion VTOL manual
-// (img_p6_2, img_p12_2, img_p16_2 …) while caching the 219x32 logo globally as
-// g_d0_img_p1_2 — so a key-based match caught the logo and missed the banner.
+// The regression this whole signature scheme exists for. pdf.js gave the same 474x120 banner a different key on every page of the Stallion VTOL manual (img_p6_2, img_p12_2, img_p16_2 …) while caching the 219x32 logo globally as g_d0_img_p1_2 — so a key-based match caught the logo and missed the banner.
 test("boilerplate re-keyed on every page is still recognised as repeated", () => {
   const bannerOnThisPage = img("img_p16_2", 474, 120);
   const bannerElsewhere = img("img_p6_2", 474, 120);
@@ -29,8 +26,7 @@ test("boilerplate re-keyed on every page is still recognised as repeated", () =>
   );
 });
 
-// Sizes taken from that manual: the banner is larger than plenty of real
-// figures, so size alone cannot separate chrome from content.
+// Sizes taken from that manual: the banner is larger than plenty of real figures, so size alone cannot separate chrome from content.
 test("a repeated banner is dropped even though it clears the size floor", () => {
   const picked = selectDiagrams(
     [img("logo", 474, 200), img("wiring", 800, 600)],
@@ -45,8 +41,7 @@ test("a repeated banner is dropped even though it clears the size floor", () => 
 });
 
 test("a page-specific figure survives when other pages carry different ones", () => {
-  // Real diagrams differ in size (1638x1158, 1625x1149, 1583x890), so they
-  // never collide with each other's signatures.
+  // Real diagrams differ in size (1638x1158, 1625x1149, 1583x890), so they never collide with each other's signatures.
   const picked = selectDiagrams([img("fig", 1583, 890)], new Set(["1638x1158", "219x32"]));
   assert.equal(picked.images.length, 1);
 });
@@ -64,8 +59,7 @@ test("icons and rules below the size floor are page furniture, not figures", () 
   assert.equal(picked.skipped, 2);
 });
 
-// Within a page the key is genuinely unique per drawn object, so it is the
-// right tool for this job even though it is the wrong one across pages.
+// Within a page the key is genuinely unique per drawn object, so it is the right tool for this job even though it is the wrong one across pages.
 test("the same figure painted twice on one page is shown once", () => {
   const picked = selectDiagrams([img("fig", 600, 600), img("fig", 600, 600)], new Set());
   assert.equal(picked.images.length, 1);

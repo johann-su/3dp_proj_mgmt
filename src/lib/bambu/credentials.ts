@@ -64,8 +64,7 @@ export async function getBambuStatus(
   };
 }
 
-// `expiresIn` is the login response's token lifetime in seconds, when Bambu
-// sent one. Saving always clears a previous "rejected" mark — it's a new token.
+// `expiresIn` is the login response's token lifetime in seconds, when Bambu sent one. Saving always clears a previous "rejected" mark — it's a new token.
 export async function saveBambuCredential(
   userId: string,
   account: string,
@@ -91,9 +90,7 @@ export async function saveBambuCredential(
     });
 }
 
-// Called when Bambu answered 401/403 for the stored token, so the settings
-// page and the header reminder ask the user to renew. The credential is kept
-// (not deleted) so renewing can prefill the account and region.
+// Called when Bambu answered 401/403 for the stored token, so the settings page and the header reminder ask the user to renew. The credential is kept (not deleted) so renewing can prefill the account and region.
 export async function markBambuCredentialInvalid(userId: string): Promise<void> {
   await db
     .update(bambuCredentials)

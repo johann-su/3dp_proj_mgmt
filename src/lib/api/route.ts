@@ -1,12 +1,6 @@
-// The wrapper every /api/v1 route goes through: the ENABLE_API gate, API-key
-// authentication, the scope check, and error handling. A route handler only
-// ever sees an authenticated principal that holds the scope it declared.
+// The wrapper every /api/v1 route goes through: the ENABLE_API gate, API-key authentication, the scope check, and error handling. A route handler only ever sees an authenticated principal that holds the scope it declared.
 //
-// Keys are verified through the api-key plugin (hashed lookup, expiry,
-// per-key rate limit) and then *re-attached to their user*: the key carries
-// the user id, the user row carries the role that owner-gated mutations
-// check. A deleted user's keys are gone by FK cascade, and the row lookup
-// would refuse them anyway.
+// Keys are verified through the api-key plugin (hashed lookup, expiry, per-key rate limit) and then *re-attached to their user*: the key carries the user id, the user row carries the role that owner-gated mutations check. A deleted user's keys are gone by FK cascade, and the row lookup would refuse them anyway.
 
 import type { NextRequest } from "next/server";
 import { eq } from "drizzle-orm";
@@ -82,8 +76,7 @@ type Handler<P> = (ctx: {
   params: P;
 }) => Promise<Response>;
 
-// `scope: null` only requires a valid key (GET /me answers "what can this key
-// do", so it must work for every key).
+// `scope: null` only requires a valid key (GET /me answers "what can this key do", so it must work for every key).
 export function apiRoute<P = Record<string, never>>(
   scope: ApiScope | null,
   handler: Handler<P>,

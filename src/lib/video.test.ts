@@ -9,8 +9,7 @@ import {
   youTubeThumbnailUrl,
 } from "@/lib/video";
 
-// Every form people actually paste has to land on the same video — the pasted
-// string is never what gets embedded, only the id it yields.
+// Every form people actually paste has to land on the same video — the pasted string is never what gets embedded, only the id it yields.
 test("parseYouTubeUrl accepts watch, youtu.be, shorts, embed and live links", () => {
   for (const url of [
     "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
@@ -26,8 +25,7 @@ test("parseYouTubeUrl accepts watch, youtu.be, shorts, embed and live links", ()
   }
 });
 
-// Host matching is by equality after stripping "www." — a suffix check would
-// hand a look-alike domain an iframe on the model page.
+// Host matching is by equality after stripping "www." — a suffix check would hand a look-alike domain an iframe on the model page.
 test("parseYouTubeUrl rejects look-alike hosts and non-http schemes", () => {
   for (const url of [
     "https://youtube.com.evil.example/watch?v=dQw4w9WgXcQ",
@@ -40,8 +38,7 @@ test("parseYouTubeUrl rejects look-alike hosts and non-http schemes", () => {
   }
 });
 
-// The id is opaque but fixed-width; anything else is a link to a channel,
-// playlist or search page, not a video we can embed.
+// The id is opaque but fixed-width; anything else is a link to a channel, playlist or search page, not a video we can embed.
 test("parseYouTubeUrl rejects ids that aren't 11 url-safe characters", () => {
   assert.equal(parseYouTubeUrl("https://www.youtube.com/watch?v=short"), null);
   assert.equal(parseYouTubeUrl("https://www.youtube.com/watch?v=dQw4w9WgXcQextra"), null);
@@ -50,8 +47,7 @@ test("parseYouTubeUrl rejects ids that aren't 11 url-safe characters", () => {
   assert.equal(parseYouTubeUrl("https://www.youtube.com/playlist?list=PL123"), null);
 });
 
-// "Copy video URL at current time" produces t=90 / t=1m30s; the embed player
-// wants plain seconds in `start`.
+// "Copy video URL at current time" produces t=90 / t=1m30s; the embed player wants plain seconds in `start`.
 test("parseYouTubeUrl reads start offsets in seconds and h/m/s form", () => {
   assert.equal(parseYouTubeUrl("https://youtu.be/dQw4w9WgXcQ?t=90")?.start, 90);
   assert.equal(parseYouTubeUrl("https://youtu.be/dQw4w9WgXcQ?t=90s")?.start, 90);
@@ -84,8 +80,7 @@ test("youTubeEmbedUrl builds the standard embed with start and autoplay", () => 
   );
 });
 
-// hqdefault, not maxresdefault: the latter 404s for videos never uploaded in
-// HD, which would leave a broken tile in the carousel.
+// hqdefault, not maxresdefault: the latter 404s for videos never uploaded in HD, which would leave a broken tile in the carousel.
 test("youTubeThumbnailUrl picks a size that always exists", () => {
   const video = { id: "dQw4w9WgXcQ", start: null };
   assert.equal(youTubeThumbnailUrl(video), "https://i.ytimg.com/vi/dQw4w9WgXcQ/mqdefault.jpg");
@@ -111,8 +106,7 @@ test("sanitizeModelVideos canonicalizes, drops blanks and dedupes by video", () 
   });
 });
 
-// A save that carries something unembeddable is rejected rather than silently
-// dropped — otherwise a link would vanish with no explanation.
+// A save that carries something unembeddable is rejected rather than silently dropped — otherwise a link would vanish with no explanation.
 test("sanitizeModelVideos errors on a non-YouTube link and past the cap", () => {
   assert.ok("error" in sanitizeModelVideos([{ url: "https://vimeo.com/12345", position: 0 }]));
   const many = Array.from({ length: 11 }, (_, i) => ({
@@ -122,8 +116,7 @@ test("sanitizeModelVideos errors on a non-YouTube link and past the cap", () => 
   assert.ok("error" in sanitizeModelVideos(many));
 });
 
-// The gallery is one sequence: a video dragged between two images has to come
-// back out between those same two images.
+// The gallery is one sequence: a video dragged between two images has to come back out between those same two images.
 test("orderGalleryItems places each video at the slot it claims", () => {
   const ordered = orderGalleryItems(
     ["a", "b", "c"],
@@ -135,9 +128,7 @@ test("orderGalleryItems places each video at the slot it claims", () => {
   );
 });
 
-// Positions are written against the images the editor saw; a later sync or
-// revert can remove images underneath them. Nothing may be dropped or
-// duplicated when that happens — a claim that no longer fits just slides.
+// Positions are written against the images the editor saw; a later sync or revert can remove images underneath them. Nothing may be dropped or duplicated when that happens — a claim that no longer fits just slides.
 test("orderGalleryItems survives positions that overshoot or collide", () => {
   const overshoot = orderGalleryItems(["a"], [{ position: 99, url: "v1" }]);
   assert.deepEqual(

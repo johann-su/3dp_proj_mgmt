@@ -5,9 +5,7 @@ description: Environment-variable reference for a Print Vault deployment
 
 # Configuration
 
-All configuration is via environment variables. The `app` service in
-`compose.yml` passes the ones below through; for development they live in
-`.env` (start from `.env.example`).
+All configuration is via environment variables. The `app` service in `compose.yml` passes the ones below through; for development they live in `.env` (start from `.env.example`).
 
 ## Core
 
@@ -28,19 +26,14 @@ All configuration is via environment variables. The `app` service in
 
 ## File storage
 
-Uploaded model files, images, PDFs and videos are stored either in
-S3-compatible object storage (the default) or in a directory on the host —
-typically a Docker volume. Every file is served through the app, so neither
-needs to be reachable from browsers.
+Uploaded model files, images, PDFs and videos are stored either in S3-compatible object storage (the default) or in a directory on the host — typically a Docker volume. Every file is served through the app, so neither needs to be reachable from browsers.
 
 | Variable | Default | Description |
 |---|---|---|
 | `STORAGE_BACKEND` | `s3` | `s3` or `filesystem`. An instance uses one backend; to switch an existing instance, copy every object across under the same key/path first (e.g. with `rclone`). |
 | `STORAGE_PATH` | — (required for `filesystem`) | Directory files are stored in. Must be persistent and writable by the app. `compose.yml` sets it to `/app/data/files` on the `file-data` volume. |
 
-With `STORAGE_BACKEND=filesystem`, back the directory up together with the
-database (rows reference files in it), and run a single app replica unless
-every replica mounts the same directory.
+With `STORAGE_BACKEND=filesystem`, back the directory up together with the database (rows reference files in it), and run a single app replica unless every replica mounts the same directory.
 
 ### S3 storage
 
@@ -57,9 +50,7 @@ Used when `STORAGE_BACKEND` is `s3` (or unset).
 
 ## Single sign-on (optional)
 
-An SSO button appears on the sign-in page when `OIDC_ISSUER`,
-`OIDC_CLIENT_ID` and `OIDC_CLIENT_SECRET` are all set — see
-[OIDC single sign-on](/sso) for provider setup and the group-to-role mapping.
+An SSO button appears on the sign-in page when `OIDC_ISSUER`, `OIDC_CLIENT_ID` and `OIDC_CLIENT_SECRET` are all set — see [OIDC single sign-on](/sso) for provider setup and the group-to-role mapping.
 
 | Variable | Default | Description |
 |---|---|---|
@@ -80,8 +71,7 @@ An SSO button appears on the sign-in page when `OIDC_ISSUER`,
 
 ## Optional services
 
-Each of these is unset-means-off: without the URL the feature simply
-disappears from the UI.
+Each of these is unset-means-off: without the URL the feature simply disappears from the UI.
 
 | Variable | Compose default | Description |
 |---|---|---|
@@ -90,15 +80,7 @@ disappears from the UI.
 
 ### Slicer service printer
 
-Set on the **`slicer`** container (`compose.yml` passes them through from your
-`.env`). They choose the printer that files **without slicer settings of their
-own** — a plain `.3mf` from CAD, Onshape or OpenSCAD — are estimated for; files
-saved in Bambu Studio, OrcaSlicer or PrusaSlicer always use their own printer.
-Values are the names of OrcaSlicer's bundled system presets (as shown in
-OrcaSlicer's printer/process/filament dropdowns, or the `name` fields under
-`resources/profiles/<vendor>/` in the OrcaSlicer install). Set all three
-together; a name that doesn't exist stops the service at startup with an error
-naming it.
+Set on the **`slicer`** container (`compose.yml` passes them through from your `.env`). They choose the printer that files **without slicer settings of their own** — a plain `.3mf` from CAD, Onshape or OpenSCAD — are estimated for; files saved in Bambu Studio, OrcaSlicer or PrusaSlicer always use their own printer. Values are the names of OrcaSlicer's bundled system presets (as shown in OrcaSlicer's printer/process/filament dropdowns, or the `name` fields under `resources/profiles/<vendor>/` in the OrcaSlicer install). Set all three together; a name that doesn't exist stops the service at startup with an error naming it.
 
 | Variable | Default | Description |
 |---|---|---|
@@ -106,8 +88,7 @@ naming it.
 | `SLICER_GENERIC_PROCESS` | `0.20mm Standard @BBL X1C` | Process (print settings) preset. |
 | `SLICER_GENERIC_FILAMENT` | `Bambu PLA Basic @BBL X1C` | Filament preset, e.g. `Generic PLA @System` for a non-Bambu printer. |
 
-For a Prusa MK4S, for example: `Prusa MK4S 0.4 nozzle`, `0.20mm SPEED @MK4S
-0.4`, `Generic PLA @System`.
+For a Prusa MK4S, for example: `Prusa MK4S 0.4 nozzle`, `0.20mm SPEED @MK4S 0.4`, `Generic PLA @System`.
 
 ## Public sharing
 

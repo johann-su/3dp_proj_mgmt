@@ -1,9 +1,6 @@
 import { Box, Boxes, FileArchive, Shapes, type LucideIcon } from "lucide-react";
 
-// The import entry points. Each is a distinct source/shape of thing being
-// imported — a single model, a whole collection, a CAD document, or a .zip
-// this app exported — so the sidebar offers them as explicit choices instead
-// of one ambiguous "paste any URL" field. The chosen type flows to
+// The import entry points. Each is a distinct source/shape of thing being imported — a single model, a whole collection, a CAD document, or a .zip this app exported — so the sidebar offers them as explicit choices instead of one ambiguous "paste any URL" field. The chosen type flows to
 // /models/import?type=… and drives the page copy, whether the form takes a URL
 // or a file, and which endpoint it submits to.
 export type ImportType = "model" | "collection" | "cad" | "archive";

@@ -1,14 +1,9 @@
-// Pure parsing/serialization for the /search page — no DB or S3 imports, so it
-// stays unit-testable (see search-params.test.ts). The DB query that consumes
-// these filters lives in search.ts.
+// Pure parsing/serialization for the /search page — no DB or S3 imports, so it stays unit-testable (see search-params.test.ts). The DB query that consumes these filters lives in search.ts.
 
 export type SearchType = "all" | "models" | "collections";
 export type SearchSort = "relevance" | "newest" | "oldest" | "views" | "downloads";
 
-// Fixed print-time buckets (in seconds) offered as a filter — the corpus is
-// small and the exact per-file numbers are approximate (~), so buckets read
-// better than a free-form slider. A model matches if any of its files prints
-// within the chosen ceiling.
+// Fixed print-time buckets (in seconds) offered as a filter — the corpus is small and the exact per-file numbers are approximate (~), so buckets read better than a free-form slider. A model matches if any of its files prints within the chosen ceiling.
 export const PRINT_TIME_BUCKETS: { label: string; maxSeconds: number }[] = [
   { label: "Under 1 h", maxSeconds: 3600 },
   { label: "Under 3 h", maxSeconds: 3 * 3600 },
@@ -31,9 +26,7 @@ export type SearchFilters = {
 const TYPES: SearchType[] = ["all", "models", "collections"];
 const SORTS: SearchSort[] = ["relevance", "newest", "oldest", "views", "downloads"];
 
-// The implicit sort when the URL doesn't pin one: relevance ranks a query,
-// recency orders a plain browse. Shared by parse and serialize so a round-trip
-// through the URL is a no-op (and default URLs stay clean).
+// The implicit sort when the URL doesn't pin one: relevance ranks a query, recency orders a plain browse. Shared by parse and serialize so a round-trip through the URL is a no-op (and default URLs stay clean).
 function defaultSort(q: string): SearchSort {
   return q ? "relevance" : "newest";
 }
@@ -50,8 +43,7 @@ function many(v: string | string[] | undefined): string[] {
   return arr.map((s) => s.trim()).filter(Boolean);
 }
 
-// Whether any filter that only models can satisfy is active. When true,
-// collections are excluded regardless of `type` (they carry no printer info).
+// Whether any filter that only models can satisfy is active. When true, collections are excluded regardless of `type` (they carry no printer info).
 export function hasModelOnlyFilter(f: SearchFilters): boolean {
   return (
     f.printer !== undefined ||
@@ -61,11 +53,7 @@ export function hasModelOnlyFilter(f: SearchFilters): boolean {
   );
 }
 
-// Relevance ordering is only meaningful with a query term; without one it
-// degrades to "newest" so the results still have a stable, sensible order.
-// "downloads" totals model_files.download_count, which collections have no
-// equivalent of, so a collections-only search degrades it to "newest" too —
-// the same "quietly fall back rather than return nothing" rule as relevance.
+// Relevance ordering is only meaningful with a query term; without one it degrades to "newest" so the results still have a stable, sensible order. "downloads" totals model_files.download_count, which collections have no equivalent of, so a collections-only search degrades it to "newest" too — the same "quietly fall back rather than return nothing" rule as relevance.
 export function effectiveSort(f: SearchFilters): SearchSort {
   if (f.sort === "relevance" && f.q === "") return "newest";
   if (f.sort === "downloads" && f.type === "collections") return "newest";
@@ -96,8 +84,7 @@ export function parseSearchParams(
   };
 }
 
-// Serializes filters back to a flat query object for building <Link> hrefs and
-// passing to the load-more server action. Omits defaults to keep URLs clean.
+// Serializes filters back to a flat query object for building <Link> hrefs and passing to the load-more server action. Omits defaults to keep URLs clean.
 export function searchFiltersToParams(f: SearchFilters): Record<string, string | string[]> {
   const out: Record<string, string | string[]> = {};
   if (f.q) out.q = f.q;
@@ -122,12 +109,7 @@ export function searchFiltersToQueryString(f: SearchFilters): string {
 
 // --- Cursor -------------------------------------------------------------
 //
-// Keyset cursors for the combined (models ∪ collections) result stream. The
-// cursor is self-describing — it carries its own `kind` tag so decoding never
-// needs to know which sort produced it. Relevance keysets on the trigram score
-// (score desc, id desc); the time sorts keyset on created_at; "views"/
-// "downloads" keyset on that numeric metric. `|` never occurs in a UUID, ISO
-// timestamp, or JSON number, so it's a safe separator.
+// Keyset cursors for the combined (models ∪ collections) result stream. The cursor is self-describing — it carries its own `kind` tag so decoding never needs to know which sort produced it. Relevance keysets on the trigram score (score desc, id desc); the time sorts keyset on created_at; "views"/ "downloads" keyset on that numeric metric. `|` never occurs in a UUID, ISO timestamp, or JSON number, so it's a safe separator.
 
 export type SearchCursor =
   | { kind: "score"; score: number; id: string }
@@ -144,8 +126,7 @@ export function encodeSearchCursor(cursor: SearchCursor): string {
   return Buffer.from(raw, "utf8").toString("base64url");
 }
 
-// Returns null for anything we didn't produce (tampered/truncated) so a bad
-// cursor degrades to "first page" rather than throwing.
+// Returns null for anything we didn't produce (tampered/truncated) so a bad cursor degrades to "first page" rather than throwing.
 export function decodeSearchCursor(raw: string): SearchCursor | null {
   let decoded: string;
   try {

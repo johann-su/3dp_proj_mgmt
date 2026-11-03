@@ -14,16 +14,7 @@ import {
 import type { ModelViewData, PrintFileData } from "@/app/models/model-view";
 import { isApproxEstimate } from "@/lib/printer-info";
 
-// The anonymous projection of a model for the public share pages. Built as an
-// allowlist rather than by reusing the member page's loader: anything not
-// copied in here never reaches someone without an account. Deliberately left
-// out — edit history and editor names, likes/pins/collections, and customizer
-// schemas (rendering needs the session-gated API). Every file URL is
-// share-scoped (sharedFileSrc) so it dies with the link, and so are BOM
-// images: they load through /api/bom-image's item mode (sharedBomImageSrc),
-// never its member `?url=` mode, which must not be opened to anonymous
-// callers. `modelId: null` makes ModelView drop every mutating affordance,
-// as in the version preview.
+// The anonymous projection of a model for the public share pages. Built as an allowlist rather than by reusing the member page's loader: anything not copied in here never reaches someone without an account. Deliberately left out — edit history and editor names, likes/pins/collections, and customizer schemas (rendering needs the session-gated API). Every file URL is share-scoped (sharedFileSrc) so it dies with the link, and so are BOM images: they load through /api/bom-image's item mode (sharedBomImageSrc), never its member `?url=` mode, which must not be opened to anonymous callers. `modelId: null` makes ModelView drop every mutating affordance, as in the version preview.
 //
 // The caller must already have checked that the share grants this model.
 export async function loadSharedModelView(
@@ -73,8 +64,7 @@ export async function loadSharedModelView(
     const info = sliceInfoByFileId.get(file.id);
     const persisted = file.sliceStatus === "ok";
     return {
-      // No id: downloads go to the share-scoped `src`, and slicer deep links
-      // to the share-scoped path route — both die with the link.
+      // No id: downloads go to the share-scoped `src`, and slicer deep links to the share-scoped path route — both die with the link.
       id: null,
       slicerPath: sharedSlicerFileBase(token, file.id),
       src: src(file.id),
@@ -103,8 +93,7 @@ export async function loadSharedModelView(
     description: model.description,
     author: model.user.name,
     createdAt: model.createdAt,
-    // No slug/ids: category and tag badges would link into the private
-    // catalog, so they render as plain badges.
+    // No slug/ids: category and tag badges would link into the private catalog, so they render as plain badges.
     category: model.category ? { name: model.category.name } : null,
     tags: model.modelTags.map(({ tag }) => ({ name: tag.name })),
     platform: platformFromSourceUrl(model.sourceUrl),

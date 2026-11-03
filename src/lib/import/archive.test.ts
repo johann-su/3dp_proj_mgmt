@@ -10,8 +10,7 @@ import { buildModelExportZip, type ExportFile } from "@/lib/model-export";
 
 const bytes = (text: string) => new TextEncoder().encode(text);
 
-// A real export, so the round-trip tests exercise the format the exporter
-// actually writes rather than a hand-built approximation of it.
+// A real export, so the round-trip tests exercise the format the exporter actually writes rather than a hand-built approximation of it.
 function exported(input: Partial<Parameters<typeof buildModelExportZip>[0]> = {}) {
   return buildModelExportZip({
     title: "Widget",
@@ -36,9 +35,7 @@ const file = (kind: ExportFile["kind"], filename: string): ExportFile => ({
 });
 
 test("a freshly exported model round-trips through the importer", () => {
-  // The contract the whole feature rests on: everything the create form
-  // prefills comes back, including the two things the folder tree can't
-  // carry — tags and the category.
+  // The contract the whole feature rests on: everything the create form prefills comes back, including the two things the folder tree can't carry — tags and the category.
   const draft = readModelArchive(
     exported({
       bomItems: [
@@ -71,17 +68,14 @@ test("a freshly exported model round-trips through the importer", () => {
   );
 });
 
-// Gallery videos are links, not files, so the zip tree can't carry them —
-// they exist only in the manifest, and an archive is meant to be a full
-// backup.
+// Gallery videos are links, not files, so the zip tree can't carry them — they exist only in the manifest, and an archive is meant to be a full backup.
 test("gallery videos survive the round trip through the manifest", () => {
   const draft = readModelArchive(
     exported({
       videos: [{ url: "https://www.youtube.com/watch?v=dQw4w9WgXcQ", position: 1 }],
     }),
   );
-  // The slot survives too: the video sat between two images, and re-importing
-  // must not shuffle it to the end of the gallery.
+  // The slot survives too: the video sat between two images, and re-importing must not shuffle it to the end of the gallery.
   assert.deepEqual(draft.videos, [
     { url: "https://www.youtube.com/watch?v=dQw4w9WgXcQ", position: 1 },
   ]);
@@ -90,8 +84,7 @@ test("gallery videos survive the round trip through the manifest", () => {
 });
 
 test("per-file source provenance survives the round trip", () => {
-  // So a model restored from an archive still syncs against the platform it
-  // came from, instead of looking like a pile of manual uploads.
+  // So a model restored from an archive still syncs against the platform it came from, instead of looking like a pile of manual uploads.
   const draft = readModelArchive(
     exported({
       sourceUrl: "https://makerworld.com/en/models/123",
@@ -113,9 +106,7 @@ test("per-file source provenance survives the round trip", () => {
 });
 
 test("customizer-generated variants are skipped, with a warning", () => {
-  // A variant's link to the .scad it came from can't cross instances, so
-  // importing it would leave a detached duplicate of geometry the customizer
-  // regenerates on demand.
+  // A variant's link to the .scad it came from can't cross instances, so importing it would leave a detached duplicate of geometry the customizer regenerates on demand.
   const draft = readModelArchive(
     exported({
       files: [
@@ -132,8 +123,7 @@ test("customizer-generated variants are skipped, with a warning", () => {
 });
 
 test("archives exported before metadata.json fall back to their folder tree", () => {
-  // Those zips are already on people's disks — the folder gives the kind, the
-  // README the title and description, bom.csv a section-less BOM.
+  // Those zips are already on people's disks — the folder gives the kind, the README the title and description, bom.csv a section-less BOM.
   const draft = readModelArchive(
     zipSync({
       "README.md": strToU8(
@@ -157,8 +147,7 @@ test("archives exported before metadata.json fall back to their folder tree", ()
 });
 
 test("README parsing keeps the description's own Markdown headings", () => {
-  // Only the export's own title heading and version line are stripped — a
-  // description that starts with "## Parts" must come back intact.
+  // Only the export's own title heading and version line are stripped — a description that starts with "## Parts" must come back intact.
   assert.deepEqual(
     parseExportReadme("# Widget\n\n*Print Vault export · version 5*\n\n## Parts\n\n- one"),
     { title: "Widget", description: "## Parts\n\n- one" },
@@ -166,9 +155,7 @@ test("README parsing keeps the description's own Markdown headings", () => {
 });
 
 test("a manifest can't relabel a file into a kind its extension doesn't allow", () => {
-  // The manifest rides in on a user-supplied file. Stored content types are
-  // derived from the extension and images are served inline from our origin,
-  // so a ".html" claiming to be an image is exactly the input to reject.
+  // The manifest rides in on a user-supplied file. Stored content types are derived from the extension and images are served inline from our origin, so a ".html" claiming to be an image is exactly the input to reject.
   const draft = readModelArchive(
     zipSync({
       "metadata.json": strToU8(
@@ -192,8 +179,7 @@ test("a manifest can't relabel a file into a kind its extension doesn't allow", 
 });
 
 test("a manifest filename can't escape into a path", () => {
-  // Same zip-slip reasoning as the export side: the name is round-tripped
-  // user input, and it becomes a stored filename on the way back in.
+  // Same zip-slip reasoning as the export side: the name is round-tripped user input, and it becomes a stored filename on the way back in.
   const draft = readModelArchive(
     zipSync({
       "metadata.json": strToU8(
@@ -214,8 +200,7 @@ test("a manifest filename can't escape into a path", () => {
 });
 
 test("an archive with no model files is rejected", () => {
-  // Every model needs at least one printable, so this is the wrong zip —
-  // better to say so here than to hand the form a draft it can't save.
+  // Every model needs at least one printable, so this is the wrong zip — better to say so here than to hand the form a draft it can't save.
   assert.throws(
     () =>
       readModelArchive(
@@ -230,17 +215,14 @@ test("something that isn't a zip is rejected", () => {
 });
 
 test("the title falls back to the uploaded file's name", () => {
-  // A zip whose README and manifest are both missing a title still opens the
-  // form with something in the field rather than an empty required input.
+  // A zip whose README and manifest are both missing a title still opens the form with something in the field rather than an empty required input.
   const draft = readModelArchive(zipSync({ "files/part.3mf": bytes("part") }), {
     fallbackTitle: "Bracket_v5.zip",
   });
   assert.equal(draft.title, "Bracket_v5");
 });
 
-// The upstream revision token (Onshape's workspace microversion) is what lets
-// a restored model's first "Sync from Onshape" short-circuit when nothing
-// changed upstream, so it must survive the trip.
+// The upstream revision token (Onshape's workspace microversion) is what lets a restored model's first "Sync from Onshape" short-circuit when nothing changed upstream, so it must survive the trip.
 test("the source revision round-trips through the manifest", () => {
   const draft = readModelArchive(
     exported({
@@ -251,8 +233,7 @@ test("the source revision round-trips through the manifest", () => {
   assert.equal(draft.sourceRevision, "0123456789abcdef01234569");
 });
 
-// Archives on people's disks predate the field's generalization and spell it
-// `onshapeMicroversion`; the reader keeps accepting that name.
+// Archives on people's disks predate the field's generalization and spell it `onshapeMicroversion`; the reader keeps accepting that name.
 test("archives using the old onshapeMicroversion key still restore the revision", () => {
   const entries = unzipSync(exported({ sourceRevision: "0123456789abcdef01234569" }));
   const manifest = JSON.parse(strFromU8(entries["metadata.json"]));
