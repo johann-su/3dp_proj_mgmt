@@ -36,9 +36,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Empty request body" }, { status: 400 });
   }
 
-  // Derive the content type from the (validated) extension instead of the
-  // request header: /api/files serves images/PDFs inline, so echoing back an
-  // uploader-chosen type like text/html would be stored XSS on our origin.
+  // Derive the content type from the (validated) extension instead of the request header: /api/files serves images/PDFs inline, so echoing back an uploader-chosen type like text/html would be stored XSS on our origin.
   const staged = await stageStream(
     filename,
     req.body,

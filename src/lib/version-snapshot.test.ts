@@ -44,8 +44,7 @@ function snapshot(overrides: Partial<ModelVersionSnapshot> = {}): ModelVersionSn
 }
 
 test("buildSnapshot excludes generated variants and sorts tag names", () => {
-  // The snapshot is the model's live, non-variant state; variants are additive
-  // and individually regenerable, and tags have no join order.
+  // The snapshot is the model's live, non-variant state; variants are additive and individually regenerable, and tags have no join order.
   const snap = buildSnapshot({
     title: "Talon 1400",
     description: "A glider",
@@ -56,8 +55,7 @@ test("buildSnapshot excludes generated variants and sorts tag names", () => {
       { name: "M3 screw", quantity: "4", link: null, imageUrl: null, section: null },
     ],
     files: [
-      // Import provenance must survive the snapshot so a revert restores the
-      // "imported" badge along with the file row.
+      // Import provenance must survive the snapshot so a revert restores the "imported" badge along with the file row.
       { ...file({ filename: "wing.3mf", imported: true }), generatedFromId: null },
       // A generated .3mf variant — must not appear in the snapshot.
       { ...file({ s3Key: "uploads/v/variant.3mf" }), generatedFromId: "src-1" },
@@ -108,9 +106,7 @@ test("field edits combine into one summary line", () => {
   );
 });
 
-// Snapshots written before gallery videos existed have no `videos` key at
-// all; reading one as [] keeps the first save after the upgrade from claiming
-// a video change nobody made.
+// Snapshots written before gallery videos existed have no `videos` key at all; reading one as [] keeps the first save after the upgrade from claiming a video change nobody made.
 test("gallery video changes are summarized, and a missing key reads as none", () => {
   const prev = snapshot();
   const next = snapshot({
@@ -124,8 +120,7 @@ test("gallery video changes are summarized, and a missing key reads as none", ()
 });
 
 test("same file set with changed metadata degrades to a generic summary", () => {
-  // Slice estimates landing between two saves change per-file metadata
-  // without any user-visible edit — the summary must not claim file changes.
+  // Slice estimates landing between two saves change per-file metadata without any user-visible edit — the summary must not claim file changes.
   const prev = snapshot();
   const next = snapshot({
     files: [file({ sliceStatus: "ok", printTimeSeconds: 5460 })],

@@ -1,19 +1,9 @@
-# Node comes from the official image rather than the distro's `nodejs`
-# package: Ubuntu/Debian ship EOL lines (18/20) that miss security releases
-# such as CVE-2026-111497 (Node2Shell, Brotli RCE; fixed in 24.22.1). The
-# official binary is built against an old glibc and runs on this base as-is.
+# Node comes from the official image rather than the distro's `nodejs` package: Ubuntu/Debian ship EOL lines (18/20) that miss security releases such as CVE-2026-111497 (Node2Shell, Brotli RCE; fixed in 24.22.1). The official binary is built against an old glibc and runs on this base as-is.
 FROM node:24.22.1-trixie-slim AS node
 
 FROM debian:trixie-slim
 
-# openscad's CLI renders meshes fully headless (PNG previews would need GL,
-# which we don't use); node (copied from the node stage) runs the thin
-# HTTP wrapper in server.mjs.
-# openscad-mcad is the packaged MCAD library; BOSL2 is vendored below at a
-# pinned tag because Debian doesn't package it and many MakerWorld parametric
-# models depend on it. Both live under OPENSCADPATH, which is the include
-# allowlist enforced app-side (SCAD_LIBRARY_ALLOWLIST in
-# src/lib/scad-params.ts) — keep the two in sync.
+# openscad's CLI renders meshes fully headless (PNG previews would need GL, which we don't use); node (copied from the node stage) runs the thin HTTP wrapper in server.mjs. openscad-mcad is the packaged MCAD library; BOSL2 is vendored below at a pinned tag because Debian doesn't package it and many MakerWorld parametric models depend on it. Both live under OPENSCADPATH, which is the include allowlist enforced app-side (SCAD_LIBRARY_ALLOWLIST in src/lib/scad-params.ts) — keep the two in sync.
 RUN apt-get update \
     && apt-get install -y --no-install-recommends openscad openscad-mcad ca-certificates curl \
     && rm -rf /var/lib/apt/lists/*

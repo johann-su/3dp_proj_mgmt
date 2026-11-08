@@ -22,19 +22,14 @@ function daysUntilPurge(deletedAt: Date): number {
   return Math.max(0, Math.ceil((purgeAt - Date.now()) / (24 * 60 * 60 * 1000)));
 }
 
-// The owner's trash: soft-deleted models, restorable until the retention
-// window runs out. Scoped like deletion itself — plain users only ever see
-// their own trashed models, while moderators/admins (owner-equivalent on all
-// content, issue #54) see the whole instance's trash so they can clean up
-// after anyone.
+// The owner's trash: soft-deleted models, restorable until the retention window runs out. Scoped like deletion itself — plain users only ever see their own trashed models, while moderators/admins (owner-equivalent on all content, issue #54) see the whole instance's trash so they can clean up after anyone.
 export default async function TrashPage() {
   const session = await getSession();
   if (!session) redirect(await signInRedirect());
 
   const moderator = isModerator(session.user.role);
 
-  // Lazy purge instead of a scheduler (same pattern as the import-job
-  // heartbeat check): expired models are destroyed when the trash is opened.
+  // Lazy purge instead of a scheduler (same pattern as the import-job heartbeat check): expired models are destroyed when the trash is opened.
   await sweepExpiredTrash(moderator ? undefined : session.user.id);
 
   const trashed = await db.query.models.findMany({
@@ -78,8 +73,7 @@ export default async function TrashPage() {
                 key={model.id}
                 className="flex items-center gap-4 rounded-lg border p-3"
               >
-                {/* Whole left block opens the read-only preview, so a model
-                    can be inspected before restoring or purging it. */}
+                {/* Whole left block opens the read-only preview, so a model can be inspected before restoring or purging it. */}
                 <Link
                   href={`/models/trash/${model.id}`}
                   className="flex min-w-0 flex-1 items-center gap-4 rounded-md outline-hidden hover:opacity-80 focus-visible:ring-2 focus-visible:ring-ring"

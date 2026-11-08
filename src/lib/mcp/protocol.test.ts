@@ -44,8 +44,7 @@ function call(args: Record<string, unknown> = {}) {
   };
 }
 
-// A client speaking an older dialect keeps it; anything unrecognized is
-// answered with ours so the client can decide whether it can live with it.
+// A client speaking an older dialect keeps it; anything unrecognized is answered with ours so the client can decide whether it can live with it.
 test("initialize echoes a supported protocol version and falls back otherwise", async () => {
   const known = await handleMcpMessage(
     { jsonrpc: "2.0", id: 1, method: "initialize", params: { protocolVersion: "2024-11-05" } },
@@ -63,8 +62,7 @@ test("initialize echoes a supported protocol version and falls back otherwise", 
   );
 });
 
-// Notifications (no id) must be acknowledged by the transport, never answered
-// — `notifications/initialized` arrives right after every handshake.
+// Notifications (no id) must be acknowledged by the transport, never answered — `notifications/initialized` arrives right after every handshake.
 test("notifications produce no response", async () => {
   assert.equal(
     await handleMcpMessage({ jsonrpc: "2.0", method: "notifications/initialized" }, options()),
@@ -85,8 +83,7 @@ test("tools/list advertises each tool's schema", async () => {
   );
 });
 
-// The payload goes out twice — as text for clients that only render content,
-// and as structuredContent for those that can pass JSON to the model.
+// The payload goes out twice — as text for clients that only render content, and as structuredContent for those that can pass JSON to the model.
 test("a tool result is returned as both text and structured content", async () => {
   const response = await handleMcpMessage(
     call(),
@@ -98,9 +95,7 @@ test("a tool result is returned as both text and structured content", async () =
   assert.deepEqual(JSON.parse(result.content[0].text), { modelId: MODEL_ID });
 });
 
-// A manual's wiring diagrams are pictures, and a link to them is not reliably
-// fetchable by the client, so get_document_images sends the pixels back in the
-// result itself. They ride as extra content blocks after the JSON.
+// A manual's wiring diagrams are pictures, and a link to them is not reliably fetchable by the client, so get_document_images sends the pixels back in the result itself. They ride as extra content blocks after the JSON.
 test("a tool can return images alongside its JSON payload", async () => {
   const response = await handleMcpMessage(
     call(),
@@ -128,13 +123,11 @@ test("a tool can return images alongside its JSON payload", async () => {
     data: "aGVsbG8=",
     mimeType: "image/webp",
   });
-  // structuredContent stays pure JSON: a base64 blob in there would reach the
-  // model as characters to read rather than as an image to look at.
+  // structuredContent stays pure JSON: a base64 blob in there would reach the model as characters to read rather than as an image to look at.
   assert.deepEqual(result.structuredContent, { page: 17 });
 });
 
-// "No such model" is something the model can act on, so it comes back as a
-// tool result with isError — not a protocol error that ends the exchange.
+// "No such model" is something the model can act on, so it comes back as a tool result with isError — not a protocol error that ends the exchange.
 test("ToolError becomes an isError result, keeping the message", async () => {
   const response = await handleMcpMessage(
     call(),
@@ -162,8 +155,7 @@ test("InvalidParamsError becomes a JSON-RPC invalid-params error", async () => {
   assert.equal((response as { error: { code: number } }).error.code, -32602);
 });
 
-// An unexpected failure must not leak internals to the model, but must still
-// reach the error reporter.
+// An unexpected failure must not leak internals to the model, but must still reach the error reporter.
 test("an unexpected tool failure is reported and answered generically", async () => {
   const reported: string[] = [];
   const response = await handleMcpMessage(
@@ -210,8 +202,7 @@ test("requireUuid rejects anything that isn't a model id", () => {
   assert.throws(() => requireUuid({}, "modelId"), InvalidParamsError);
 });
 
-// Models routinely send a bare string where a list is asked for; blank entries
-// would otherwise become a tag filter that matches nothing.
+// Models routinely send a bare string where a list is asked for; blank entries would otherwise become a tag filter that matches nothing.
 test("optionalStringArray accepts a lone string and drops blanks", () => {
   assert.deepEqual(optionalStringArray({ tags: "drone" }, "tags"), ["drone"]);
   assert.deepEqual(optionalStringArray({ tags: ["drone", " ", "fpv "] }, "tags"), [
@@ -226,8 +217,7 @@ test("optionalString treats blank as absent", () => {
   assert.equal(optionalString({ query: "   " }, "query"), undefined);
 });
 
-// An over-large limit is a clear intent ("as many as possible"), so it is
-// clamped rather than rejected.
+// An over-large limit is a clear intent ("as many as possible"), so it is clamped rather than rejected.
 test("optionalInt clamps to its range and falls back when absent", () => {
   const range = { min: 1, max: 50, fallback: 20 };
   assert.equal(optionalInt({ limit: 500 }, "limit", range), 50);

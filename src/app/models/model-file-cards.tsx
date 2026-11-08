@@ -1,8 +1,6 @@
 "use client";
 
-// The model page's collapsible "Files" and "Documents" cards: print-file rows
-// with slice estimates, per-file customize/variant affordances and slicer
-// deep links, plus the PDF list. Rendered by ModelView (model-view.tsx).
+// The model page's collapsible "Files" and "Documents" cards: print-file rows with slice estimates, per-file customize/variant affordances and slicer deep links, plus the PDF list. Rendered by ModelView (model-view.tsx).
 
 import Link from "next/link";
 import { useState } from "react";
@@ -47,18 +45,11 @@ import { FileDownloadMenu } from "./[id]/file-download-menu";
 export type PrintFileData = {
   id: string | null;
   filename: string;
-  // The file came with the model's source-platform import (or Onshape sync)
-  // rather than being uploaded by hand — badged with a cloud icon.
+  // The file came with the model's source-platform import (or Onshape sync) rather than being uploaded by hand — badged with a cloud icon.
   imported: boolean;
-  // Same-origin URL prefix a slicer can download the file from without
-  // cookies — the credential is a path segment (see file-download-menu.tsx);
-  // the menu appends `/<name>.3mf`. Built server-side: slicerFileBase for
-  // members, sharedSlicerFileBase on public share pages. Null hides the
-  // "Open in" menu (previews, trash, version history).
+  // Same-origin URL prefix a slicer can download the file from without cookies — the credential is a path segment (see file-download-menu.tsx); the menu appends `/<name>.3mf`. Built server-side: slicerFileBase for members, sharedSlicerFileBase on public share pages. Null hides the "Open in" menu (previews, trash, version history).
   slicerPath: string | null;
-  // Download URL for files without a live model_files row — the version
-  // preview serves historical files via /api/files/versions/… (already
-  // token-authenticated, so extra query params are appended with "&").
+  // Download URL for files without a live model_files row — the version preview serves historical files via /api/files/versions/… (already token-authenticated, so extra query params are appended with "&").
   src?: string | null;
   size: number;
   printTime: number | null;
@@ -66,28 +57,21 @@ export type PrintFileData = {
   approx: boolean;
   plateCount: number | null;
   printer: PrinterInfo | null;
-  // Which slicer produced the estimate, and the generic printer it assumed
-  // when the file names none of its own (see model_files.slice_printer).
+  // Which slicer produced the estimate, and the generic printer it assumed when the file names none of its own (see model_files.slice_printer).
   sliceEngine?: string | null;
   slicePrinter?: string | null;
   sliceStatus: string | null;
   sliceError: string | null;
-  // Parametric .scad files: customizer schema parsed from the source (set for
-  // any signed-in viewer when OPENSCAD_URL is configured), plus the .3mf
-  // variants generated from this file.
+  // Parametric .scad files: customizer schema parsed from the source (set for any signed-in viewer when OPENSCAD_URL is configured), plus the .3mf variants generated from this file.
   customizer?: ScadParameterGroup[] | null;
   variants?: PrintFileData[];
   // On a generated variant: the customizer values it was rendered with.
   paramsSummary?: string | null;
-  // On a generated variant: whether the current viewer may delete it (the
-  // model owner may delete any variant; anyone else only those they generated).
+  // On a generated variant: whether the current viewer may delete it (the model owner may delete any variant; anyone else only those they generated).
   deletableByViewer?: boolean;
 };
 
-// Wiring from ModelView that lets a click on a .3mf row open it in the
-// gallery's 3D viewer. `indexOf` maps a row to its viewer file (-1 when the
-// file has no 3D preview); `activeIndex` is the file currently on screen in
-// 3D (null while the gallery shows photos), whose row gets highlighted.
+// Wiring from ModelView that lets a click on a .3mf row open it in the gallery's 3D viewer. `indexOf` maps a row to its viewer file (-1 when the file has no 3D preview); `activeIndex` is the file currently on screen in 3D (null while the gallery shows photos), whose row gets highlighted.
 export type FilePreviewControl = {
   indexOf: (file: PrintFileData) => number;
   activeIndex: number | null;
@@ -98,13 +82,11 @@ export type PdfFileData = {
   id: string | null;
   filename: string;
   size: number;
-  // Like PrintFileData.src: serves the PDF when there is no live row
-  // (version preview).
+  // Like PrintFileData.src: serves the PDF when there is no live row (version preview).
   src?: string | null;
 };
 
-// Delete for a generated .3mf variant — shown to the model owner (any variant)
-// and to whoever generated it. Cheap to regenerate, so no confirmation dialog.
+// Delete for a generated .3mf variant — shown to the model owner (any variant) and to whoever generated it. Cheap to regenerate, so no confirmation dialog.
 function DeleteVariantButton({
   modelId,
   fileId,
@@ -173,9 +155,7 @@ function PrintFileRow({
   deletable?: { modelId: string };
   preview?: FilePreviewControl;
 }) {
-  // Slicer deep links only make sense for .3mf files — Bambu Studio hard-
-  // rejects any other filename ("unknown file format") and Orca would save a
-  // useless download. Other model files (.scad, .step) get a plain download.
+  // Slicer deep links only make sense for .3mf files — Bambu Studio hard-rejects any other filename ("unknown file format") and Orca would save a useless download. Other model files (.scad, .step) get a plain download.
   const is3mf = file.filename.toLowerCase().endsWith(".3mf");
   const filaments = filamentSummary(file.printer);
   const missingSlots = file.printer?.missingFilamentSlots;
@@ -194,9 +174,7 @@ function PrintFileRow({
       onClick={
         preview && previewIndex >= 0
           ? (e) => {
-              // The row's own controls (download menu, delete) keep their
-              // behaviour. React also bubbles clicks out of their portaled
-              // menus, which the DOM `contains` check filters out.
+              // The row's own controls (download menu, delete) keep their behaviour. React also bubbles clicks out of their portaled menus, which the DOM `contains` check filters out.
               const target = e.target as HTMLElement;
               if (!e.currentTarget.contains(target)) return;
               if (target.closest("a, button, [role=menuitem]")) return;
@@ -335,8 +313,7 @@ function PrintFileRow({
           missingSlots?.length ||
           file.sliceStatus === "failed") && (
           <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-            {/* One badge per filament slot — the same material twice means a
-                two-colour print, so these are intentionally not deduped. */}
+            {/* One badge per filament slot — the same material twice means a two-colour print, so these are intentionally not deduped. */}
             {filaments?.slots.map((slot, i) => (
               <Badge
                 key={`${i}-${slot.type}`}
@@ -392,8 +369,7 @@ function PrintFileRow({
                 {file.printer.bedType.toLowerCase()}
               </Badge>
             )}
-            {/* Only the positive case is worth a badge: "no supports" is the
-                default expectation, and the setting is often simply unknown. */}
+            {/* Only the positive case is worth a badge: "no supports" is the default expectation, and the setting is often simply unknown. */}
             {file.printer?.usesSupport && (
               <Badge
                 variant="outline"
@@ -402,8 +378,7 @@ function PrintFileRow({
                 supports
               </Badge>
             )}
-            {/* Deliberately not remapped to a slot that exists: the slicer's
-                fallback could be a different material altogether. */}
+            {/* Deliberately not remapped to a slot that exists: the slicer's fallback could be a different material altogether. */}
             {missingSlots?.length ? (
               <span className="inline-flex items-center gap-1 text-xs text-amber-700 dark:text-amber-400">
                 <TriangleAlert className="size-3.5" />
@@ -491,8 +466,7 @@ export function PrintFilesCard({
   sourceName: string | null;
   makerworldUrl: string | null;
   slicerConfigured: boolean;
-  // Null in the create-wizard preview and version preview, which disables
-  // the customize link and variant deletion.
+  // Null in the create-wizard preview and version preview, which disables the customize link and variant deletion.
   modelId: string | null;
   // Click-to-preview wiring; absent where there is no 3D viewer to drive.
   preview?: FilePreviewControl;

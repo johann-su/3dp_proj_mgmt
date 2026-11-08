@@ -1,11 +1,9 @@
 "use client";
 
-// The create/edit wizard's file-picking UI: dashed-border pickers plus the
-// row/tile lists they render (rename-in-place, drag + button reordering).
-// All state lives in ModelForm (model-form.tsx); these components only
-// receive entries and callbacks.
+// The create/edit wizard's file-picking UI: dashed-border pickers plus the row/tile lists they render (rename-in-place, drag + button reordering). All state lives in ModelForm (model-form.tsx); these components only receive entries and callbacks.
 
-import { useRef, useState } from "react";
+import { useEffect, useEffectEvent, useRef, useState } from "react";
+import { toast } from "sonner";
 import {
   ChevronDown,
   ChevronLeft,
@@ -30,6 +28,7 @@ import {
   isVideoFile,
   mediaFiles,
   MODEL_ACCEPT,
+  partitionAccepted,
   splitExtension,
   type ExistingFile,
   type MediaEntry,
@@ -244,6 +243,88 @@ export function FilePicker({
   );
 }
 
+// Turns the whole window into a drop target while mounted: dragging files over the page shows a full-screen overlay, and dropping adds whatever matches `accept` (the rest is skipped with a toast). It listens on window rather than on a container so a drop that misses the picker can't fall through to the browser, which would open the file and navigate away from the unsaved form.
+function FileDropOverlay({
+  accept,
+  label,
+  icon,
+  onDrop,
+}: {
+  accept: string;
+  label: string;
+  icon: React.ReactNode;
+  onDrop: (files: File[]) => void;
+}) {
+  const [active, setActive] = useState(false);
+  const extensions = new Intl.ListFormat("en", { type: "disjunction" }).format(
+    accept.split(","),
+  );
+
+  const handleDrop = useEffectEvent((dropped: File[]) => {
+    const { accepted, rejected } = partitionAccepted(dropped, accept);
+    if (rejected.length > 0) {
+      toast.error(
+        `Skipped ${rejected.map((f) => f.name).join(", ")} — only ${extensions} files can be added here`,
+      );
+    }
+    if (accepted.length > 0) onDrop(accepted);
+  });
+
+  useEffect(() => {
+    // dragenter/dragleave fire for every element the cursor crosses, so a running depth — not the latest event — tells whether the drag is still over the page. Drags without files (reordering rows, selected text) are left alone.
+    let depth = 0;
+    const carriesFiles = (e: DragEvent) =>
+      e.dataTransfer?.types.includes("Files") ?? false;
+    function onDragEnter(e: DragEvent) {
+      if (!carriesFiles(e)) return;
+      e.preventDefault();
+      depth++;
+      setActive(true);
+    }
+    function onDragOver(e: DragEvent) {
+      if (!carriesFiles(e)) return;
+      // Cancelling dragover is what allows the drop at all.
+      e.preventDefault();
+      e.dataTransfer!.dropEffect = "copy";
+    }
+    function onDragLeave(e: DragEvent) {
+      if (!carriesFiles(e)) return;
+      depth = Math.max(0, depth - 1);
+      if (depth === 0) setActive(false);
+    }
+    function onDropFiles(e: DragEvent) {
+      if (!carriesFiles(e)) return;
+      e.preventDefault();
+      depth = 0;
+      setActive(false);
+      handleDrop(Array.from(e.dataTransfer?.files ?? []));
+    }
+    window.addEventListener("dragenter", onDragEnter);
+    window.addEventListener("dragover", onDragOver);
+    window.addEventListener("dragleave", onDragLeave);
+    window.addEventListener("drop", onDropFiles);
+    return () => {
+      window.removeEventListener("dragenter", onDragEnter);
+      window.removeEventListener("dragover", onDragOver);
+      window.removeEventListener("dragleave", onDragLeave);
+      window.removeEventListener("drop", onDropFiles);
+    };
+  }, []);
+
+  if (!active) return null;
+  return (
+    <div className="fixed inset-0 z-50 bg-background/80 p-4 backdrop-blur-sm">
+      <div className="flex h-full flex-col items-center justify-center gap-3 rounded-xl border-2 border-dashed border-primary text-center">
+        {icon}
+        <p className="text-lg font-medium">{label}</p>
+        <p className="text-sm text-muted-foreground">
+          {extensions} files only
+        </p>
+      </div>
+    </div>
+  );
+}
+
 function ModelFileRow({
   entry,
   isFirst,
@@ -297,9 +378,7 @@ function ModelFileRow({
       onDragEnter={onDragEnter}
       onDrop={(e) => e.preventDefault()}
     >
-      {/* Only the grip starts the drag, so dragging doesn't fight with
-          selecting text in the rename input. The up/down buttons below cover
-          reordering for keyboard/touch use, where dragging is impractical. */}
+      {/* Only the grip starts the drag, so dragging doesn't fight with selecting text in the rename input. The up/down buttons below cover reordering for keyboard/touch use, where dragging is impractical. */}
       <span
         draggable
         onDragStart={(e) => {
@@ -375,11 +454,7 @@ function ModelFileRow({
         </TooltipTrigger>
         <TooltipContent>Move down</TooltipContent>
       </Tooltip>
-      {/* Slicing is queued by the save, not by this click, so the whole edit
-          stays one action — the hourglass shows what the save will hand over.
-          New files start queued (an upload slices them anyway) and can be
-          taken out; files already on the model start out of the queue, and
-          adding them back re-slices to refresh estimates and printer info. */}
+      {/* Slicing is queued by the save, not by this click, so the whole edit stays one action — the hourglass shows what the save will hand over. New files start queued (an upload slices them anyway) and can be taken out; files already on the model start out of the queue, and adding them back re-slices to refresh estimates and printer info. */}
       {sliceable &&
         (alreadyPending ? (
           <Tooltip>
@@ -507,10 +582,17 @@ export function ModelFilePicker({
         className="border border-dashed rounded-lg p-6 text-sm text-muted-foreground hover:bg-accent/50 transition-colors flex flex-col items-center gap-2"
       >
         <FileBox className="size-6" />
-        Click to add .3mf files (title, description, images and printer are
-        imported automatically) or parametric .scad files. Drag rows to
-        reorder.
+        Click or drop files anywhere on the page to add .3mf files (title,
+        description, images and printer are imported automatically) or
+        parametric .scad files. Drag rows to reorder.
       </button>
+      {/* This picker is the wizard's whole first step, so a drop anywhere on the page has one obvious destination. */}
+      <FileDropOverlay
+        accept={MODEL_ACCEPT}
+        label="Drop to add model files"
+        icon={<FileBox className="size-10 text-primary" />}
+        onDrop={onAdd}
+      />
       {entries.length > 0 && (
         <ul className="grid gap-1">
           {entries.map((entry, i) => (
@@ -540,13 +622,7 @@ export function ModelFilePicker({
   );
 }
 
-// The gallery: uploaded photos and videos plus linked YouTube videos in one
-// grid, because the model page shows them as one carousel — anything dragged
-// between two photos stays there (an uploaded file's index here is its
-// `position`; a linked video's is the `position` saved with it, see
-// mediaLinkedVideos). A linked video has no file behind it, so the picker
-// carries two add affordances: the file input (photos *and* video files), and
-// a URL field that only accepts a link src/lib/video.ts recognizes.
+// The gallery: uploaded photos and videos plus linked YouTube videos in one grid, because the model page shows them as one carousel — anything dragged between two photos stays there (an uploaded file's index here is its `position`; a linked video's is the `position` saved with it, see mediaLinkedVideos). A linked video has no file behind it, so the picker carries two add affordances: the file input (photos *and* video files), and a URL field that only accepts a link src/lib/video.ts recognizes.
 export function MediaPicker({
   media,
   onAddImages,
@@ -568,8 +644,7 @@ export function MediaPicker({
   const [draggedKey, setDraggedKey] = useState<string | null>(null);
   const [videoDraft, setVideoDraft] = useState("");
   const [videoError, setVideoError] = useState<string | null>(null);
-  // Only *linked* videos count against the cap — uploaded video files are
-  // model_files like any photo, bounded by the upload size limit instead.
+  // Only *linked* videos count against the cap — uploaded video files are model_files like any photo, bounded by the upload size limit instead.
   const videoCount = media.filter(isLinkedVideo).length;
 
   function addVideo() {
@@ -615,8 +690,7 @@ export function MediaPicker({
             setVideoDraft(e.target.value);
             setVideoError(null);
           }}
-          // The picker sits inside the wizard's form, where Enter would
-          // otherwise submit the whole model.
+          // The picker sits inside the wizard's form, where Enter would otherwise submit the whole model.
           onKeyDown={(e) => {
             if (e.key === "Enter") {
               e.preventDefault();
@@ -674,8 +748,7 @@ export function MediaPicker({
             >
               {isLinkedVideo(entry) ? (
                 <>
-                  {/* Remote host — next/image would need its own allowlist to
-                      add nothing at this size. */}
+                  {/* Remote host — next/image would need its own allowlist to add nothing at this size. */}
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img
                     src={youTubeThumbnailUrl(entry.video)}
@@ -690,9 +763,7 @@ export function MediaPicker({
                 </>
               ) : isVideoFile(entry) ? (
                 <>
-                  {/* preload="metadata" is enough for the browser to paint the
-                      first frame as a poster; the tile never plays, so there
-                      is no reason to fetch more of the file than that. */}
+                  {/* preload="metadata" is enough for the browser to paint the first frame as a poster; the tile never plays, so there is no reason to fetch more of the file than that. */}
                   <video
                     src={entry.src}
                     muted
@@ -714,9 +785,7 @@ export function MediaPicker({
                   className="aspect-square w-full object-cover"
                 />
               )}
-              {/* The cover is the first uploaded file — photo or video. A
-                  linked video can't be one: browse cards show a stored file,
-                  and there is nothing of a YouTube link to show there. */}
+              {/* The cover is the first uploaded file — photo or video. A linked video can't be one: browse cards show a stored file, and there is nothing of a YouTube link to show there. */}
               {!isLinkedVideo(entry) && mediaFiles(media)[0]?.key === entry.key && (
                 <span className="absolute top-1 left-1 rounded bg-primary text-primary-foreground text-[10px] font-medium px-1.5 py-0.5">
                   Cover

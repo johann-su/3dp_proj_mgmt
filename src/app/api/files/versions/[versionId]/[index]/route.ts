@@ -10,12 +10,7 @@ import { blobStore } from "@/lib/storage";
 
 export const runtime = "nodejs";
 
-// Serves one file of a version snapshot for the version-preview page
-// (/models/[id]/versions/[versionId]). Historical files have no model_files
-// row — they are addressed as (version row, index into its snapshot file
-// list), both immutable. Auth mirrors /api/files/[id]: a session cookie or a
-// signed token (the next/image optimizer sends no cookies). Downloads are
-// not counted — inspecting history isn't a download metric.
+// Serves one file of a version snapshot for the version-preview page (/models/[id]/versions/[versionId]). Historical files have no model_files row — they are addressed as (version row, index into its snapshot file list), both immutable. Auth mirrors /api/files/[id]: a session cookie or a signed token (the next/image optimizer sends no cookies). Downloads are not counted — inspecting history isn't a download metric.
 export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ versionId: string; index: string }> },
@@ -47,8 +42,7 @@ export async function GET(
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
 
-  // Range requests for the same reason as /api/files/[id]: a historical video
-  // is played by the same <video> element on the version-preview page.
+  // Range requests for the same reason as /api/files/[id]: a historical video is played by the same <video> element on the version-preview page.
   const range = parseByteRange(req.headers.get("range"), file.size);
   if (range === "unsatisfiable") {
     return new Response(null, {
@@ -66,8 +60,7 @@ export async function GET(
     file.kind === "model" || req.nextUrl.searchParams.get("download") === "1";
 
   const headers = new Headers();
-  // Same rule as /api/files/[id]: the served type comes from the allowlisted
-  // extension, never a stored value (inline text/html would be stored XSS).
+  // Same rule as /api/files/[id]: the served type comes from the allowlisted extension, never a stored value (inline text/html would be stored XSS).
   headers.set("Content-Type", contentTypeForFilename(file.filename));
   headers.set("X-Content-Type-Options", "nosniff");
   if (object.contentLength !== undefined) {
@@ -81,9 +74,7 @@ export async function GET(
     "Content-Disposition",
     `${asAttachment ? "attachment" : "inline"}; filename="${encodeURIComponent(file.filename)}"`,
   );
-  // Snapshots are immutable, so the caching story matches /api/files/[id]:
-  // token-keyed gallery responses may be cached publicly, everything else
-  // stays private.
+  // Snapshots are immutable, so the caching story matches /api/files/[id]: token-keyed gallery responses may be cached publicly, everything else stays private.
   headers.set(
     "Cache-Control",
     isGalleryKind(file.kind) && viaToken

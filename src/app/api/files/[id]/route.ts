@@ -12,10 +12,7 @@ export const runtime = "nodejs";
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-// Serves a stored file. Requires either a session cookie (browser downloads,
-// <a href> links) or a signed file token (`?token=` or the token path segment
-// of /api/files/[id]/[token]/[filename]) for the two cookie-less consumers:
-// the next/image optimizer and slicer deep links. See src/lib/file-token.ts.
+// Serves a stored file. Requires either a session cookie (browser downloads, <a href> links) or a signed file token (`?token=` or the token path segment of /api/files/[id]/[token]/[filename]) for the two cookie-less consumers: the next/image optimizer and slicer deep links. See src/lib/file-token.ts.
 export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ id: string; token?: string }> },
@@ -38,13 +35,7 @@ export async function GET(
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
 
-  // Files are content-addressed by an immutable UUID, so an image never changes
-  // under a given URL — let the browser and the next/image optimizer cache it
-  // aggressively (the optimizer's TTL is max(minimumCacheTTL, upstream max-age)).
-  // Only token-authenticated responses are cacheable by shared caches: the
-  // token in the URL keys the cache, so a cached copy is only reachable with a
-  // valid token. Cookie-authenticated responses stay private so a proxy can't
-  // serve one user's fetch to anonymous clients under the token-less URL.
+  // Files are content-addressed by an immutable UUID, so an image never changes under a given URL — let the browser and the next/image optimizer cache it aggressively (the optimizer's TTL is max(minimumCacheTTL, upstream max-age)). Only token-authenticated responses are cacheable by shared caches: the token in the URL keys the cache, so a cached copy is only reachable with a valid token. Cookie-authenticated responses stay private so a proxy can't serve one user's fetch to anonymous clients under the token-less URL.
   return serveModelFile(req, file, {
     cacheControl:
       isGalleryKind(file.kind) && viaToken

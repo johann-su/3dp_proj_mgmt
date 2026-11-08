@@ -1,9 +1,6 @@
 // Minimal client for the (unofficial, reverse-engineered) Bambu Cloud API.
 //
-// Only what this app needs: log a user in to obtain an access token, and
-// exchange a MakerWorld print-profile id for a short-lived presigned download
-// URL. The same token doubles as the MakerWorld download credential — see
-// src/lib/import/makerworld.ts.
+// Only what this app needs: log a user in to obtain an access token, and exchange a MakerWorld print-profile id for a short-lived presigned download URL. The same token doubles as the MakerWorld download credential — see src/lib/import/makerworld.ts.
 //
 // Endpoints and flow are community-documented; Bambu can change them at will.
 
@@ -120,9 +117,7 @@ export async function bambuLoginWithCode(
   return { accessToken: data.accessToken, expiresIn: data.expiresIn };
 }
 
-// Authenticator-app (TOTP) step. The token is returned in a `token` cookie on
-// the web host rather than in the JSON body; its lifetime then comes from the
-// cookie's Max-Age when present.
+// Authenticator-app (TOTP) step. The token is returned in a `token` cookie on the web host rather than in the JSON body; its lifetime then comes from the cookie's Max-Age when present.
 export async function bambuVerifyTfa(
   tfaKey: string,
   tfaCode: string,
@@ -158,9 +153,7 @@ export async function bambuVerifyTfa(
   return { accessToken: token, expiresIn: data.expiresIn };
 }
 
-// Best-effort token check: 401 means the token is invalid/expired; anything
-// else is treated as usable (endpoints vary, and we don't want false negatives
-// blocking a token that will work for downloads).
+// Best-effort token check: 401 means the token is invalid/expired; anything else is treated as usable (endpoints vary, and we don't want false negatives blocking a token that will work for downloads).
 export async function validateToken(
   token: string,
   region: BambuRegion,
@@ -178,8 +171,7 @@ export async function validateToken(
 
 export type ProfileDownload = { url: string; name: string };
 
-// Exchanges a design's print-profile id for a short-lived (~5 min) presigned
-// download URL. Returns null on a 401 so the caller can prompt a reconnect.
+// Exchanges a design's print-profile id for a short-lived (~5 min) presigned download URL. Returns null on a 401 so the caller can prompt a reconnect.
 export async function fetchProfileDownload(
   profileId: number,
   modelId: string,
@@ -200,15 +192,7 @@ export async function fetchProfileDownload(
   return { url: data.url, name: data.name ?? "" };
 }
 
-// Exchanges a design id for a presigned download of its *raw* model files
-// (the "raw model files" panel on MakerWorld — .scad sources, unsliced
-// .3mf/.stl geometry — as opposed to the sliced print profiles above). Only
-// `modelType=all` works (verified against a live account: "scad"/"3mf"
-// answer 404), returning one zip of every raw file with an empty `name`.
-// Undocumented like the favorites API: discovered from community clients of
-// MakerWorld's own frontend, so Bambu can change it at will. Requires a
-// login — it answers 403 "Please log in to download models." anonymously,
-// hence 403 also maps to "unauthorized".
+// Exchanges a design id for a presigned download of its *raw* model files (the "raw model files" panel on MakerWorld — .scad sources, unsliced .3mf/.stl geometry — as opposed to the sliced print profiles above). Only `modelType=all` works (verified against a live account: "scad"/"3mf" answer 404), returning one zip of every raw file with an empty `name`. Undocumented like the favorites API: discovered from community clients of MakerWorld's own frontend, so Bambu can change it at will. Requires a login — it answers 403 "Please log in to download models." anonymously, hence 403 also maps to "unauthorized".
 export async function fetchRawModelDownload(
   designId: number,
   modelType: string,

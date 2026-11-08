@@ -1,25 +1,19 @@
 import { sql, type SQL } from "drizzle-orm";
+import {
+  isSourcePlatform,
+  sourceById,
+  sourceLabels,
+  type SourcePlatform,
+} from "@/lib/sources/registry";
 
-// Smart-collection rules (issue #46): a collection can define its membership
-// as a rule tree evaluated against model metadata instead of hand-picked
-// `collection_models` rows. The tree is the Lightroom/Smart-Playlist shape —
-// nested AND/OR groups of field/value conditions with per-condition negation —
-// stored as jsonb on `collections.rules` and compiled to a SQL predicate over
-// the `models m` alias at read time (mirroring how /search builds its WHERE,
-// see src/lib/search.ts).
+// Smart-collection rules (issue #46): a collection can define its membership as a rule tree evaluated against model metadata instead of hand-picked `collection_models` rows. The tree is the Lightroom/Smart-Playlist shape — nested AND/OR groups of field/value conditions with per-condition negation — stored as jsonb on `collections.rules` and compiled to a SQL predicate over the `models m` alias at read time (mirroring how /search builds its WHERE, see src/lib/search.ts).
 //
-// This module is DB-free on purpose: parsing/validation and the SQL compiler
-// are pure (drizzle's `sql` tag builds parameterized fragments without a
-// connection), so both are unit-testable. The queries that execute the
-// compiled predicate live in src/lib/smart-collections.ts.
+// This module is DB-free on purpose: parsing/validation and the SQL compiler are pure (drizzle's `sql` tag builds parameterized fragments without a connection), so both are unit-testable. The queries that execute the compiled predicate live in src/lib/smart-collections.ts.
 
 export type RuleGroupOp = "AND" | "OR";
 
-export type SourcePlatformValue =
-  | "makerworld"
-  | "printables"
-  | "onshape"
-  | "manual";
+// Any registered source (src/lib/sources/registry.ts), or "manual" for models with no sourceUrl at all.
+export type SourcePlatformValue = SourcePlatform | "manual";
 
 export type RuleCondition =
   // has any/all of the listed tags (negate for "none"/"not all")
@@ -62,14 +56,11 @@ export const RULE_FIELD_LABELS: Record<RuleField, string> = {
 };
 
 export const SOURCE_VALUE_LABELS: Record<SourcePlatformValue, string> = {
-  makerworld: "MakerWorld",
-  printables: "Printables",
-  onshape: "Onshape",
+  ...sourceLabels,
   manual: "Manual upload",
 };
 
-// Guardrails against pathological trees (the compile is recursive and each
-// condition costs a subquery). Depth counts the root group as 1.
+// Guardrails against pathological trees (the compile is recursive and each condition costs a subquery). Depth counts the root group as 1.
 export const MAX_RULE_DEPTH = 3;
 export const MAX_RULE_CONDITIONS = 32;
 // Matches the per-model tag cap in normalizeTagNames (src/lib/tags.ts).
@@ -77,11 +68,7 @@ export const MAX_TAGS_PER_CONDITION = 20;
 
 // --- Validation -----------------------------------------------------------
 
-// Parses an untrusted jsonb value (form input or a stored rules column) into a
-// typed rule tree. Returns an error message instead of throwing so server
-// actions can surface it. Everything not exactly matching the schema is
-// rejected — the tree is compiled into SQL, so no unknown shapes may pass
-// (values themselves are always bound as query parameters, never spliced).
+// Parses an untrusted jsonb value (form input or a stored rules column) into a typed rule tree. Returns an error message instead of throwing so server actions can surface it. Everything not exactly matching the schema is rejected — the tree is compiled into SQL, so no unknown shapes may pass (values themselves are always bound as query parameters, never spliced).
 export function parseRuleTree(
   input: unknown,
 ): { tree: RuleGroup } | { error: string } {
@@ -161,12 +148,7 @@ function parseCondition(
       return { field: c.field, value: c.value.trim(), negate };
     }
     case "source": {
-      if (
-        c.value !== "makerworld" &&
-        c.value !== "printables" &&
-        c.value !== "onshape" &&
-        c.value !== "manual"
-      ) {
+      if (c.value !== "manual" && !isSourcePlatform(c.value)) {
         return "Unknown source platform";
       }
       return { field: "source", value: c.value, negate };
@@ -190,29 +172,15 @@ function parseCondition(
 
 // --- SQL compilation --------------------------------------------------------
 
-// Same fuzzy-match tuning as /search — see the WORD_SIM_THRESHOLD comment in
-// src/lib/search.ts for why strict_word_similarity at 0.3.
+// Same fuzzy-match tuning as /search — see the WORD_SIM_THRESHOLD comment in src/lib/search.ts for why strict_word_similarity at 0.3.
 const WORD_SIM_THRESHOLD = 0.3;
 
 function escapeLike(q: string): string {
   return q.replace(/[%_\\]/g, "\\$&");
 }
 
-// Hostname patterns mirroring platformFromSourceUrl (src/lib/platform.ts),
-// expressed as SQL regexes so classification happens in the WHERE clause.
-const SOURCE_HOST_PATTERNS: Record<Exclude<SourcePlatformValue, "manual">, string> = {
-  makerworld: "^https?://([^/]*\\.)?makerworld\\.com(/|$)",
-  printables: "^https?://([^/]*\\.)?printables\\.com(/|$)",
-  onshape: "^https?://([^/]*\\.)?onshape\\.com(/|$)",
-};
 
-// Compiles a validated rule tree into one boolean SQL expression over the
-// `models m` alias (subqueries reach into model_files/model_tags/tags, the
-// same shapes as search.ts's modelFileConditions/tagMatch). All user values
-// are bound parameters. Every condition is written to be NULL-safe so that
-// `negate` behaves as users expect — e.g. "NOT category = X" must include
-// uncategorized models, which a bare `NOT (m.category_id = X)` would drop
-// (NULL, not true).
+// Compiles a validated rule tree into one boolean SQL expression over the `models m` alias (subqueries reach into model_files/model_tags/tags, the same shapes as search.ts's modelFileConditions/tagMatch). All user values are bound parameters. Every condition is written to be NULL-safe so that `negate` behaves as users expect — e.g. "NOT category = X" must include uncategorized models, which a bare `NOT (m.category_id = X)` would drop (NULL, not true).
 export function ruleTreeToSql(tree: RuleGroup): SQL {
   return groupSql(tree);
 }
@@ -245,20 +213,19 @@ function fieldSql(cond: RuleCondition): SQL {
       if (cond.op === "any") {
         return sql`(EXISTS (SELECT 1 FROM model_tags mt JOIN tags t ON t.id = mt.tag_id WHERE mt.model_id = m.id AND lower(t.name) IN (${list})))`;
       }
-      // "all": the model carries every listed tag (values are pre-deduped and
-      // lowercased by parseRuleTree, so a distinct count comparison works).
+      // "all": the model carries every listed tag (values are pre-deduped and lowercased by parseRuleTree, so a distinct count comparison works).
       return sql`((SELECT COUNT(DISTINCT lower(t.name)) FROM model_tags mt JOIN tags t ON t.id = mt.tag_id WHERE mt.model_id = m.id AND lower(t.name) IN (${list})) = ${cond.value.length})`;
     }
     case "category":
-      // IS NOT DISTINCT FROM: false (not NULL) for uncategorized models, so
-      // negation includes them.
+      // IS NOT DISTINCT FROM: false (not NULL) for uncategorized models, so negation includes them.
       return sql`(m.category_id IS NOT DISTINCT FROM ${cond.value}::uuid)`;
     case "uploader":
       return sql`(m.user_id = ${cond.value})`;
     case "source": {
       if (cond.value === "manual") return sql`(m.source_url IS NULL)`;
       // COALESCE keeps the match false (not NULL) for manual uploads.
-      return sql`(COALESCE(m.source_url, '') ~* ${SOURCE_HOST_PATTERNS[cond.value]})`;
+      // The host test platformFromSourceUrl applies, as a Postgres regex.
+      return sql`(COALESCE(m.source_url, '') ~* ${sourceById(cond.value).hostSqlRegex})`;
     }
     case "printer":
       return sql`(${fileExists(sql`lower(mf.printer_info->>'model') = ${cond.value.toLowerCase()}`)})`;

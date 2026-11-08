@@ -16,8 +16,7 @@ export default async function LikedModelsPage() {
   const session = await getSession();
   if (!session) redirect(await signInRedirect());
 
-  // Liked model ids, most recently liked first — this order is what the page
-  // preserves, so we resolve it here rather than sorting the models by date.
+  // Liked model ids, most recently liked first — this order is what the page preserves, so we resolve it here rather than sorting the models by date.
   const likeRows = await db
     .select({ modelId: modelLikes.modelId })
     .from(modelLikes)
@@ -25,9 +24,7 @@ export default async function LikedModelsPage() {
     .orderBy(desc(modelLikes.createdAt));
   const likedIds = likeRows.map((r) => r.modelId);
 
-  // Hydrate the cards with the same shape as My Models. Trashed models keep
-  // their like row but are filtered out (deleted_at IS NULL), so the count can
-  // be lower than the number of likes.
+  // Hydrate the cards with the same shape as My Models. Trashed models keep their like row but are filtered out (deleted_at IS NULL), so the count can be lower than the number of likes.
   const found = likedIds.length
     ? await db.query.models.findMany({
         where: and(inArray(models.id, likedIds), isNull(models.deletedAt)),

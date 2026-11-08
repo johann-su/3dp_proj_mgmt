@@ -1,6 +1,8 @@
 import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
-import { genericOAuth, mcp } from "better-auth/plugins";
+import { genericOAuth, jwt } from "better-auth/plugins";
+import { mcp } from "@better-auth/mcp";
+import { apiKey } from "@better-auth/api-key";
 import { headers } from "next/headers";
 import { and, ne, sql } from "drizzle-orm";
 import { db } from "@/db";
@@ -9,11 +11,14 @@ import { appUrl } from "@/lib/app-url";
 import { logger } from "@/lib/logger";
 import { roleFromOidcGroups, type UserRole } from "@/lib/roles";
 import { envFlag, passwordLoginEnabled } from "@/lib/auth-config";
+import { API_KEY_PREFIX } from "@/lib/api/scopes";
 import { CALLBACK_PATH_HEADER, signInPath } from "@/lib/callback-url";
 
 // Optional OIDC single sign-on, enabled when all three env vars are set.
 // The provider must allow the redirect URI:
 //   {BETTER_AUTH_URL}/api/auth/oauth2/callback/oidc
+//
+// That is the generic-oauth plugin's pre-1.7 callback path. BetterAuth 1.7 moved generic providers onto the core /callback/<id> route; we keep advertising the old URL (OIDC_REDIRECT_PATH below) and forward it to the new handler (src/app/api/auth/oauth2/callback/[providerId]/route.ts), so an upgrade doesn't require re-registering the redirect URI at the IdP — which, with DISABLE_PASSWORD_LOGIN set, would otherwise lock everyone out.
 //
 // OIDC_ISSUER accepts either the issuer base URL or a full discovery URL.
 // Note for Authentik: issuers are per application —
@@ -25,20 +30,13 @@ const oidcClientSecret = process.env.OIDC_CLIENT_SECRET?.trim();
 
 export const oidcEnabled = Boolean(oidcIssuer && oidcClientId && oidcClientSecret);
 export const oidcProviderName = process.env.OIDC_PROVIDER_NAME?.trim() || "SSO";
+export const OIDC_REDIRECT_PATH = "/api/auth/oauth2/callback/oidc";
 
-// Optional IdP-group → role mapping (issue #54): the exact group names, as
-// the IdP spells them in the OIDC `groups` claim (Authentik includes it with
-// the standard `profile` scope). While configured, group membership is
-// authoritative on every SSO login — joining the group grants the role,
-// leaving it revokes it — so manage SSO users' roles in the IdP, not on
-// Settings → Users. See roleFromOidcGroups in src/lib/roles.ts.
+// Optional IdP-group → role mapping (issue #54): the exact group names, as the IdP spells them in the OIDC `groups` claim (Authentik includes it with the standard `profile` scope). While configured, group membership is authoritative on every SSO login — joining the group grants the role, leaving it revokes it — so manage SSO users' roles in the IdP, not on Settings → Users. See roleFromOidcGroups in src/lib/roles.ts.
 const oidcAdminGroup = process.env.OIDC_ADMIN_GROUP?.trim() || null;
 const oidcModeratorGroup = process.env.OIDC_MODERATOR_GROUP?.trim() || null;
 
-// BetterAuth rate-limits auth endpoints by client IP whenever NODE_ENV is
-// "production" (true for the Docker image), with a tight built-in rule for
-// sign-in/sign-up/change-password/change-email (3 requests/10s). It reads that
-// IP from X-Forwarded-For (getIPFromHeader in @better-auth/core/utils/ip):
+// BetterAuth rate-limits auth endpoints by client IP whenever NODE_ENV is "production" (true for the Docker image), with a tight built-in rule for sign-in/sign-up/change-password/change-email (3 requests/10s). It reads that IP from X-Forwarded-For (getIPFromHeader in @better-auth/core/utils/ip):
 //
 //  * a SINGLE-value header is trusted as-is — no configuration needed, which
 //    is the common case behind one proxy that *replaces* the header (Traefik
@@ -51,29 +49,17 @@ const oidcModeratorGroup = process.env.OIDC_MODERATOR_GROUP?.trim() || null;
 //    in front of your proxy) produces, and what TRUSTED_PROXY_CIDRS fixes: the
 //    listed hops are stripped from the right until an untrusted one is left.
 //
-// The entries match values *inside the header*, never the peer address — so
-// setting this when the header is already single-valued is actively harmful:
-// a CIDR covering your real clients (10.0.0.0/8 on a VPN) marks the only entry
-// as a proxy, leaves nothing untrusted, and yields the shared bucket it was
-// meant to prevent. Leave it unset until you've looked at the header the app
-// actually receives. Malformed entries are dropped by BetterAuth itself (fails
-// closed to the shared bucket, never open) rather than rejected here.
+// The entries match values *inside the header*, never the peer address — so setting this when the header is already single-valued is actively harmful: a CIDR covering your real clients (10.0.0.0/8 on a VPN) marks the only entry as a proxy, leaves nothing untrusted, and yields the shared bucket it was meant to prevent. Leave it unset until you've looked at the header the app actually receives. Malformed entries are dropped by BetterAuth itself (fails closed to the shared bucket, never open) rather than rejected here.
 const trustedProxyCidrs =
   process.env.TRUSTED_PROXY_CIDRS?.split(",")
     .map((entry) => entry.trim())
     .filter(Boolean) ?? [];
 
-// Self-registration is on by default (self-hosters may want an open instance)
-// and can be switched off with DISABLE_SIGNUP=true once the accounts exist.
-// This gates email/password sign-up only — OIDC keeps provisioning users on
-// first login, since who may authenticate is the IdP's decision.
+// Self-registration is on by default (self-hosters may want an open instance) and can be switched off with DISABLE_SIGNUP=true once the accounts exist. This gates email/password sign-up only — OIDC keeps provisioning users on first login, since who may authenticate is the IdP's decision.
 export const signupDisabled = envFlag(process.env.DISABLE_SIGNUP);
 
 // DISABLE_PASSWORD_LOGIN=true removes email/password sign-in entirely, leaving
-// the IdP as the only way in — the setting an internet-facing instance wants,
-// since a local password is a second door with no MFA behind it. Ignored
-// (with a warning) when no OIDC provider is configured, so it can't lock
-// everyone out of an instance that has no other way to sign in.
+// the IdP as the only way in — the setting an internet-facing instance wants, since a local password is a second door with no MFA behind it. Ignored (with a warning) when no OIDC provider is configured, so it can't lock everyone out of an instance that has no other way to sign in.
 export const passwordLoginDisabled = !passwordLoginEnabled(
   process.env.DISABLE_PASSWORD_LOGIN,
   oidcEnabled,
@@ -91,30 +77,22 @@ if (
   );
 }
 
-// MCP server (issue #96): opt-in, because enabling it turns the instance into
-// an OAuth authorization server whose client-registration endpoint
-// (/api/auth/mcp/register, RFC 7591) is unauthenticated by design — that is
-// how an LLM client bootstraps itself, but it is a write surface an instance
-// that doesn't want the feature shouldn't expose. Everything MCP is gated on
-// this: the plugin, /api/mcp, the discovery documents and the consent page.
+// MCP server (issue #96): opt-in, because enabling it turns the instance into an OAuth authorization server whose client-registration endpoint (/api/auth/oauth2/register, RFC 7591) is unauthenticated by design — that is how an LLM client bootstraps itself, but it is a write surface an instance that doesn't want the feature shouldn't expose. Everything MCP is gated on this: the plugins, /api/mcp, the discovery documents and the MCP pages.
 export const mcpEnabled = envFlag(process.env.ENABLE_MCP);
 
-// The page an MCP client's browser is sent to for approval. It is the
-// `authorization_endpoint` we advertise (see the discovery route) and doubles
-// as BetterAuth's `loginPage`, so a session that expires mid-flow lands back
-// on it rather than somewhere that has lost the OAuth query.
+// Where the OAuth flow sends the browser for sign-in and for approval. Both are our pages rather than /sign-in directly — see src/app/mcp/.
 export const MCP_AUTHORIZE_PATH = "/mcp/authorize";
+export const MCP_CONSENT_PATH = "/mcp/consent";
 
-// The MCP endpoint itself, and the OAuth "resource identifier" clients name
-// when asking for a token for it. Both the discovery documents and the token
-// requests have to agree on this string, so it is defined once.
+// The MCP endpoint, and the OAuth resource identifier its tokens are bound to (their `aud`). Discovery, token issuance and verification must all agree on this string, so it is defined once.
 export const MCP_ENDPOINT_PATH = "/api/mcp";
+export const mcpResource = () => appUrl(MCP_ENDPOINT_PATH).toString();
 
-// Bootstrap for user roles (issue #54): the account with this email becomes
-// the first admin — at sign-up via the create hook below, or (for accounts
-// that already exist) lazily on the next settings page load while the DB has
-// no admin at all (ensureInitialAdmin in src/lib/admin.ts). Every later role
-// change happens on Settings → Users.
+// Public REST API (/api/v1, docs/architecture/api.md): opt-in like MCP. It adds no unauthenticated surface, but an API key is a long-lived bearer credential that bypasses SSO and its MFA — a second door an operator who relies on DISABLE_PASSWORD_LOGIN may not want. Gates the api-key plugin, the
+// /api/v1 routes and Settings → API keys.
+export const apiEnabled = envFlag(process.env.ENABLE_API);
+
+// Bootstrap for user roles (issue #54): the account with this email becomes the first admin — at sign-up via the create hook below, or (for accounts that already exist) lazily on the next settings page load while the DB has no admin at all (ensureInitialAdmin in src/lib/admin.ts). Every later role change happens on Settings → Users.
 export const initialAdminEmail =
   process.env.INITIAL_ADMIN_EMAIL?.trim().toLowerCase() || null;
 
@@ -122,9 +100,7 @@ const discoveryUrl = oidcIssuer?.includes("/.well-known/")
   ? oidcIssuer
   : `${oidcIssuer?.replace(/\/+$/, "")}/.well-known/openid-configuration`;
 
-// Validate the discovery endpoint once at boot so a wrong issuer shows up in
-// the server log with an actionable message instead of only surfacing as
-// INVALID_OAUTH_CONFIGURATION at sign-in time.
+// Validate the discovery endpoint once at boot so a wrong issuer shows up in the server log with an actionable message instead of only surfacing as INVALID_OAUTH_CONFIGURATION at sign-in time.
 if (oidcEnabled && process.env.NEXT_PHASE !== "phase-production-build") {
   fetch(discoveryUrl)
     .then(async (res) => {
@@ -144,12 +120,7 @@ if (oidcEnabled && process.env.NEXT_PHASE !== "phase-production-build") {
     });
 }
 
-// Role computed from the OIDC groups claim for a user whose row doesn't
-// exist yet: mapProfileToUser runs before the user is created, and BetterAuth
-// strips additional fields marked `input: false` from provider profiles, so
-// the role travels to the user-create hook out of band. Keyed by lowercased
-// email; entries are consumed at creation and expire quickly so an aborted
-// sign-up can't leak a role into a later, unrelated one.
+// Role computed from the OIDC groups claim for a user whose row doesn't exist yet: mapProfileToUser runs before the user is created, and BetterAuth strips additional fields marked `input: false` from provider profiles, so the role travels to the user-create hook out of band. Keyed by lowercased email; entries are consumed at creation and expire quickly so an aborted sign-up can't leak a role into a later, unrelated one.
 const pendingOidcRoles = new Map<string, { role: UserRole; expires: number }>();
 
 function takePendingOidcRole(email: string): UserRole | null {
@@ -159,11 +130,7 @@ function takePendingOidcRole(email: string): UserRole | null {
   return entry.role;
 }
 
-// Syncs the user's role from the OIDC groups claim on every SSO login (the
-// only moment we see the claim). Existing users are updated in place —
-// mapProfileToUser can't do it through BetterAuth, see pendingOidcRoles —
-// and first-time users get theirs at creation via the hook below. No-op
-// unless a group mapping is configured and the claim is usable.
+// Syncs the user's role from the OIDC groups claim on every SSO login (the only moment we see the claim). Existing users are updated in place — mapProfileToUser can't do it through BetterAuth, see pendingOidcRoles — and first-time users get theirs at creation via the hook below. No-op unless a group mapping is configured and the claim is usable.
 async function applyOidcGroupRole(profile: Record<string, unknown>) {
   const role = roleFromOidcGroups(profile.groups, {
     adminGroup: oidcAdminGroup,
@@ -192,25 +159,28 @@ export const auth = betterAuth({
       session: schema.session,
       account: schema.account,
       verification: schema.verification,
-      // Written by the `mcp` plugin only; harmless when it is disabled.
-      oauthApplication: schema.oauthApplication,
+      // Written by the jwt/mcp plugins only; harmless while MCP is off. Every model the plugins declare must be listed — BetterAuth checks this map against their schema at startup.
+      jwks: schema.jwks,
+      oauthClient: schema.oauthClient,
+      oauthResource: schema.oauthResource,
+      oauthClientResource: schema.oauthClientResource,
       oauthAccessToken: schema.oauthAccessToken,
+      oauthRefreshToken: schema.oauthRefreshToken,
       oauthConsent: schema.oauthConsent,
+      oauthClientAssertion: schema.oauthClientAssertion,
+      // Written by the api-key plugin only; harmless while ENABLE_API is off.
+      apikey: schema.apikey,
     },
   }),
   emailAndPassword: {
-    // Off means BetterAuth stops serving /api/auth/sign-in/email entirely, so
-    // existing local credentials become unusable and SSO is the only way in.
-    // Sessions are unaffected — nobody signed in gets kicked out.
+    // Off means BetterAuth stops serving /api/auth/sign-in/email entirely, so existing local credentials become unusable and SSO is the only way in. Sessions are unaffected — nobody signed in gets kicked out.
     enabled: !passwordLoginDisabled,
     // Enforced server-side by BetterAuth (a direct POST to
     // /api/auth/sign-up/email is rejected); the /sign-up page also hides.
     disableSignUp: signupDisabled,
   },
   user: {
-    // Expose the role column (src/db/schema.ts) on session.user so the
-    // permission gates can read it; input: false keeps sign-up payloads from
-    // self-assigning a role.
+    // Expose the role column (src/db/schema.ts) on session.user so the permission gates can read it; input: false keeps sign-up payloads from self-assigning a role.
     additionalFields: {
       role: {
         type: "string",
@@ -223,10 +193,7 @@ export const auth = betterAuth({
   databaseHooks: {
     user: {
       create: {
-        // First-login role: the OIDC group mapping wins when it produced
-        // one (applyOidcGroupRole ran moments earlier in this request);
-        // otherwise the INITIAL_ADMIN_EMAIL account signs up as admin
-        // directly (covers fresh databases).
+        // First-login role: the OIDC group mapping wins when it produced one (applyOidcGroupRole ran moments earlier in this request); otherwise the INITIAL_ADMIN_EMAIL account signs up as admin directly (covers fresh databases).
         before: async (user) => {
           const email = user.email.toLowerCase();
           return {
@@ -246,19 +213,15 @@ export const auth = betterAuth({
   account: {
     accountLinking: {
       enabled: true,
-      // Let an SSO login attach to an existing email/password account with
-      // the same email instead of failing with account_not_linked.
+      // Let an SSO login attach to an existing email/password account with the same email instead of failing with account_not_linked.
       trustedProviders: ["oidc"],
-      // Local accounts are never email-verified (we send no verification
-      // mails), so don't require that for linking. The IdP asserts the email.
+      // Local accounts are never email-verified (we send no verification mails), so don't require that for linking. The IdP asserts the email.
       requireLocalEmailVerified: false,
     },
   },
   advanced: {
     ipAddress: {
-      // Empty is the safe default: BetterAuth then only trusts a
-      // single-value X-Forwarded-For, falling back to the shared bucket
-      // described above rather than a spoofable multi-value chain.
+      // Empty is the safe default: BetterAuth then only trusts a single-value X-Forwarded-For, falling back to the shared bucket described above rather than a spoofable multi-value chain.
       trustedProxies: trustedProxyCidrs,
     },
   },
@@ -273,20 +236,21 @@ export const auth = betterAuth({
                 clientSecret: oidcClientSecret!,
                 discoveryUrl,
                 scopes: ["openid", "profile", "email"],
-                // Users that don't exist yet are created on first SSO login
-                // (implicit sign-up is the default; spelled out here on purpose).
+                // The pre-1.7 callback URL operators registered at their IdP — see OIDC_REDIRECT_PATH. Used for both the authorize request and the code exchange, so the two always agree.
+                redirectURI: appUrl(OIDC_REDIRECT_PATH).toString(),
+                // Users that don't exist yet are created on first SSO login (implicit sign-up is the default; spelled out here on purpose).
                 disableImplicitSignUp: false,
                 mapProfileToUser: async (profile) => {
-                  // Runs on every OIDC callback — the hook that keeps roles in
-                  // sync with IdP group membership.
+                  // Runs on every OIDC callback — the hook that keeps roles in sync with IdP group membership.
                   await applyOidcGroupRole(profile);
+                  const pick = (v: unknown) =>
+                    typeof v === "string" && v.trim() ? v : null;
+                  const email = pick(profile.email);
                   return {
                     name:
-                      profile.name ||
-                      profile.preferred_username ||
-                      (typeof profile.email === "string"
-                        ? profile.email.split("@")[0]
-                        : "User"),
+                      pick(profile.name) ??
+                      pick(profile.preferred_username) ??
+                      (email ? email.split("@")[0] : "User"),
                   };
                 },
               },
@@ -294,16 +258,39 @@ export const auth = betterAuth({
           }),
         ]
       : []),
-    // Mounts /api/auth/mcp/* (authorize, token, register, get-session) plus
-    // the OAuth discovery documents BetterAuth serves under its own base path.
+    // Mounts /api/auth/oauth2/* (authorize, consent, token, register, …).
     ...(mcpEnabled
       ? [
+          // Signs the access tokens (JWTs, audience-bound to the MCP resource) and serves the JWKS /api/mcp verifies them against.
+          jwt(),
           mcp({
             loginPage: MCP_AUTHORIZE_PATH,
-            // Without this the advertised resource would be the bare origin,
-            // and a client that checks the metadata against the server URL it
-            // was configured with (RFC 9728 §3.3) would refuse the token.
-            resource: appUrl(MCP_ENDPOINT_PATH).toString(),
+            consentPage: MCP_CONSENT_PATH,
+            // Without this the advertised resource would be the bare origin, and a client that checks the metadata against the server URL it was configured with (RFC 9728 §3.3) would refuse the token.
+            resource: mcpResource(),
+            // Claude, ChatGPT and Cursor register themselves (RFC 7591) before anyone has signed in; that is the only way they connect.
+            allowDynamicClientRegistration: true,
+            allowUnauthenticatedClientRegistration: true,
+            // Custom-scheme redirect URIs (desktop apps) register as native.
+            clientRegistrationDefaultApplicationType: "infer",
+            // Access tokens are JWTs, checked by signature alone, so they can't be revoked early — disconnecting a client (Settings → MCP) only takes hold once the current one expires. Keep that window short; the refresh token carries the 30-day connection.
+            accessTokenExpiresIn: 15 * 60,
+          }),
+        ]
+      : []),
+    // Mounts /api/auth/api-key/* for the signed-in user's own keys. Keys are created by our server action (src/app/settings/api-keys/actions.ts), because scopes ("permissions") are a server-only field: a key created straight through the HTTP endpoint carries none, which /api/v1 treats as no access at all.
+    ...(apiEnabled
+      ? [
+          apiKey({
+            defaultPrefix: API_KEY_PREFIX,
+            requireName: true,
+            maximumNameLength: 64,
+            // Never: a key must not double as a browser session, or it would open every cookie-guarded page and server action, not just
+            // /api/v1 with its scopes.
+            enableSessionForAPIKeys: false,
+            // The plugin's default is 10 requests per *day*. This is a per-key ceiling against a runaway script, not a quota.
+            rateLimit: { enabled: true, timeWindow: 60_000, maxRequests: 600 },
+            keyExpiration: { defaultExpiresIn: null, maxExpiresIn: 365 },
           }),
         ]
       : []),
@@ -314,9 +301,7 @@ export async function getSession() {
   return auth.api.getSession({ headers: await headers() });
 }
 
-// Where a page should send a signed-out visitor: /sign-in, carrying the
-// page's own path (proxy-set header, validated) so login returns them here.
-// For use in `if (!session) redirect(await signInRedirect())` guards.
+// Where a page should send a signed-out visitor: /sign-in, carrying the page's own path (proxy-set header, validated) so login returns them here. For use in `if (!session) redirect(await signInRedirect())` guards.
 export async function signInRedirect() {
   return signInPath((await headers()).get(CALLBACK_PATH_HEADER));
 }

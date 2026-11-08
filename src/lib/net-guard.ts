@@ -1,6 +1,4 @@
-// Pure IP-range checks backing the BOM image proxy's SSRF guard (see
-// src/app/api/bom-image/route.ts) — split out so the range logic can be unit
-// tested without spinning up a route or doing a real DNS lookup.
+// Pure IP-range checks backing the BOM image proxy's SSRF guard (see src/app/api/bom-image/route.ts) — split out so the range logic can be unit tested without spinning up a route or doing a real DNS lookup.
 import { isIPv4, isIPv6 } from "node:net";
 
 function ipv4ToInt(ip: string): number {
@@ -12,8 +10,7 @@ function inIpv4Range(ip: number, base: string, prefixBits: number): boolean {
   return (ip & mask) === (ipv4ToInt(base) & mask);
 }
 
-// RFC 1918/5735/6598 private, loopback, link-local (incl. the 169.254.169.254
-// cloud-metadata endpoint), and other non-public IPv4 ranges.
+// RFC 1918/5735/6598 private, loopback, link-local (incl. the 169.254.169.254 cloud-metadata endpoint), and other non-public IPv4 ranges.
 const IPV4_BLOCKED_RANGES: [base: string, prefixBits: number][] = [
   ["0.0.0.0", 8],
   ["10.0.0.0", 8],
@@ -37,8 +34,7 @@ export function isPrivateOrReservedIpv4(ip: string): boolean {
   return IPV4_BLOCKED_RANGES.some(([base, bits]) => inIpv4Range(intIp, base, bits));
 }
 
-// Matches an embedded IPv4 in an IPv4-mapped (::ffff:a.b.c.d) or NAT64
-// (64:ff9b::a.b.c.d) address, so those don't sail past the v6 checks below.
+// Matches an embedded IPv4 in an IPv4-mapped (::ffff:a.b.c.d) or NAT64 (64:ff9b::a.b.c.d) address, so those don't sail past the v6 checks below.
 const EMBEDDED_IPV4_RE = /^(?:::ffff:|64:ff9b::)(\d+\.\d+\.\d+\.\d+)$/;
 
 export function isPrivateOrReservedIpv6(ip: string): boolean {
@@ -52,9 +48,7 @@ export function isPrivateOrReservedIpv6(ip: string): boolean {
   return false;
 }
 
-// True for any address that isn't routable on the public internet — used to
-// reject a resolved hostname before the proxy fetches it. Addresses in a
-// format we don't recognize are treated as unsafe (fail closed).
+// True for any address that isn't routable on the public internet — used to reject a resolved hostname before the proxy fetches it. Addresses in a format we don't recognize are treated as unsafe (fail closed).
 export function isPrivateOrReservedIp(ip: string): boolean {
   if (isIPv4(ip)) return isPrivateOrReservedIpv4(ip);
   if (isIPv6(ip)) return isPrivateOrReservedIpv6(ip);

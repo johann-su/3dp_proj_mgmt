@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Bot, Cloud, Copy, Shapes, UserCog, Users } from "lucide-react";
+import { Bot, Cloud, Copy, KeyRound, Shapes, UserCog, Users } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const items = [
@@ -11,9 +11,9 @@ const items = [
   { href: "/settings/bambu", label: "Bambu Cloud", icon: Cloud },
 ];
 
-// These hide unless the instance offers them; the pages enforce it
-// server-side (404 / admin check) rather than trusting the nav.
+// These hide unless the instance offers them; the pages enforce it server-side (404 / admin check) rather than trusting the nav.
 const mcpItem = { href: "/settings/mcp", label: "AI access", icon: Bot };
+const apiKeysItem = { href: "/settings/api-keys", label: "API keys", icon: KeyRound };
 const usersItem = { href: "/settings/users", label: "Users", icon: Users };
 const duplicatesItem = {
   href: "/settings/duplicates",
@@ -23,15 +23,16 @@ const duplicatesItem = {
 
 export function SettingsNav({
   showMcp,
+  showApiKeys,
   showUsers,
   showDuplicates,
   duplicateCount,
 }: {
   showMcp: boolean;
+  showApiKeys: boolean;
   showUsers: boolean;
   showDuplicates: boolean;
-  // Open flags, shown as a count next to the entry so a moderator doesn't have
-  // to open the page to find out there's nothing to do.
+  // Open flags, shown as a count next to the entry so a moderator doesn't have to open the page to find out there's nothing to do.
   duplicateCount: number;
 }) {
   const pathname = usePathname();
@@ -41,6 +42,7 @@ export function SettingsNav({
       {[
         ...items,
         ...(showMcp ? [mcpItem] : []),
+        ...(showApiKeys ? [apiKeysItem] : []),
         ...(showUsers ? [usersItem] : []),
         ...(showDuplicates ? [duplicatesItem] : []),
       ].map((item) => {

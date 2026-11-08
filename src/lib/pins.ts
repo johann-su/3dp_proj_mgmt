@@ -7,10 +7,7 @@ export const MAX_PINNED = 48;
 
 export type PinKind = "model" | "collection";
 
-// The homepage "Pinned" section: every model and collection any user has
-// pinned, most recently pinned first, as the same card data the feed uses.
-// Pins are shared — there's no per-user filter. Trashed models keep their pin
-// row (restoring brings the pin back) but are hidden here.
+// The homepage "Pinned" section: every model and collection any user has pinned, most recently pinned first, as the same card data the feed uses. Pins are shared — there's no per-user filter. Trashed models keep their pin row (restoring brings the pin back) but are hidden here.
 export async function listPinned(): Promise<CatalogItem[]> {
   const result = await db.execute<{ id: string; kind: PinKind }>(sql`
     SELECT id, kind FROM (

@@ -1,7 +1,4 @@
-// Thin HTTP wrapper around the OrcaSlicer CLI. Zero npm dependencies so the
-// container is just ubuntu + the extracted OrcaSlicer AppImage + nodejs +
-// unzip/zip. The pure parsing, planning and config-translation helpers live
-// in lib.mjs (unit-tested via `npm test` in the repo root).
+// Thin HTTP wrapper around the OrcaSlicer CLI. Zero npm dependencies so the container is just ubuntu + the extracted OrcaSlicer AppImage + nodejs + unzip/zip. The pure parsing, planning and config-translation helpers live in lib.mjs (unit-tested via `npm test` in the repo root).
 //
 //   GET  /healthz    liveness probe
 //   POST /estimate   body = raw .3mf bytes
@@ -12,30 +9,14 @@
 //
 // How a file is sliced depends on what it carries:
 //
-// - Bambu Studio / OrcaSlicer projects (Metadata/project_settings.config) are
-//   sliced natively with their own printer, process and filament settings and
-//   their own plate layout — the same engine that produced them, so the
-//   estimate matches what the slicer would show. `profile` = "file".
-// - PrusaSlicer projects (Metadata/Slic3r_PE.config, which Orca ignores) are
-//   sliced with the generic profile plus the known settings — including the
-//   project's bed — translated into Orca CLI overrides. `profile` = "file"
-//   when any setting carried over.
-// - Anything else is sliced with the generic profile: an Orca system preset
-//   set chosen by SLICER_GENERIC_* (see presets.mjs). `profile` = "generic".
+// - Bambu Studio / OrcaSlicer projects (Metadata/project_settings.config) are sliced natively with their own printer, process and filament settings and their own plate layout — the same engine that produced them, so the estimate matches what the slicer would show. `profile` = "file".
+// - PrusaSlicer projects (Metadata/Slic3r_PE.config, which Orca ignores) are sliced with the generic profile plus the known settings — including the project's bed — translated into Orca CLI overrides. `profile` = "file" when any setting carried over.
+// - Anything else is sliced with the generic profile: an Orca system preset set chosen by SLICER_GENERIC_* (see presets.mjs). `profile` = "generic".
 //
-// `approx` is false only when the file was sliced exactly as its own slicer
-// would: a Bambu/Orca project, natively, with nothing repaired. Generic-printer,
-// translated-PrusaSlicer and repaired slices rest on assumptions the file
-// didn't make, so the app marks them as approximate ("~").
-// `printer` names the printer the estimate was computed for; a model that
-// doesn't fit its bed fails with that printer named. `plateFilaments` lists
-// each sliced plate's filament types (more than one = filament changes
-// mid-print). `repairedSettings` lists project settings changed so a project
-// from a newer Bambu Studio would slice (see repairSettings in lib.mjs).
+// `approx` is false only when the file was sliced exactly as its own slicer would: a Bambu/Orca project, natively, with nothing repaired. Generic-printer, translated-PrusaSlicer and repaired slices rest on assumptions the file didn't make, so the app marks them as approximate ("~").
+// `printer` names the printer the estimate was computed for; a model that doesn't fit its bed fails with that printer named. `plateFilaments` lists each sliced plate's filament types (more than one = filament changes mid-print). `repairedSettings` lists project settings changed so a project from a newer Bambu Studio would slice (see repairSettings in lib.mjs).
 //
-// The CLI never runs post-processing scripts (upstream has the call commented
-// out); project settings that name one are stripped only because the CLI
-// otherwise rejects the whole file.
+// The CLI never runs post-processing scripts (upstream has the call commented out); project settings that name one are stripped only because the CLI otherwise rejects the whole file.
 //
 // Slicing is CPU-bound, so requests are processed one at a time.
 
@@ -66,8 +47,7 @@ const PROFILES_DIR = process.env.ORCA_PROFILES ?? "/opt/orca/resources/profiles"
 const TIMEOUT_MS = Number(process.env.SLICE_TIMEOUT_MS ?? 300_000);
 const MAX_BODY_BYTES = Number(process.env.MAX_BODY_BYTES ?? 256 * 1024 * 1024);
 const MAX_ENTRY_BYTES = 8 * 1024 * 1024;
-// Each repair round fixes what one CLI run reports; a newer Bambu Studio
-// project has needed three (out-of-range values, then two G-code rounds).
+// Each repair round fixes what one CLI run reports; a newer Bambu Studio project has needed three (out-of-range values, then two G-code rounds).
 const MAX_REPAIR_ROUNDS = 5;
 
 // CLI return codes (`cli_errors` in OrcaSlicer's src/OrcaSlicer.cpp).
@@ -143,8 +123,7 @@ async function writeProjectSettings(inputPath, dir, settings) {
 
 // --- planning ------------------------------------------------------------------
 
-// Decides how to slice the archive. May rewrite the archive in place (to
-// strip post-processing scripts from Bambu/Orca project settings).
+// Decides how to slice the archive. May rewrite the archive in place (to strip post-processing scripts from Bambu/Orca project settings).
 async function planSlice(inputPath, dir) {
   const projectSettings = await unzipEntry(
     inputPath,
@@ -185,8 +164,7 @@ async function planSlice(inputPath, dir) {
         translated: true, // PrusaSlicer settings mapped onto Orca's
         args: [...GENERIC_ARGS, ...toCliFlags(overrides)],
         settings: null,
-        // The project's printer and bed where it names them, else the
-        // generic machine's.
+        // The project's printer and bed where it names them, else the generic machine's.
         printer: describePrinter({
           ...GENERIC_MACHINE,
           ...overrides,
@@ -213,9 +191,7 @@ async function planSlice(inputPath, dir) {
 
 function runOrca(args, cwd) {
   return new Promise((resolve) => {
-    // Orca writes a log file into its working directory and unpacks models
-    // under $TMPDIR — keep both in the per-request temp dir so they're
-    // cleaned up with everything else.
+    // Orca writes a log file into its working directory and unpacks models under $TMPDIR — keep both in the per-request temp dir so they're cleaned up with everything else.
     const child = spawn(ORCA_BIN, args, {
       cwd,
       env: { ...process.env, TMPDIR: cwd },
@@ -245,8 +221,7 @@ function runOrca(args, cwd) {
   });
 }
 
-// Last meaningful line of the slicer output, for failures without a
-// result.json (e.g. a crash). Temp paths mean nothing to the caller.
+// Last meaningful line of the slicer output, for failures without a result.json (e.g. a crash). Temp paths mean nothing to the caller.
 function errorLine(output) {
   const lines = output
     .split("\n")
@@ -255,18 +230,15 @@ function errorLine(output) {
   return lines.at(-1) ?? "slicing produced no output";
 }
 
-// Slices `plate` (0 = all) and returns the parsed slice_info of the output,
-// or the CLI's failure.
+// Slices `plate` (0 = all) and returns the parsed slice_info of the output, or the CLI's failure.
 async function slicePlate(plan, inputPath, dir, plate) {
   const outDir = join(dir, `out-${plate}`);
-  // Must exist up front: on early failures the CLI writes result.json
-  // without creating the directory first.
+  // Must exist up front: on early failures the CLI writes result.json without creating the directory first.
   await mkdir(outDir, { recursive: true });
   const result = await runOrca(
     [
       ...plan.args,
-      // A project saved by a newer Bambu Studio/Orca than this CLI is still
-      // worth trying; the version check would otherwise flag it unsliceable.
+      // A project saved by a newer Bambu Studio/Orca than this CLI is still worth trying; the version check would otherwise flag it unsliceable.
       "--allow-newer-file=1",
       "--min-save=1",
       "--slice",
@@ -287,8 +259,7 @@ async function slicePlate(plan, inputPath, dir, plate) {
   if (result.code !== 0 || (status && status.returnCode !== 0)) {
     const plateIndex = status?.plateIndex || plate;
     let error = status?.error || errorLine(result.output);
-    // Empty plates were skipped up front, so this means objects that don't
-    // fit the bed — name the printer instead of the CLI's upload advice.
+    // Empty plates were skipped up front, so this means objects that don't fit the bed — name the printer instead of the CLI's upload advice.
     if (status?.returnCode === CLI_NO_SUITABLE_OBJECTS) {
       error = `doesn't fit on the ${plan.printer}`;
     }
@@ -307,8 +278,7 @@ async function slicePlate(plan, inputPath, dir, plate) {
   return { ok: true, info: parseSliceInfo(sliceInfo.toString("utf8")) };
 }
 
-// slicePlate, plus repairs of a project's settings when the CLI rejects
-// values a newer Bambu Studio wrote (see repairSettings).
+// slicePlate, plus repairs of a project's settings when the CLI rejects values a newer Bambu Studio wrote (see repairSettings).
 async function slicePlateRepairing(plan, inputPath, dir, plate, repaired) {
   for (let round = 0; ; round++) {
     const sliced = await slicePlate(plan, inputPath, dir, plate);

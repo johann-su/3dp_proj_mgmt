@@ -1,8 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-// The module derives its key from the environment at load time, so the secret
-// must be set before the (dynamic) import.
+// The module derives its key from the environment at load time, so the secret must be set before the (dynamic) import.
 process.env.BAMBU_TOKEN_SECRET ??= "unit-test-secret";
 
 test("encryptSecret/decryptSecret round-trips arbitrary strings", async () => {

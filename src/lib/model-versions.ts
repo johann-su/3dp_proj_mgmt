@@ -1,13 +1,5 @@
-// Model version history + trash (issue #55) — the DB side. The design in one
-// paragraph: model_files always holds exactly the *live* files (no existing
-// query has to filter anything out); every completed mutation appends a
-// model_versions row with a full JSON snapshot of the mutable state including
-// each file's s3Key; removed files lose their row but keep their S3 object as
-// long as any snapshot references the key; reverting re-inserts rows from the
-// snapshot. S3 objects are only deleted when the last snapshot referencing
-// them is pruned (version cap) or the model is purged from the trash.
-// The pure snapshot helpers (equality, change summary) live in
-// src/lib/version-snapshot.ts.
+// Model version history + trash (issue #55) — the DB side. The design in one paragraph: model_files always holds exactly the *live* files (no existing query has to filter anything out); every completed mutation appends a model_versions row with a full JSON snapshot of the mutable state including each file's s3Key; removed files lose their row but keep their S3 object as long as any snapshot references the key; reverting re-inserts rows from the snapshot. S3 objects are only deleted when the last snapshot referencing them is pruned (version cap) or the model is purged from the trash.
+// The pure snapshot helpers (equality, change summary) live in src/lib/version-snapshot.ts.
 
 import { and, asc, eq, inArray, isNotNull, lt } from "drizzle-orm";
 import { db } from "@/db";
@@ -27,18 +19,13 @@ import { buildSnapshot, snapshotsEqual } from "@/lib/version-snapshot";
 
 type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
 
-// Versions kept per model. Old versions are pruned oldest-first on every new
-// version; S3 objects only referenced by pruned snapshots are deleted with
-// them, which is what bounds historical storage per model.
+// Versions kept per model. Old versions are pruned oldest-first on every new version; S3 objects only referenced by pruned snapshots are deleted with them, which is what bounds historical storage per model.
 export const VERSION_CAP = 30;
 
-// Days a trashed model stays restorable before the lazy sweep (trash page
-// load) purges it for good.
+// Days a trashed model stays restorable before the lazy sweep (trash page load) purges it for good.
 export const TRASH_RETENTION_DAYS = 30;
 
-// The model's current mutable state as a snapshot: fetch the model with its
-// relations, then map via the pure buildSnapshot (fixed key order for
-// snapshotsEqual, variants excluded, tags sorted — see version-snapshot.ts).
+// The model's current mutable state as a snapshot: fetch the model with its relations, then map via the pure buildSnapshot (fixed key order for snapshotsEqual, variants excluded, tags sorted — see version-snapshot.ts).
 export async function captureSnapshot(
   tx: Tx,
   modelId: string,
@@ -55,10 +42,7 @@ export async function captureSnapshot(
   return buildSnapshot(model);
 }
 
-// Models created before versioning shipped have no version rows. Call this at
-// the start of a mutation's transaction (before changing anything) so their
-// pre-edit state becomes version 1 and stays revertable — the lazy backfill
-// that saves a data migration.
+// Models created before versioning shipped have no version rows. Call this at the start of a mutation's transaction (before changing anything) so their pre-edit state becomes version 1 and stays revertable — the lazy backfill that saves a data migration.
 export async function ensureBaselineVersion(
   tx: Tx,
   modelId: string,
@@ -78,11 +62,7 @@ export async function ensureBaselineVersion(
   });
 }
 
-// Appends a version capturing the model's state *as it now stands in tx* —
-// call after all mutations, inside the same transaction. No-op edits (state
-// equals the latest snapshot) write nothing. Prunes past VERSION_CAP and
-// returns the S3 keys that no remaining snapshot or live file references —
-// delete those with deleteS3Keys *after* the transaction commits.
+// Appends a version capturing the model's state *as it now stands in tx* — call after all mutations, inside the same transaction. No-op edits (state equals the latest snapshot) write nothing. Prunes past VERSION_CAP and returns the S3 keys that no remaining snapshot or live file references — delete those with deleteS3Keys *after* the transaction commits.
 export async function recordVersion(
   tx: Tx,
   modelId: string,
@@ -135,14 +115,7 @@ export async function recordVersion(
   ];
 }
 
-// Makes the model's live state match a snapshot (fields, tags, BOM, files).
-// Files are matched by s3Key: rows whose key the snapshot keeps are updated
-// in place (preserving id and download count), missing ones are re-inserted
-// from the snapshot, extra ones are deleted — their bytes stay in S3 because
-// the version that added them still references the key. Generated variants
-// whose .scad source gets deleted cascade away; their S3 keys are returned
-// for post-commit deletion (variants are never referenced by snapshots).
-// Callers still need to recordVersion afterwards and re-run the slicer.
+// Makes the model's live state match a snapshot (fields, tags, BOM, files). Files are matched by s3Key: rows whose key the snapshot keeps are updated in place (preserving id and download count), missing ones are re-inserted from the snapshot, extra ones are deleted — their bytes stay in S3 because the version that added them still references the key. Generated variants whose .scad source gets deleted cascade away; their S3 keys are returned for post-commit deletion (variants are never referenced by snapshots). Callers still need to recordVersion afterwards and re-run the slicer.
 export async function restoreSnapshot(
   tx: Tx,
   modelId: string,
@@ -234,10 +207,7 @@ export async function restoreSnapshot(
   return variantKeys;
 }
 
-// Permanently deletes a model: every S3 object any live file or any version
-// snapshot references, then the row (files, versions, tags and collection
-// links cascade). S3 first, like the pre-trash hard delete — a failed S3 call
-// leaves the model purgeable again instead of leaking objects silently.
+// Permanently deletes a model: every S3 object any live file or any version snapshot references, then the row (files, versions, tags and collection links cascade). S3 first, like the pre-trash hard delete — a failed S3 call leaves the model purgeable again instead of leaking objects silently.
 export async function purgeModel(modelId: string): Promise<void> {
   const [files, versions] = await Promise.all([
     db
@@ -257,11 +227,7 @@ export async function purgeModel(modelId: string): Promise<void> {
   await db.delete(models).where(eq(models.id, modelId));
 }
 
-// Purges trashed models past the retention window. Called lazily from the
-// trash page (same self-healing pattern import_jobs uses) — this project
-// deliberately has no scheduler container. Scoped to one user's trash
-// normally; moderators/admins open the instance-wide trash, so their page
-// load sweeps everyone's (userId undefined).
+// Purges trashed models past the retention window. Called lazily from the trash page (same self-healing pattern import_jobs uses) — this project deliberately has no scheduler container. Scoped to one user's trash normally; moderators/admins open the instance-wide trash, so their page load sweeps everyone's (userId undefined).
 export async function sweepExpiredTrash(userId?: string): Promise<void> {
   const cutoff = new Date(Date.now() - TRASH_RETENTION_DAYS * 24 * 60 * 60 * 1000);
   const expired = await db
@@ -278,15 +244,13 @@ export async function sweepExpiredTrash(userId?: string): Promise<void> {
     try {
       await purgeModel(model.id);
     } catch (err) {
-      // Never break the trash page over a purge hiccup (e.g. S3 down) — the
-      // model stays listed and the next load retries.
+      // Never break the trash page over a purge hiccup (e.g. S3 down) — the model stays listed and the next load retries.
       reportError(`Failed to purge trashed model ${model.id}`, err);
     }
   }
 }
 
-// Deletes stored objects by key (model_files.s3_key), whichever storage
-// backend is configured.
+// Deletes stored objects by key (model_files.s3_key), whichever storage backend is configured.
 export async function deleteS3Keys(keys: string[]): Promise<void> {
   await blobStore().delete(keys);
 }

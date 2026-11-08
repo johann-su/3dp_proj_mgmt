@@ -18,8 +18,7 @@ import { generateShareToken, publicSharingEnabled } from "@/lib/share-token";
 //    model), so it is an owner decision — canActAsOwner, like deletion;
 //  - revoking only ever makes things more private, so any signed-in member
 //    may do it (someone who spots a paid model shared publicly can stop it).
-// Revoking deletes the row; enabling again mints a new token, so the old URL
-// stays dead. Enabling an already-public item returns the existing link.
+// Revoking deletes the row; enabling again mints a new token, so the old URL stays dead. Enabling an already-public item returns the existing link.
 export async function setPublicShare(input: {
   kind: ShareKind;
   id: string;

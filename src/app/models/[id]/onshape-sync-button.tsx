@@ -22,12 +22,7 @@ type NewTab = {
   elementType: "PARTSTUDIO" | "ASSEMBLY";
 };
 
-// "Sync from Onshape" button (any signed-in user — syncing counts as
-// editing): re-exports the source document and replaces the exported 3MF
-// files when the Onshape workspace has new changes. When the document grew
-// tabs the model doesn't carry yet, the route answers `needs-selection`
-// first and this component opens a picker — the only way to add upstream
-// tabs to an existing model without re-importing it.
+// "Sync from Onshape" button (any signed-in user — syncing counts as editing): re-exports the source document and replaces the exported 3MF files when the Onshape workspace has new changes. When the document grew tabs the model doesn't carry yet, the route answers `needs-selection` first and this component opens a picker — the only way to add upstream tabs to an existing model without re-importing it.
 export function OnshapeSyncButton({ modelId }: { modelId: string }) {
   const router = useRouter();
   const [syncing, setSyncing] = useState(false);
@@ -55,8 +50,7 @@ export function OnshapeSyncButton({ modelId }: { modelId: string }) {
         throw new Error(body?.error ?? `Sync failed (${res.status})`);
       }
       if (body?.status === "needs-selection") {
-        // Same defaults as the import dialog: Part Studios are printable
-        // geometry, assembly exports overlap when sliced.
+        // Same defaults as the import dialog: Part Studios are printable geometry, assembly exports overlap when sliced.
         const newTabs: NewTab[] = Array.isArray(body.newTabs) ? body.newTabs : [];
         const maxAdd = typeof body.maxAdd === "number" ? body.maxAdd : 0;
         setSelected(

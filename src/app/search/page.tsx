@@ -33,13 +33,11 @@ export default async function SearchPage({
     searchFacets(),
   ]);
 
-  // Hidden inputs carry the active filters through the search-box GET submit so
-  // refining the query term doesn't drop the sidebar selections.
+  // Hidden inputs carry the active filters through the search-box GET submit so refining the query term doesn't drop the sidebar selections.
   const carried = searchFiltersToParams(filters);
   delete carried.q;
 
-  // Remount the results list whenever the query/filters change so infinite
-  // scroll seeds a clean first page.
+  // Remount the results list whenever the query/filters change so infinite scroll seeds a clean first page.
   const resultsKey = new URLSearchParams(
     Object.entries(carried).flatMap(([k, v]) =>
       Array.isArray(v) ? v.map((x) => [k, x] as [string, string]) : [[k, v] as [string, string]],

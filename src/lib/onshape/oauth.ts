@@ -1,12 +1,6 @@
-// Onshape OAuth2 (authorization-code flow), the auth used by third-party
-// Onshape apps (see github.com/onshape/passport-onshape — this implements the
-// same endpoints without the Express middleware). The self-hoster registers
-// an OAuth app once at dev-portal.onshape.com with the redirect URI
-// {BETTER_AUTH_URL}/api/onshape/callback and sets ONSHAPE_CLIENT_ID/SECRET;
-// users then connect per-account with a consent screen instead of API keys.
+// Onshape OAuth2 (authorization-code flow), the auth used by third-party Onshape apps (see github.com/onshape/passport-onshape — this implements the same endpoints without the Express middleware). The self-hoster registers an OAuth app once at dev-portal.onshape.com with the redirect URI {BETTER_AUTH_URL}/api/onshape/callback and sets ONSHAPE_CLIENT_ID/SECRET; users then connect per-account with a consent screen instead of API keys.
 //
-// Access tokens live ~60 minutes; refresh tokens are rotated on every refresh
-// and both are stored encrypted (src/lib/onshape/credentials.ts).
+// Access tokens live ~60 minutes; refresh tokens are rotated on every refresh and both are stored encrypted (src/lib/onshape/credentials.ts).
 
 import { appUrl } from "@/lib/app-url";
 
@@ -20,8 +14,7 @@ export const onshapeOAuthEnabled = Boolean(clientId && clientSecret);
 // CSRF state cookie shared by the authorize and callback routes.
 export const OAUTH_STATE_COOKIE = "onshape-oauth-state";
 
-// Re-exported so the existing `@/lib/onshape/oauth` importers keep working;
-// the helper itself is app-wide (src/lib/app-url.ts).
+// Re-exported so the existing `@/lib/onshape/oauth` importers keep working; the helper itself is app-wide (src/lib/app-url.ts).
 export { appUrl };
 
 export function onshapeRedirectUri(): string {

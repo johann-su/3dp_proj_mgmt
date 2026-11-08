@@ -45,8 +45,7 @@ test("parseSnapshot treats missing, corrupt or mis-shaped storage as nothing sav
 });
 
 test("snapshotKey separates lists and history entries", () => {
-  // Two queries on the same history entry, or one query on two entries,
-  // must never restore each other's items.
+  // Two queries on the same history entry, or one query on two entries, must never restore each other's items.
   assert.notEqual(snapshotKey("feed:a", "e1"), snapshotKey("feed:b", "e1"));
   assert.notEqual(snapshotKey("feed:a", "e1"), snapshotKey("feed:a", "e2"));
 });

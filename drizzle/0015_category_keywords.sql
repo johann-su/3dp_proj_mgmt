@@ -1,12 +1,6 @@
 -- Category keywords + "no model without a category".
 --
--- Adds categories.keywords, the match terms behind category suggestion
--- (src/lib/category-suggest.ts). The keyword data mirrors
--- src/lib/category-defaults.ts — keep the two in sync. The upsert both seeds
--- fresh databases (this runs before scripts/migrate.mjs's name-only insert)
--- and fills keywords in on existing ones. Finally, every uncategorized model
--- is backfilled to "Other" — the UI and the import paths now always assign a
--- category, so no model should be blank.
+-- Adds categories.keywords, the match terms behind category suggestion (src/lib/category-suggest.ts). The keyword data mirrors src/lib/category-defaults.ts — keep the two in sync. The upsert both seeds fresh databases (this runs before scripts/migrate.mjs's name-only insert) and fills keywords in on existing ones. Finally, every uncategorized model is backfilled to "Other" — the UI and the import paths now always assign a category, so no model should be blank.
 ALTER TABLE "categories" ADD COLUMN "keywords" text[] DEFAULT '{}' NOT NULL;
 --> statement-breakpoint
 INSERT INTO "categories" (name, slug, keywords) VALUES

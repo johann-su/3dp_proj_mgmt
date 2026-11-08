@@ -5,17 +5,10 @@ description: Connect Onshape, Bambu Cloud, MakerWorld and Printables
 
 # Integrations
 
-Print Vault can pull models and files from external platforms. Each
-integration is optional and degrades to off when unconfigured.
+Print Vault can pull models and files from external platforms. Each integration is optional and degrades to off when unconfigured.
 
-- [Onshape](/integrations/onshape) — import CAD models via "Sign in with
-  Onshape", sync when the document changes, or pin a version snapshot.
-  Requires an OAuth app (instance-wide environment variables).
-- [Bambu Cloud](/integrations/bambu-cloud) — a per-user account connection
-  that unlocks MakerWorld file downloads and collection import.
-- [MakerWorld & Printables](/integrations/makerworld-printables) — import
-  models by URL, sync them with their source later, and bulk-import whole
-  MakerWorld collections.
-- [MCP server](/integrations/mcp) — let Claude and other LLM clients query
-  your catalog (models, BOMs, print estimates, manuals) read-only. Off unless
-  `ENABLE_MCP` is set.
+- [Onshape](/integrations/onshape) — import CAD models via "Sign in with Onshape", sync when the document changes, or pin a version snapshot. Requires an OAuth app (instance-wide environment variables).
+- [Bambu Cloud](/integrations/bambu-cloud) — a per-user account connection that unlocks MakerWorld file downloads and collection import.
+- [MakerWorld & Printables](/integrations/makerworld-printables) — import models by URL, sync them with their source later, and bulk-import whole MakerWorld collections.
+- [MCP server](/integrations/mcp) — let Claude and other LLM clients query your catalog (models, BOMs, print estimates, manuals) read-only. Off unless `ENABLE_MCP` is set.
+- [REST API](/api-reference#rest-api-v1) — personal API keys for scripts and automation tools (n8n, Home Assistant, …) to read and edit the catalog. Off unless `ENABLE_API` is set.

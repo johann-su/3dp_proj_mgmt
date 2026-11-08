@@ -7,14 +7,9 @@ import { modelDuplicates, models } from "@/db/schema";
 import { getSession } from "@/lib/auth";
 import { isModerator } from "@/lib/roles";
 
-// Resolving a dismissed duplicate flag (Settings → Duplicates, issue #118).
-// Moderator/admin-only: the page hides for everyone else, but the gate is
-// re-checked here — the page's check protects the page, not the action.
+// Resolving a dismissed duplicate flag (Settings → Duplicates, issue #118). Moderator/admin-only: the page hides for everyone else, but the gate is re-checked here — the page's check protects the page, not the action.
 //
-// Both actions only ever *resolve* a flag. Trashing goes through the same soft
-// delete as the model page's own delete (deleted_at, restorable from the
-// trash), never a purge: duplicate detection is advisory, and a false positive
-// must not be able to destroy someone's model from a settings list.
+// Both actions only ever *resolve* a flag. Trashing goes through the same soft delete as the model page's own delete (deleted_at, restorable from the trash), never a purge: duplicate detection is advisory, and a false positive must not be able to destroy someone's model from a settings list.
 
 async function requireModerator(): Promise<{ error: string } | null> {
   const session = await getSession();

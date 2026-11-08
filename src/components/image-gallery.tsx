@@ -35,43 +35,29 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 
-// One stored gallery file: a photo or an uploaded video, already signed
-// (fileSrc) by the server. Both arrive in one list because they share the
-// model's `position` sequence.
+// One stored gallery file: a photo or an uploaded video, already signed (fileSrc) by the server. Both arrive in one list because they share the model's `position` sequence.
 export type GalleryMedia = { src: string; kind: "image" | "video" };
 
-// One carousel slide. All three sorts share a single index, so the arrows,
-// the counter and the thumbnail strip don't have to know the difference.
+// One carousel slide. All three sorts share a single index, so the arrows, the counter and the thumbnail strip don't have to know the difference.
 type GalleryItem =
   | { kind: "image"; key: string; src: string }
   | { kind: "video"; key: string; src: string }
   | { kind: "youtube"; key: string; video: YouTubeVideo };
 
-// An uploaded video slide. The controls are ours rather than the browser's:
-// Chrome draws the played portion of its own timeline in a fixed UA blue that
-// no CSS can reach (accent-color doesn't apply to media controls), so a
-// theme-coloured progress bar means owning the transport. Everything visual
-// here is a theme variable, so switching themes recolours the player.
+// An uploaded video slide. The controls are ours rather than the browser's: Chrome draws the played portion of its own timeline in a fixed UA blue that no CSS can reach (accent-color doesn't apply to media controls), so a theme-coloured progress bar means owning the transport. Everything visual here is a theme variable, so switching themes recolours the player.
 //
-// Not autoplayed — the carousel is also reachable by arrowing through, and a
-// slide that starts talking on arrival is worse than one click. `preload`
-// stays at metadata so opening a model page doesn't pull the whole file.
+// Not autoplayed — the carousel is also reachable by arrowing through, and a slide that starts talking on arrival is worse than one click. `preload` stays at metadata so opening a model page doesn't pull the whole file.
 function VideoFileSlide({ src, title }: { src: string; title: string }) {
   const ref = useRef<HTMLVideoElement>(null);
-  // The frame, not the <video>, is what goes full screen: only the fullscreen
-  // element and its descendants are painted, so fullscreening the video alone
-  // would leave our control bar (its sibling) behind on a hidden page — and
-  // since the video carries no native `controls`, that means no controls at all.
+  // The frame, not the <video>, is what goes full screen: only the fullscreen element and its descendants are painted, so fullscreening the video alone would leave our control bar (its sibling) behind on a hidden page — and since the video carries no native `controls`, that means no controls at all.
   const frameRef = useRef<HTMLDivElement>(null);
   const [playing, setPlaying] = useState(false);
   const [muted, setMuted] = useState(false);
-  // The chosen level, kept across a mute/unmute round-trip so unmuting comes
-  // back at the volume it left rather than jumping to full.
+  // The chosen level, kept across a mute/unmute round-trip so unmuting comes back at the volume it left rather than jumping to full.
   const [volume, setVolume] = useState(1);
   const [current, setCurrent] = useState(0);
   const [fullscreen, setFullscreen] = useState(false);
-  // 0 until metadata arrives; the scrubber stays disabled until then so it
-  // can't seek against a duration we don't know yet.
+  // 0 until metadata arrives; the scrubber stays disabled until then so it can't seek against a duration we don't know yet.
   const [duration, setDuration] = useState(0);
 
   const toggle = useCallback(() => {
@@ -81,8 +67,7 @@ function VideoFileSlide({ src, title }: { src: string; title: string }) {
     else el.pause();
   }, []);
 
-  // Esc and the browser's own full-screen affordances exit without going
-  // through our button, so the icon tracks the document rather than a guess.
+  // Esc and the browser's own full-screen affordances exit without going through our button, so the icon tracks the document rather than a guess.
   useEffect(() => {
     const onChange = () =>
       setFullscreen(document.fullscreenElement === frameRef.current);
@@ -99,9 +84,7 @@ function VideoFileSlide({ src, title }: { src: string; title: string }) {
       void frameRef.current.requestFullscreen().catch(() => {});
       return;
     }
-    // iOS Safari has no element full screen — only the video's own native
-    // one, which brings iOS's player controls with it. Better than a button
-    // that does nothing.
+    // iOS Safari has no element full screen — only the video's own native one, which brings iOS's player controls with it. Better than a button that does nothing.
     (
       ref.current as (HTMLVideoElement & { webkitEnterFullscreen?: () => void }) | null
     )?.webkitEnterFullscreen?.();
@@ -116,12 +99,10 @@ function VideoFileSlide({ src, title }: { src: string; title: string }) {
 
   const played = duration > 0 ? (current / duration) * 100 : 0;
 
-  // What is actually coming out of the speakers, which is what both the slider
-  // and the icon show: muted reads as 0 regardless of the level behind it.
+  // What is actually coming out of the speakers, which is what both the slider and the icon show: muted reads as 0 regardless of the level behind it.
   const level = muted ? 0 : volume;
 
-  // Dragging the slider is also the other way to (un)mute: to zero is a mute,
-  // off zero unmutes at the level dropped on.
+  // Dragging the slider is also the other way to (un)mute: to zero is a mute, off zero unmutes at the level dropped on.
   function setLevel(next: number) {
     setVolume(next);
     setMuted(next === 0);
@@ -132,15 +113,12 @@ function VideoFileSlide({ src, title }: { src: string; title: string }) {
       setMuted(true);
       return;
     }
-    // Unmuting when the level behind the mute is itself zero (the slider was
-    // dragged all the way down) has to land somewhere audible, or the button
-    // would look broken: it would clear `muted` and still play nothing.
+    // Unmuting when the level behind the mute is itself zero (the slider was dragged all the way down) has to land somewhere audible, or the button would look broken: it would clear `muted` and still play nothing.
     if (volume === 0) setVolume(1);
     setMuted(false);
   }
 
-  // `volume` is a property, not an attribute, so React can't set it from JSX
-  // the way it does `muted`.
+  // `volume` is a property, not an attribute, so React can't set it from JSX the way it does `muted`.
   useEffect(() => {
     const el = ref.current;
     if (el) el.volume = volume;
@@ -156,15 +134,13 @@ function VideoFileSlide({ src, title }: { src: string; title: string }) {
         preload="metadata"
         muted={muted}
         className="size-full object-contain"
-        // Clicking the picture is the other half of play/pause, the one
-        // habit every player shares.
+        // Clicking the picture is the other half of play/pause, the one habit every player shares.
         onClick={toggle}
         onPlay={() => setPlaying(true)}
         onPause={() => setPlaying(false)}
         onTimeUpdate={(e) => setCurrent(e.currentTarget.currentTime)}
         onLoadedMetadata={(e) => setDuration(e.currentTarget.duration)}
-        // A finished video shows its play button again rather than a frozen
-        // last frame with no way back.
+        // A finished video shows its play button again rather than a frozen last frame with no way back.
         onEnded={() => setPlaying(false)}
       />
       <div className="absolute inset-x-0 bottom-0 flex items-center gap-2 bg-gradient-to-t from-black/80 to-transparent px-2 py-1.5">
@@ -211,14 +187,8 @@ function VideoFileSlide({ src, title }: { src: string; title: string }) {
               <Volume2 className="size-4" />
             )}
           </button>
-          {/* Revealed by hovering the icon — clicking it still just toggles
-              mute. Hidden with opacity rather than `hidden`, so the slider
-              stays in the tab order: display:none would take it out, and then
-              focus-within could never bring it back. The wrapper's padding is
-              the bridge between button and pill, so the pointer doesn't cross
-              a dead gap on the way up and dismiss it. */}
-          {/* z-20 clears the slide counter, which sits at z-auto but later in
-              the DOM and would otherwise paint over the popup. */}
+          {/* Revealed by hovering the icon — clicking it still just toggles mute. Hidden with opacity rather than `hidden`, so the slider stays in the tab order: display:none would take it out, and then focus-within could never bring it back. The wrapper's padding is the bridge between button and pill, so the pointer doesn't cross a dead gap on the way up and dismiss it. */}
+          {/* z-20 clears the slide counter, which sits at z-auto but later in the DOM and would otherwise paint over the popup. */}
           <div className="pointer-events-none absolute bottom-full left-1/2 z-20 -translate-x-1/2 pb-2 opacity-0 transition-opacity group-hover/volume:pointer-events-auto group-hover/volume:opacity-100 focus-within:pointer-events-auto focus-within:opacity-100">
             <div className="media-volume-box flex justify-center rounded-full px-2 py-2.5 shadow-lg">
               <input
@@ -252,9 +222,7 @@ function VideoFileSlide({ src, title }: { src: string; title: string }) {
   );
 }
 
-// A YouTube slide: the video's poster frame with a play button, swapped for
-// YouTube's own embed on click. Mounting the player only when asked keeps the
-// page from pulling ~1 MB of YouTube JS per attached video on every load.
+// A YouTube slide: the video's poster frame with a play button, swapped for YouTube's own embed on click. Mounting the player only when asked keeps the page from pulling ~1 MB of YouTube JS per attached video on every load.
 function YouTubeSlide({ video, title }: { video: YouTubeVideo; title: string }) {
   const [playing, setPlaying] = useState(false);
 
@@ -279,8 +247,7 @@ function YouTubeSlide({ video, title }: { video: YouTubeVideo; title: string }) 
       aria-label={`Play video for ${title}`}
       onClick={() => setPlaying(true)}
     >
-      {/* Remote host — next/image would need its own allowlist to add
-          nothing at this size. */}
+      {/* Remote host — next/image would need its own allowlist to add nothing at this size. */}
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img
         src={youTubeThumbnailUrl(video, "lg")}
@@ -296,9 +263,7 @@ function YouTubeSlide({ video, title }: { video: YouTubeVideo; title: string }) 
   );
 }
 
-// Whether the gallery starts on the 3D view: only when there's a .3mf and no
-// slide to show instead. Exported so a parent that controls `show3d` (the
-// model page) starts from the same default.
+// Whether the gallery starts on the 3D view: only when there's a .3mf and no slide to show instead. Exported so a parent that controls `show3d` (the model page) starts from the same default.
 export function galleryOpensIn3d(
   media: GalleryMedia[],
   videos: ModelVideo[] | undefined,
@@ -324,18 +289,13 @@ export function ImageGallery({
 }: {
   // Stored photos and videos, in gallery order.
   media: GalleryMedia[];
-  // YouTube links with their slots in the combined order (see
-  // orderGalleryItems). Anything that doesn't parse is dropped — the embed is
-  // always rebuilt from the parsed id, never from the stored string.
+  // YouTube links with their slots in the combined order (see orderGalleryItems). Anything that doesn't parse is dropped — the embed is always rebuilt from the parsed id, never from the stored string.
   videos?: ModelVideo[];
   title: string;
   badge?: React.ReactNode;
-  // Previewable .3mf files to offer as an interactive 3D view (issue #35).
-  // When any are present, a Photos/3D toggle appears over the main frame.
+  // Previewable .3mf files to offer as an interactive 3D view (issue #35). When any are present, a Photos/3D toggle appears over the main frame.
   modelFiles?: ViewerFile[];
-  // Optional control of the Photos/3D toggle and the previewed file, so the
-  // model page's Files card can open a file in 3D (and highlight it). Left
-  // unset, the gallery manages both itself.
+  // Optional control of the Photos/3D toggle and the previewed file, so the model page's Files card can open a file in 3D (and highlight it). Left unset, the gallery manages both itself.
   show3d?: boolean;
   onShow3dChange?: (show3d: boolean) => void;
   modelFileIndex?: number;
@@ -346,9 +306,7 @@ export function ImageGallery({
   const [lightboxOpen, setLightboxOpen] = useState(false);
   const thumbRefs = useRef<(HTMLButtonElement | null)[]>([]);
 
-  // orderGalleryItems weaves the linked videos into the stored files; its own
-  // "image"/"video" discriminator means "the file list" vs "the linked list",
-  // so a stored file still has to be split by its own kind here.
+  // orderGalleryItems weaves the linked videos into the stored files; its own "image"/"video" discriminator means "the file list" vs "the linked list", so a stored file still has to be split by its own kind here.
   const items: GalleryItem[] = orderGalleryItems(
     media,
     (videos ?? []).flatMap((entry) => {
@@ -365,9 +323,7 @@ export function ImageGallery({
       : { kind: "youtube", key: entry.item.video.id, video: entry.item.video },
   );
 
-  // 3D view is offered only when a .3mf is available; default to it when there
-  // is nothing else to show. A viewer error flips this off so we fall back to
-  // the slides (or the empty-state placeholder).
+  // 3D view is offered only when a .3mf is available; default to it when there is nothing else to show. A viewer error flips this off so we fall back to the slides (or the empty-state placeholder).
   const [ownShow3d, setOwnShow3d] = useState(() =>
     galleryOpensIn3d(media, videos, modelFiles),
   );
@@ -400,8 +356,7 @@ export function ImageGallery({
     return () => window.removeEventListener("keydown", onKey);
   }, [lightboxOpen, items.length, closeLightbox]);
 
-  // No slides: show the 3D viewer if we have a .3mf, otherwise the
-  // placeholder box.
+  // No slides: show the 3D viewer if we have a .3mf, otherwise the placeholder box.
   if (items.length === 0) {
     return (
       <div className="relative aspect-[4/3] rounded-lg bg-muted overflow-hidden flex items-center justify-center">
@@ -505,8 +460,7 @@ export function ImageGallery({
             </>
           )}
           {current.kind !== "image" ? (
-            // Arrowing through the lightbox can land on either sort of video;
-            // give both the same frame, sized to the viewport.
+            // Arrowing through the lightbox can land on either sort of video; give both the same frame, sized to the viewport.
             <div
               className="relative aspect-video w-[80vw] max-h-[80vh] max-w-[calc(80vh*16/9)] overflow-hidden bg-black"
               onClick={(e) => e.stopPropagation()}
@@ -519,9 +473,7 @@ export function ImageGallery({
             </div>
           ) : (
             <>
-              {/* Lightbox is the "view full size" path: serve the untouched
-                  original at full resolution/quality, not an optimized
-                  derivative. */}
+              {/* Lightbox is the "view full size" path: serve the untouched original at full resolution/quality, not an optimized derivative. */}
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
                 src={current.src}
@@ -544,12 +496,10 @@ export function ImageGallery({
             onError={() => setShow3d(false)}
           />
         ) : current.kind === "youtube" ? (
-          // Keyed by video so switching slides resets to the poster instead of
-          // carrying the previous video's player over.
+          // Keyed by video so switching slides resets to the poster instead of carrying the previous video's player over.
           <YouTubeSlide key={current.key} video={current.video} title={title} />
         ) : current.kind === "video" ? (
-          // Keyed likewise, so arrowing to another video starts a fresh
-          // element rather than reusing one that is mid-playback.
+          // Keyed likewise, so arrowing to another video starts a fresh element rather than reusing one that is mid-playback.
           <VideoFileSlide key={current.key} src={current.src} title={title} />
         ) : (
           <button
@@ -606,8 +556,7 @@ export function ImageGallery({
             <span
               className={cn(
                 "absolute right-2 rounded-full bg-background/80 px-2 py-0.5 text-xs text-muted-foreground tabular-nums pointer-events-none",
-                // A video slide owns the bottom strip with its control bar —
-                // sit above it rather than on top of the full-screen button.
+                // A video slide owns the bottom strip with its control bar — sit above it rather than on top of the full-screen button.
                 current.kind === "video" ? "bottom-11" : "bottom-2",
               )}
             >
@@ -653,9 +602,7 @@ export function ImageGallery({
                 </>
               ) : item.kind === "video" ? (
                 <>
-                  {/* A still from the file itself — no separate poster image
-                      is stored, so the tile seeks one frame in and paints
-                      that (see posterSrc). */}
+                  {/* A still from the file itself — no separate poster image is stored, so the tile seeks one frame in and paints that (see posterSrc). */}
                   <video
                     src={posterSrc(item.src)}
                     muted

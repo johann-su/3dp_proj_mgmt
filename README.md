@@ -1,28 +1,14 @@
 # 3D printing project management
 
-Self-hostable project management platform for `.3mf` files. Its structure
-mirrors [MakerWorld](https://makerworld.com) or
-[Printables](https://www.printables.com) — just completely self hostable:
-models, print profiles, images and documents live in your own Postgres
-database and S3-compatible storage (or a plain directory/Docker volume).
+Self-hostable project management platform for `.3mf` files. Its structure mirrors [MakerWorld](https://makerworld.com) or [Printables](https://www.printables.com) — just completely self hostable: models, print profiles, images and documents live in your own Postgres database and S3-compatible storage (or a plain directory/Docker volume).
 
-Model management with metadata auto-fill from `.3mf` files, fuzzy search,
-collections, bills of materials and PDF manuals; imports from MakerWorld,
-Printables and Onshape (with later re-sync); print time estimates via a
-headless slicer; parametric OpenSCAD customization; "open in slicer" deep
-links; email/password sign-in with optional OIDC SSO and user roles.
+Model management with metadata auto-fill from `.3mf` files, fuzzy search, collections, bills of materials and PDF manuals; imports from MakerWorld, Printables and Onshape (with later re-sync); print time estimates via a headless slicer; parametric OpenSCAD customization; "open in slicer" deep links; email/password sign-in with optional OIDC SSO and user roles.
 
 ## Documentation
 
-Operator/user documentation — install & self-hosting, the full configuration
-reference, OIDC SSO, user roles, feature overview and integration setup
-(Onshape, Bambu Cloud, MakerWorld/Printables) — is authored in
-[`docs/`](docs) and published as a standalone docs site built from
-[`nextra/`](nextra). The site is deployed separately from the app on its own
-subdomain (see `nextra/Dockerfile`); no instance builds or serves it.
+Operator/user documentation — install & self-hosting, the full configuration reference, OIDC SSO, user roles, feature overview and integration setup (Onshape, Bambu Cloud, MakerWorld/Printables) — is authored in [`docs/`](docs) and published as a standalone docs site built from [`nextra/`](nextra). The site is deployed separately from the app on its own subdomain (see `nextra/Dockerfile`); no instance builds or serves it.
 
-Quick start for a self-hosted deployment (details in
-[`docs/self-hosting.mdx`](docs/self-hosting.mdx)):
+Quick start for a self-hosted deployment (details in [`docs/self-hosting.mdx`](docs/self-hosting.mdx)):
 
 ```sh
 export BETTER_AUTH_SECRET=$(openssl rand -base64 32)
@@ -42,10 +28,7 @@ docker compose --profile app up -d --build
 
 ## Development
 
-Requirements: Node 22+, Docker, and either an S3-compatible storage (AWS S3,
-MinIO, Garage, …) with a bucket whose credentials have read/write access, or
-`STORAGE_BACKEND=filesystem` with `STORAGE_PATH` pointing at a local directory
-(e.g. `./data/files`).
+Requirements: Node 22+, Docker, and either an S3-compatible storage (AWS S3, MinIO, Garage, …) with a bucket whose credentials have read/write access, or `STORAGE_BACKEND=filesystem` with `STORAGE_PATH` pointing at a local directory (e.g. `./data/files`).
 
 ### First-time setup
 
@@ -73,14 +56,10 @@ Schema changes: edit `src/db/schema.ts`, then `npm run db:generate` to create a 
 
 ### Docs site
 
-The docs site is its own npm package (deliberately not a workspace member, so
-its Next version never clashes with the app's):
+The docs site is its own npm package (deliberately not a workspace member, so its Next version never clashes with the app's):
 
 ```sh
 cd nextra && npm install && npm run dev   # serves docs/ on :3002
 ```
 
-Content lives in `docs/` (reached through the `nextra/content` symlink);
-`docs/architecture/` holds dev-facing notes and is excluded from the site.
-Build the deployable image from the repo root with
-`docker build -f nextra/Dockerfile -t print-vault-docs .`.
+Content lives in `docs/` (reached through the `nextra/content` symlink); `docs/architecture/` holds dev-facing notes and is excluded from the site. Build the deployable image from the repo root with `docker build -f nextra/Dockerfile -t print-vault-docs .`.

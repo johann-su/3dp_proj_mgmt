@@ -6,16 +6,11 @@ import { fileSrc } from "@/lib/file-token";
 import { GALLERY_KINDS } from "@/lib/file-kind";
 import { parametricExtra } from "@/lib/parametric";
 
-// Runtime queries for smart collections: the stored rule tree is compiled to
-// a WHERE clause and evaluated live against models — membership is never
-// materialized (see issue #46 / AGENTS.md), so it can't go stale.
+// Runtime queries for smart collections: the stored rule tree is compiled to a WHERE clause and evaluated live against models — membership is never materialized (see issue #46 / AGENTS.md), so it can't go stale.
 //
-// Stored `rules` jsonb is re-validated through parseRuleTree before compiling
-// (defense in depth: a row written before a schema change, or edited by hand,
-// must degrade to "no matches", not reach the SQL compiler).
+// Stored `rules` jsonb is re-validated through parseRuleTree before compiling (defense in depth: a row written before a schema change, or edited by hand, must degrade to "no matches", not reach the SQL compiler).
 
-// Newest-first member ids for a rule tree. Smart membership has no addedAt,
-// so recency of the model itself is the natural order (matches the homepage).
+// Newest-first member ids for a rule tree. Smart membership has no addedAt, so recency of the model itself is the natural order (matches the homepage).
 async function matchingModelIds(rules: unknown, limit: number): Promise<string[]> {
   const parsed = parseRuleTree(rules);
   if ("error" in parsed) return [];
@@ -28,9 +23,7 @@ async function matchingModelIds(rules: unknown, limit: number): Promise<string[]
   return result.rows.map((r) => r.id);
 }
 
-// Whether one (non-trashed) model currently matches a rule tree — the
-// membership check behind a shared smart collection (src/lib/share-links.ts),
-// evaluated live like everything else here.
+// Whether one (non-trashed) model currently matches a rule tree — the membership check behind a shared smart collection (src/lib/share-links.ts), evaluated live like everything else here.
 export async function smartCollectionContains(
   rules: unknown,
   modelId: string,
@@ -46,8 +39,7 @@ export async function smartCollectionContains(
   return result.rows.length > 0;
 }
 
-// Broad rules can match the whole catalog; the collection page renders full
-// cards for every member, so keep it bounded.
+// Broad rules can match the whole catalog; the collection page renders full cards for every member, so keep it bounded.
 export const SMART_COLLECTION_PAGE_CAP = 200;
 
 // Fully-populated member cards for the collection page, newest first.
@@ -95,9 +87,7 @@ export async function smartCollectionModelCards(
   return ids.map((id) => byId.get(id)).filter((m): m is ModelCardData => !!m);
 }
 
-// Cover images + member count for collection cards (browse grid, /search).
-// Smart collections have no collection_models rows, so the card data the
-// relational queries build is empty — this fills the same shape from the rules.
+// Cover images + member count for collection cards (browse grid, /search). Smart collections have no collection_models rows, so the card data the relational queries build is empty — this fills the same shape from the rules.
 export type SmartCollectionPreview = {
   totalModels: number;
   collectionModels: {
@@ -111,8 +101,7 @@ export async function smartCollectionPreviews(
   const previews = new Map<string, SmartCollectionPreview>();
   if (cols.length === 0) return previews;
 
-  // One count + first-4-ids query per smart collection; pages show a handful
-  // of collection cards at most, and each tree compiles to a different WHERE.
+  // One count + first-4-ids query per smart collection; pages show a handful of collection cards at most, and each tree compiles to a different WHERE.
   const perCollection = await Promise.all(
     cols.map(async (c) => {
       const parsed = parseRuleTree(c.rules);

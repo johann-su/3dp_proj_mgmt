@@ -13,11 +13,7 @@ import {
 
 type SessionUser = { name: string; email: string };
 
-// Page chrome. Members get the sidebar app; an anonymous visitor on a public
-// share link (/share/…) gets a bare header instead — every sidebar entry
-// would only bounce them to sign-in, and the share page carries its own
-// sign-in prompt (share-banner.tsx). Signed-in members keep the full chrome
-// on share pages too.
+// Page chrome. Members get the sidebar app; an anonymous visitor on a public share link (/share/…) gets a bare header instead — every sidebar entry would only bounce them to sign-in, and the share page carries its own sign-in prompt (share-banner.tsx). Signed-in members keep the full chrome on share pages too.
 export function AppShell({
   user,
   bambuReminder = null,

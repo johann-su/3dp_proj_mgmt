@@ -11,55 +11,35 @@ import {
   type SearchFilters,
 } from "@/lib/search-params";
 
-// A single hit in the combined (models ∪ collections) result stream — see
-// CatalogItem in catalog-hydrate.ts.
+// A single hit in the combined (models ∪ collections) result stream — see CatalogItem in catalog-hydrate.ts.
 export type SearchItem = CatalogItem;
 
 export type SearchPage = { items: SearchItem[]; nextCursor: string | null };
 
-// Escapes LIKE wildcards so a user typing "50%" searches for the literal text
-// rather than "50 followed by anything".
+// Escapes LIKE wildcards so a user typing "50%" searches for the literal text rather than "50 followed by anything".
 function escapeLike(q: string): string {
   return q.replace(/[%_\\]/g, "\\$&");
 }
 
-// Fuzzy matching uses pg_trgm's *strict word* similarity, not whole-string
-// similarity: a short query ("tlon") measured against a whole title
-// ("Flightory Talon 1400") scores near-zero on similarity() — even an exact
-// word like "talon" lands at ~0.29, below the 0.3 default — because the query
-// shares few trigrams with the full string. strict_word_similarity() instead
-// scores the best word-boundary-aligned match (talon→1.0, the typo tlon→0.375).
-// Plain word_similarity() would work too but matches arbitrary substring
-// extents, which inflates long descriptions into false positives (an unrelated
-// model's blurb scores 0.5 for "talon"); the strict, word-aligned variant keeps
-// those below ~0.25. The threshold is far looser than pg_trgm's 0.6 default so
-// single-character typos still match (tlon 0.375, taln 0.375, talno 0.33) while
-// unrelated text stays out.
+// Fuzzy matching uses pg_trgm's *strict word* similarity, not whole-string similarity: a short query ("tlon") measured against a whole title ("Flightory Talon 1400") scores near-zero on similarity() — even an exact word like "talon" lands at ~0.29, below the 0.3 default — because the query shares few trigrams with the full string. strict_word_similarity() instead scores the best word-boundary-aligned match (talon→1.0, the typo tlon→0.375). Plain word_similarity() would work too but matches arbitrary substring extents, which inflates long descriptions into false positives (an unrelated model's blurb scores 0.5 for "talon"); the strict, word-aligned variant keeps those below ~0.25. The threshold is far looser than pg_trgm's 0.6 default so single-character typos still match (tlon 0.375, taln 0.375, talno 0.33) while unrelated text stays out.
 const WORD_SIM_THRESHOLD = 0.3;
 
-// The best word-aligned similarity of the query against a column. Used for both
-// the match predicate and (as the max over title/description) relevance ranking.
+// The best word-aligned similarity of the query against a column. Used for both the match predicate and (as the max over title/description) relevance ranking.
 function wordSim(col: SQL, q: string): SQL {
   return sql`strict_word_similarity(${q}, ${col})`;
 }
 
-// Matches the query against a model's tags. Only the model branch has tags
-// (collections don't), so this is hardcoded to `m.id`.
+// Matches the query against a model's tags. Only the model branch has tags (collections don't), so this is hardcoded to `m.id`.
 function tagMatch(q: string, like: string): SQL {
   return sql`EXISTS (SELECT 1 FROM model_tags mt JOIN tags t ON t.id = mt.tag_id WHERE mt.model_id = m.id AND (${wordSim(sql`t.name`, q)} >= ${WORD_SIM_THRESHOLD} OR t.name ILIKE ${like}))`;
 }
 
-// The best tag word-similarity for a model, as a scalar (0 when it has no
-// matching tag). Feeds the relevance score so a strong tag hit ranks well.
+// The best tag word-similarity for a model, as a scalar (0 when it has no matching tag). Feeds the relevance score so a strong tag hit ranks well.
 function tagScore(q: string): SQL {
   return sql`COALESCE((SELECT MAX(${wordSim(sql`t.name`, q)}) FROM model_tags mt JOIN tags t ON t.id = mt.tag_id WHERE mt.model_id = m.id), 0)`;
 }
 
-// The shared title/description + author predicate, parameterized by table
-// alias ("m" for models, "c" for collections). A row matches when any searched
-// field is word-similar to the query OR contains it as a substring (the ILIKE
-// fallback guarantees exact substrings — e.g. "400" in "1400" — always match).
-// Models additionally match on their tags.
+// The shared title/description + author predicate, parameterized by table alias ("m" for models, "c" for collections). A row matches when any searched field is word-similar to the query OR contains it as a substring (the ILIKE fallback guarantees exact substrings — e.g. "400" in "1400" — always match). Models additionally match on their tags.
 function textConditions(alias: "m" | "c", f: SearchFilters): SQL[] {
   const conds: SQL[] = [];
   const a = sql.raw(alias);
@@ -78,8 +58,7 @@ function textConditions(alias: "m" | "c", f: SearchFilters): SQL[] {
   return conds;
 }
 
-// Relevance: the best word similarity across title, description, and (for
-// models) tags. Zero when there's no query (the caller sorts by recency then).
+// Relevance: the best word similarity across title, description, and (for models) tags. Zero when there's no query (the caller sorts by recency then).
 function scoreExpr(alias: "m" | "c", f: SearchFilters): SQL {
   const a = sql.raw(alias);
   if (!f.q) return sql`0`;
@@ -88,11 +67,7 @@ function scoreExpr(alias: "m" | "c", f: SearchFilters): SQL {
   return sql`GREATEST(${sql.join(parts, sql`, `)})`;
 }
 
-// The numeric column the "views"/"downloads" sorts rank on; 0 (unused) for
-// every other sort. Downloads has no per-collection equivalent — model_files
-// carries download_count, collections have nothing analogous — so that branch
-// is only ever reached for the model half of the union (effectiveSort/the
-// caller's includeCollections check keep it out of the collection branch).
+// The numeric column the "views"/"downloads" sorts rank on; 0 (unused) for every other sort. Downloads has no per-collection equivalent — model_files carries download_count, collections have nothing analogous — so that branch is only ever reached for the model half of the union (effectiveSort/the caller's includeCollections check keep it out of the collection branch).
 function metricExpr(alias: "m" | "c", sort: SearchFilters["sort"]): SQL {
   const a = sql.raw(alias);
   if (sort === "views") return sql`${a}.view_count`;
@@ -102,8 +77,7 @@ function metricExpr(alias: "m" | "c", sort: SearchFilters["sort"]): SQL {
   return sql`0`;
 }
 
-// The model-only filters (printer/filament/nozzle/print time) live on
-// model_files, so each is an EXISTS over the model's files.
+// The model-only filters (printer/filament/nozzle/print time) live on model_files, so each is an EXISTS over the model's files.
 function modelFileConditions(f: SearchFilters): SQL[] {
   const conds: SQL[] = [];
   if (f.printer) {
@@ -113,9 +87,7 @@ function modelFileConditions(f: SearchFilters): SQL[] {
     );
   }
   if (f.filaments.length > 0) {
-    // OR within filament, matched case-insensitively ("ASA-AERO" == "ASA-Aero").
-    // The CASE guards jsonb_array_elements_text against a non-array value (it
-    // would otherwise throw); filamentTypes is always an array or absent.
+    // OR within filament, matched case-insensitively ("ASA-AERO" == "ASA-Aero"). The CASE guards jsonb_array_elements_text against a non-array value (it would otherwise throw); filamentTypes is always an array or absent.
     const lowered = sql.join(
       f.filaments.map((fil) => sql`${fil.toLowerCase()}`),
       sql`, `,
@@ -146,19 +118,14 @@ function whereClause(conds: SQL[]): SQL {
   return conds.length > 0 ? sql`WHERE ${sql.join(conds, sql` AND `)}` : sql``;
 }
 
-// Runs the combined search. Returns one keyset-paginated page ordered by the
-// requested sort (relevance falls back to newest without a query term).
+// Runs the combined search. Returns one keyset-paginated page ordered by the requested sort (relevance falls back to newest without a query term).
 export async function search(
   f: SearchFilters,
   rawCursor?: string | null,
 ): Promise<SearchPage> {
   const sort = effectiveSort(f);
   const includeModels = f.type !== "collections";
-  // Collections carry no printer metadata, so any model-only filter excludes
-  // them regardless of the requested type. "downloads" is model-only for the
-  // same reason (no per-collection download metric) — effectiveSort already
-  // downgrades it to "newest" for a collections-only search, so this never
-  // produces the empty-both-sides case below.
+  // Collections carry no printer metadata, so any model-only filter excludes them regardless of the requested type. "downloads" is model-only for the same reason (no per-collection download metric) — effectiveSort already downgrades it to "newest" for a collections-only search, so this never produces the empty-both-sides case below.
   const includeCollections = f.type !== "models" && !hasModelOnlyFilter(f) && sort !== "downloads";
 
   if (!includeModels && !includeCollections) {
@@ -185,8 +152,7 @@ export async function search(
   }
   const union = sql.join(parts, sql` UNION ALL `);
 
-  // Keyset predicate + ordering. The tuple (sort key, id) is a stable total
-  // order per query, so paging never skips or repeats a row.
+  // Keyset predicate + ordering. The tuple (sort key, id) is a stable total order per query, so paging never skips or repeats a row.
   const cursor = rawCursor ? decodeSearchCursor(rawCursor) : null;
   let keyset: SQL = sql``;
   let orderBy: SQL;
@@ -250,9 +216,7 @@ export async function search(
   return { items, nextCursor };
 }
 
-// Distinct filter values present in the corpus, used to populate the /search
-// sidebar. Kept simple (whole-corpus, not filter-aware) — the dataset is small
-// and self-hosted.
+// Distinct filter values present in the corpus, used to populate the /search sidebar. Kept simple (whole-corpus, not filter-aware) — the dataset is small and self-hosted.
 export type SearchFacets = {
   users: { id: string; name: string }[];
   printers: string[];
@@ -288,9 +252,7 @@ export async function searchFacets(): Promise<SearchFacets> {
 
   return {
     users: users.rows,
-    // Fold case variants ("ASA-AERO" / "ASA-Aero") into a single chip, keeping
-    // the first (alphabetically) as the canonical label — the filters match
-    // case-insensitively, so either label finds both.
+    // Fold case variants ("ASA-AERO" / "ASA-Aero") into a single chip, keeping the first (alphabetically) as the canonical label — the filters match case-insensitively, so either label finds both.
     printers: dedupeCaseInsensitive(printers.rows.map((r) => r.v)),
     filaments: dedupeCaseInsensitive(filaments.rows.map((r) => r.v)),
     nozzles: nozzles.rows
@@ -300,9 +262,7 @@ export async function searchFacets(): Promise<SearchFacets> {
   };
 }
 
-// Dropdown options for the smart-collection rule builder: the /search facets
-// plus categories, which /search matches by text instead of listing. Tags are
-// deliberately free text there, like the model form's tag field.
+// Dropdown options for the smart-collection rule builder: the /search facets plus categories, which /search matches by text instead of listing. Tags are deliberately free text there, like the model form's tag field.
 export async function ruleBuilderFacets(): Promise<RuleBuilderFacets> {
   const [facets, categoryRows] = await Promise.all([
     searchFacets(),

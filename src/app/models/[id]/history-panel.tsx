@@ -22,8 +22,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 
-// One row of the model's edit history, precomputed server-side (see
-// src/app/models/[id]/page.tsx), newest first.
+// One row of the model's edit history, precomputed server-side (see src/app/models/[id]/page.tsx), newest first.
 export type ModelHistoryEntry = {
   versionId: number;
   number: number;
@@ -42,9 +41,7 @@ const reasonLabels: Record<ModelVersionReason, string> = {
   revert: "Reverted",
 };
 
-// Edit history with per-version revert. Reverting is open to any signed-in
-// user (same policy as editing) and append-only — it writes a new version
-// instead of rewriting history, so a bad revert is itself revertable.
+// Edit history with per-version revert. Reverting is open to any signed-in user (same policy as editing) and append-only — it writes a new version instead of rewriting history, so a bad revert is itself revertable.
 export function HistoryPanel({
   modelId,
   entries,
@@ -113,8 +110,7 @@ export function HistoryPanel({
                     {entry.current ? " · current" : ""}
                   </div>
                 </div>
-                {/* versionId 0 is the synthesized v1 of a pre-versioning
-                    model — no snapshot row exists to preview or revert to. */}
+                {/* versionId 0 is the synthesized v1 of a pre-versioning model — no snapshot row exists to preview or revert to. */}
                 {!entry.current && entry.versionId > 0 && (
                   <Tooltip>
                     <TooltipTrigger asChild>

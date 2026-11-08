@@ -16,19 +16,14 @@ export type ModelCardData = {
   sourceUrl: string | null;
   user: { name: string };
   category: { name: string } | null;
-  // `src` is the token-signed file URL (see fileSrc in @/lib/file-token),
-  // signed server-side because this card also renders inside client
-  // components (FeedGrid's infinite scroll). The first entry is the cover and
-  // may be a video, which plays on hover (see CoverImage).
+  // `src` is the token-signed file URL (see fileSrc in @/lib/file-token), signed server-side because this card also renders inside client components (FeedGrid's infinite scroll). The first entry is the cover and may be a video, which plays on hover (see CoverImage).
   files: { id: string; src: string; animated?: boolean; kind?: string }[];
   modelTags: { tag: { id: string; name: string } }[];
-  // True when the model ships a `.scad` source, i.e. it's customizable via the
-  // OpenSCAD parametric flow. Surfaced as a badge so browse cards flag it.
+  // True when the model ships a `.scad` source, i.e. it's customizable via the OpenSCAD parametric flow. Surfaced as a badge so browse cards flag it.
   parametric?: boolean;
 };
 
-// `href` overrides the link target — the public share view points cards at
-// share-scoped model pages instead of the (sign-in only) catalog.
+// `href` overrides the link target — the public share view points cards at share-scoped model pages instead of the (sign-in only) catalog.
 export function ModelCard({ model, href }: { model: ModelCardData; href?: string }) {
   const cover = model.files[0];
   const platform = platformFromSourceUrl(model.sourceUrl);

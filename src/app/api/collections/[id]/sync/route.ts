@@ -9,12 +9,7 @@ import { reportError } from "@/lib/telemetry";
 
 export const runtime = "nodejs";
 
-// Re-runs the collection import against the stored MakerWorld source URL
-// (any signed-in user — syncing counts as editing; see the session check
-// below). Designs added remotely since the last run import as new
-// models; everything already in the library is just (re-)linked into the
-// collection. Nothing is deleted — models removed from the remote collection
-// stay local.
+// Re-runs the collection import against the stored MakerWorld source URL (any signed-in user — syncing counts as editing; see the session check below). Designs added remotely since the last run import as new models; everything already in the library is just (re-)linked into the collection. Nothing is deleted — models removed from the remote collection stay local.
 export async function POST(
   _req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
@@ -32,10 +27,7 @@ export async function POST(
   if (!collection) {
     return NextResponse.json({ error: "Collection not found" }, { status: 404 });
   }
-  // Syncing re-imports the MakerWorld list into this collection, so it counts
-  // as editing — open to any signed-in user (uses their own Bambu connection;
-  // newly-imported models are owned by the syncer and linked here). Only
-  // deletion is owner-gated.
+  // Syncing re-imports the MakerWorld list into this collection, so it counts as editing — open to any signed-in user (uses their own Bambu connection; newly-imported models are owned by the syncer and linked here). Only deletion is owner-gated.
   if (!collection.sourceUrl) {
     return NextResponse.json(
       { error: "This collection was not imported from MakerWorld" },

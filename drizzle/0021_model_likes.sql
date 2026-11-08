@@ -1,7 +1,4 @@
--- Per-user model "likes"/favorites: quick access to frequently used models
--- from /models/liked. A join row keyed by (user, model); created_at orders
--- the liked list (most recently liked first). Cascades with either side so a
--- deleted user or model drops its likes. No backfill — likes start empty.
+-- Per-user model "likes"/favorites: quick access to frequently used models from /models/liked. A join row keyed by (user, model); created_at orders the liked list (most recently liked first). Cascades with either side so a deleted user or model drops its likes. No backfill — likes start empty.
 CREATE TABLE "model_likes" (
 	"user_id" text NOT NULL,
 	"model_id" uuid NOT NULL,

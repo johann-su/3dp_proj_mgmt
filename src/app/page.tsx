@@ -26,16 +26,14 @@ export default async function HomePage({
   const { category, sort: rawSort } = await searchParams;
   const sort = parseFeedSort(rawSort);
 
-  // No category picker on the homepage itself — this only serves deep links
-  // from a model's category badge (see model-view.tsx), which still filters.
+  // No category picker on the homepage itself — this only serves deep links from a model's category badge (see model-view.tsx), which still filters.
   const activeCategory = category
     ? await db.query.categories.findFirst({
         where: (c, { eq }) => eq(c.slug, category),
       })
     : undefined;
 
-  // Pins are shared across all users. They're a homepage shelf, so a
-  // category deep link (a filtered view) shows just the filtered feed.
+  // Pins are shared across all users. They're a homepage shelf, so a category deep link (a filtered view) shows just the filtered feed.
   const [{ items, nextCursor }, pinned] = await Promise.all([
     listFeed({ categoryId: activeCategory?.id, sort }),
     activeCategory ? Promise.resolve([]) : listPinned(),

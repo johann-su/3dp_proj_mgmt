@@ -10,8 +10,7 @@ export function normalizeTagNames(input: string[]): string[] {
   ].slice(0, 20);
 }
 
-// Upserts tags by name and links them to the model. Shared by the model
-// server actions and the background collection import.
+// Upserts tags by name and links them to the model. Shared by the model server actions and the background collection import.
 export async function linkTags(tx: Tx, modelId: string, tagNames: string[]) {
   if (tagNames.length === 0) return;
   const insertedTags = await tx

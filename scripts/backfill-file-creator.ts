@@ -1,7 +1,4 @@
-// One-off backfill of model_files.creator_app/creator_version for .3mf files
-// uploaded before the columns existed (new uploads and re-slices fill them in
-// src/lib/slicer.ts). Reads only each archive's metadata via ranged storage
-// reads; safe to re-run — it only touches rows still missing a creator.
+// One-off backfill of model_files.creator_app/creator_version for .3mf files uploaded before the columns existed (new uploads and re-slices fill them in src/lib/slicer.ts). Reads only each archive's metadata via ranged storage reads; safe to re-run — it only touches rows still missing a creator.
 //
 //   npm run db:backfill-creator
 

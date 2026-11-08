@@ -3,25 +3,14 @@ import type { NextConfig } from "next";
 // Next's dev server compiles with eval(); production bundles don't need it.
 const dev = process.env.NODE_ENV !== "production";
 
-// Nearly everything the app loads is same-origin: Tailwind ships a static
-// stylesheet, next/font self-hosts, and every uploaded image and video goes
-// through /api/files (see images.localPatterns below). The exception is
-// *linked* gallery videos (src/lib/video.ts): YouTube's poster frames from
-// i.ytimg.com, and the player itself, which is framed only after the viewer
-// clicks play. Both srcs are built from a parsed 11-character video id, never
-// from a stored string.
-// 'unsafe-inline' stays because Next inlines its bootstrap/flight scripts and
-// React inlines style attributes; tightening that needs a nonce, which means
-// making every page dynamic. blob: covers the three.js preview's object URLs.
+// Nearly everything the app loads is same-origin: Tailwind ships a static stylesheet, next/font self-hosts, and every uploaded image and video goes through /api/files (see images.localPatterns below). The exception is *linked* gallery videos (src/lib/video.ts): YouTube's poster frames from i.ytimg.com, and the player itself, which is framed only after the viewer clicks play. Both srcs are built from a parsed 11-character video id, never from a stored string.
+// 'unsafe-inline' stays because Next inlines its bootstrap/flight scripts and React inlines style attributes; tightening that needs a nonce, which means making every page dynamic. blob: covers the three.js preview's object URLs.
 const csp = [
   "default-src 'self'",
   `script-src 'self' 'unsafe-inline'${dev ? " 'unsafe-eval'" : ""}`,
   "style-src 'self' 'unsafe-inline'",
   "img-src 'self' data: blob: https://i.ytimg.com",
-  // Uploaded gallery videos, all same-origin through /api/files. blob: is for
-  // the create/edit wizard, which previews a freshly picked video from an
-  // object URL before it has been uploaded anywhere — without this the
-  // default-src fallback would block it.
+  // Uploaded gallery videos, all same-origin through /api/files. blob: is for the create/edit wizard, which previews a freshly picked video from an object URL before it has been uploaded anywhere — without this the default-src fallback would block it.
   "media-src 'self' blob:",
   "font-src 'self' data:",
   "connect-src 'self'",
@@ -37,8 +26,7 @@ const csp = [
 
 const nextConfig: NextConfig = {
   output: "standalone",
-  // Baseline security headers for an internet-facing deployment. Applied here
-  // rather than at the reverse proxy so they hold however the app is fronted.
+  // Baseline security headers for an internet-facing deployment. Applied here rather than at the reverse proxy so they hold however the app is fronted.
   async headers() {
     return [
       {
@@ -49,14 +37,12 @@ const nextConfig: NextConfig = {
           { key: "X-Frame-Options", value: "DENY" },
           { key: "X-Content-Type-Options", value: "nosniff" },
           { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
-          // Model URLs shouldn't leak to third parties via the browser's
-          // background features either.
+          // Model URLs shouldn't leak to third parties via the browser's background features either.
           {
             key: "Permissions-Policy",
             value: "camera=(), microphone=(), geolocation=(), interest-cohort=()",
           },
-          // Ignored by browsers over plain HTTP, so this is inert in local dev.
-          // Drop includeSubDomains if any sibling subdomain is HTTP-only.
+          // Ignored by browsers over plain HTTP, so this is inert in local dev. Drop includeSubDomains if any sibling subdomain is HTTP-only.
           {
             key: "Strict-Transport-Security",
             value: "max-age=31536000; includeSubDomains",
@@ -64,19 +50,12 @@ const nextConfig: NextConfig = {
         ],
       },
       {
-        // Public share links are bearer URLs (the token is the credential):
-        // keep the pages out of search indexes even if a link is posted
-        // somewhere crawlable. The shared file route sets the same header.
+        // Public share links are bearer URLs (the token is the credential): keep the pages out of search indexes even if a link is posted somewhere crawlable. The shared file route sets the same header.
         source: "/share/:path*",
         headers: [{ key: "X-Robots-Tag", value: "noindex, nofollow" }],
       },
       {
-        // The BOM image proxy streams third-party bytes on our origin. Only
-        // raster types get through (allowedBomImageType), but if its URL is
-        // ever opened as a document rather than an <img>, nothing in it may
-        // run or load anything. Must come after the "/:path*" rule: for the
-        // same header key the last matching rule wins — a CSP set in the
-        // route handler itself is overridden by the global one above.
+        // The BOM image proxy streams third-party bytes on our origin. Only raster types get through (allowedBomImageType), but if its URL is ever opened as a document rather than an <img>, nothing in it may run or load anything. Must come after the "/:path*" rule: for the same header key the last matching rule wins — a CSP set in the route handler itself is overridden by the global one above.
         source: "/api/bom-image",
         headers: [
           { key: "Content-Security-Policy", value: "default-src 'none'; sandbox" },
@@ -86,13 +65,9 @@ const nextConfig: NextConfig = {
   },
   images: {
     // 75 (default) for the homepage grid where bandwidth is the constraint;
-    // 90 for the model detail preview where image quality matters more. Next 16
-    // requires every quality used by next/image to be allowlisted here.
+    // 90 for the model detail preview where image quality matters more. Next 16 requires every quality used by next/image to be allowlisted here.
     qualities: [75, 90],
-    // Next 16 rejects local image srcs with query strings unless allowlisted.
-    // All next/image sources are /api/files/<id>?token=<signed>; `search` must
-    // stay unset because the token varies per file — access control happens in
-    // the route itself, which verifies the token (see src/lib/file-token.ts).
+    // Next 16 rejects local image srcs with query strings unless allowlisted. All next/image sources are /api/files/<id>?token=<signed>; `search` must stay unset because the token varies per file — access control happens in the route itself, which verifies the token (see src/lib/file-token.ts).
     localPatterns: [{ pathname: "/api/files/**" }],
   },
 };

@@ -8,8 +8,7 @@ import {
   type RuleGroup,
 } from "@/lib/collection-rules";
 
-// Renders a compiled fragment to text + bound params without a DB connection,
-// so the tests can assert on the actual SQL shape.
+// Renders a compiled fragment to text + bound params without a DB connection, so the tests can assert on the actual SQL shape.
 function toQuery(tree: RuleGroup) {
   return new PgDialect().sqlToQuery(ruleTreeToSql(tree));
 }
@@ -121,8 +120,7 @@ test("AND/OR group ops join conditions accordingly", () => {
 test("source 'manual' means no sourceUrl; negating a platform still matches manual uploads", () => {
   const manual = toQuery(parsed({ op: "AND", rules: [{ field: "source", value: "manual" }] }));
   assert.match(manual.sql, /source_url IS NULL/);
-  // Platform matches run against COALESCE(source_url, '') so NOT(match) is
-  // true — not NULL — for manual uploads (they'd silently vanish otherwise).
+  // Platform matches run against COALESCE(source_url, '') so NOT(match) is true — not NULL — for manual uploads (they'd silently vanish otherwise).
   const notMw = toQuery(
     parsed({ op: "AND", rules: [{ field: "source", value: "makerworld", negate: true }] }),
   );

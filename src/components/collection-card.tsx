@@ -13,8 +13,7 @@ export type CollectionCardData = {
       files: { id: string; src: string; animated?: boolean; kind?: string }[];
     };
   }[];
-  // Smart collections (rule-based membership) hydrate only their first few
-  // members as covers, so the real count comes separately.
+  // Smart collections (rule-based membership) hydrate only their first few members as covers, so the real count comes separately.
   totalModels?: number;
   smart?: boolean;
 };
@@ -33,17 +32,12 @@ export function CollectionCard({
 
   return (
     <Link href={`/collections/${collection.id}`} className="group block h-full">
-      {/* Stacked card effect — each layer is offset by an even 4px step
-          (inset + drop) so the peeking edges look evenly spaced. The wrapper
-          is shrunk by the largest drop (8px) so the peeking layers stay
-          within the grid cell instead of overflowing past its bottom edge,
-          which otherwise made collection cards look taller than model cards. */}
+      {/* Stacked card effect — each layer is offset by an even 4px step (inset + drop) so the peeking edges look evenly spaced. The wrapper is shrunk by the largest drop (8px) so the peeking layers stay within the grid cell instead of overflowing past its bottom edge, which otherwise made collection cards look taller than model cards. */}
       <div className="relative h-[calc(100%-8px)]">
         <div className="absolute inset-x-2 -bottom-2 h-full rounded-xl bg-muted/60 border border-border/40" />
         <div className="absolute inset-x-1 -bottom-1 h-full rounded-xl bg-muted/80 border border-border/50" />
 
-        {/* Main card — fills the grid row height (like ModelCard's h-full Card)
-            so models and collections line up at equal height. */}
+        {/* Main card — fills the grid row height (like ModelCard's h-full Card) so models and collections line up at equal height. */}
         <div className="relative flex h-full flex-col rounded-xl overflow-hidden shadow-sm transition-shadow group-hover:shadow-lg border border-border/60 bg-card">
           {/* 2×2 image grid */}
           <div className="aspect-[4/3] grid grid-cols-2 grid-rows-2 bg-muted">

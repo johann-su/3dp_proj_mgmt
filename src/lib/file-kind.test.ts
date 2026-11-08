@@ -11,16 +11,14 @@ import {
 } from "@/lib/file-kind";
 
 test("contentTypeForFilename maps allowlisted extensions, ignoring case", () => {
-  // Serve-time content types come from the extension, never from what the
-  // uploader claimed — a text/html "image" served inline would be stored XSS.
+  // Serve-time content types come from the extension, never from what the uploader claimed — a text/html "image" served inline would be stored XSS.
   assert.equal(contentTypeForFilename("part.3MF"), "model/3mf");
   assert.equal(contentTypeForFilename("photo.jpeg"), "image/jpeg");
   assert.equal(contentTypeForFilename("manual.pdf"), "application/pdf");
 });
 
 test(".scad is an allowlisted model extension with a non-text content type", () => {
-  // Parametric OpenSCAD source uploads as a model file. Its content type must
-  // never be text/* — /api/files would serve it in a way a browser renders.
+  // Parametric OpenSCAD source uploads as a model file. Its content type must never be text/* — /api/files would serve it in a way a browser renders.
   assert.ok(allowedExtensions("model").includes(".scad"));
   assert.equal(contentTypeForFilename("servo horn.SCAD"), "application/x-openscad");
   assert.ok(!contentTypeForFilename("x.scad").startsWith("text/"));
@@ -32,15 +30,12 @@ test("contentTypeForFilename falls back to octet-stream for unknown extensions",
 });
 
 test("sanitizeRename keeps the original extension when the user omits it", () => {
-  // The rename UI only ever lets someone edit the base name, but the
-  // server can't trust that — it must still enforce this itself.
+  // The rename UI only ever lets someone edit the base name, but the server can't trust that — it must still enforce this itself.
   assert.equal(sanitizeRename("model.3mf", "renamed"), "renamed.3mf");
 });
 
 test("sanitizeRename strips a user-supplied extension and reapplies the real one", () => {
-  // A crafted rename can't smuggle in a different extension and change
-  // what kind the file is treated as (allowedExtensions/sliceEligible key
-  // off the extension, not the DB's `kind` column alone).
+  // A crafted rename can't smuggle in a different extension and change what kind the file is treated as (allowedExtensions/sliceEligible key off the extension, not the DB's `kind` column alone).
   assert.equal(sanitizeRename("model.3mf", "totally-safe.exe"), "totally-safe.exe.3mf");
 });
 
@@ -57,8 +52,7 @@ test("sanitizeRename handles files without an extension", () => {
 });
 
 test("safeFileBase reduces a title to a quote-safe download filename", () => {
-  // The result goes straight into a Content-Disposition filename="…" (BOM CSV,
-  // export zip), so a title's quotes, slashes and newlines must not survive.
+  // The result goes straight into a Content-Disposition filename="…" (BOM CSV, export zip), so a title's quotes, slashes and newlines must not survive.
   assert.equal(safeFileBase('Bracket "v2" / left'), "Bracket-v2-left");
   assert.equal(safeFileBase("Kabelhalter (5 mm)"), "Kabelhalter-5-mm");
 });
@@ -69,9 +63,7 @@ test("safeFileBase falls back to 'model' when nothing safe is left", () => {
   assert.equal(safeFileBase(""), "model");
 });
 
-// Gallery videos are uploaded files like photos, so the same rule applies:
-// the served content type comes from the extension. video/* is safe to serve
-// inline (a browser never renders it as markup) — text/* would not be.
+// Gallery videos are uploaded files like photos, so the same rule applies: the served content type comes from the extension. video/* is safe to serve inline (a browser never renders it as markup) — text/* would not be.
 test("video extensions map to their container's video/* type", () => {
   assert.equal(contentTypeForFilename("print.MP4"), "video/mp4");
   assert.equal(contentTypeForFilename("timelapse.webm"), "video/webm");
@@ -89,9 +81,7 @@ test("allowedExtensions gates each kind to its own list", () => {
   assert.ok(!allowedExtensions("model").includes(".mp4"));
 });
 
-// Images and videos share one carousel and one `position` sequence, so the
-// cover queries and the reorder logic both key off this set rather than
-// testing for "image" alone.
+// Images and videos share one carousel and one `position` sequence, so the cover queries and the reorder logic both key off this set rather than testing for "image" alone.
 test("images and videos are the gallery kinds; nothing else is", () => {
   assert.deepEqual(GALLERY_KINDS, ["image", "video"]);
   assert.ok(isGalleryKind("image"));

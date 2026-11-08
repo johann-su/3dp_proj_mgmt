@@ -1,8 +1,6 @@
 "use client";
 
-// The two-step create/edit wizard. Owns all form state and the submit flow;
-// the picker components live in model-form-pickers.tsx and the entry types +
-// pure order/dirty logic in model-form-state.ts.
+// The two-step create/edit wizard. Owns all form state and the submit flow; the picker components live in model-form-pickers.tsx and the entry types + pure order/dirty logic in model-form-state.ts.
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -118,8 +116,7 @@ export function ModelForm({
           sliceStatus: f.sliceStatus,
         })),
   );
-  // Which .3mf files the save hands to the slicer, as overrides of the
-  // per-entry default (new: yes, already stored: no) — see model-form-state.
+  // Which .3mf files the save hands to the slicer, as overrides of the per-entry default (new: yes, already stored: no) — see model-form-state.
   const [sliceOverrides, setSliceOverrides] = useState<Record<string, boolean>>(
     {},
   );
@@ -129,9 +126,7 @@ export function ModelForm({
   const [pdfFiles, setPdfFiles] = useState<PendingFile[]>([]);
   // PDFs pulled in by a URL import — already staged in S3 (create mode only).
   const [stagedPdfFiles, setStagedPdfFiles] = useState<UploadedFile[]>([]);
-  // The gallery — uploaded photos/videos and linked videos in one list. That
-  // list's order is the carousel's, and each linked video's index in it is
-  // the position saved with it.
+  // The gallery — uploaded photos/videos and linked videos in one list. That list's order is the carousel's, and each linked video's index in it is the position saved with it.
   const [media, setMedia] = useState<MediaEntry[]>(() =>
     mediaFromInitial(
       (model?.files ?? [])
@@ -149,30 +144,24 @@ export function ModelForm({
     ),
   );
   const [categoryId, setCategoryId] = useState<string>(model?.categoryId ?? "");
-  // Until the user picks a category themselves, the select tracks a live
-  // suggestion (edit mode keeps the stored choice untouched).
+  // Until the user picks a category themselves, the select tracks a live suggestion (edit mode keeps the stored choice untouched).
   const [categoryTouched, setCategoryTouched] = useState(!!model);
-  // Source platform category names from a URL import — the strongest
-  // suggestion signal (e.g. MakerWorld's "Signs & Logos" → Art).
+  // Source platform category names from a URL import — the strongest suggestion signal (e.g. MakerWorld's "Signs & Logos" → Art).
   const [sourceCategories, setSourceCategories] = useState<string[]>([]);
   const [bom, setBom] = useState<BomItemInput[]>(model?.bom ?? []);
   const [status, setStatus] = useState<string | null>(null);
   const [extracting, setExtracting] = useState(0);
 
   const [sourceUrl, setSourceUrl] = useState<string | null>(null);
-  const [onshapeMicroversion, setOnshapeMicroversion] = useState<string | null>(null);
-  // Models the URL importer flagged this draft against and the user imported
-  // anyway — recorded on save so an admin can scrub the copies later.
+  const [sourceRevision, setSourceRevision] = useState<string | null>(null);
+  // Models the URL importer flagged this draft against and the user imported anyway — recorded on save so an admin can scrub the copies later.
   const [duplicateOfIds, setDuplicateOfIds] = useState<string[]>([]);
   const [showDiscardConfirm, setShowDiscardConfirm] = useState(false);
-  // Set when the save came back flagged: a model file here already lives on
-  // another model (issue #118). Flag-only — "Save anyway" re-runs the same
-  // save with confirmDuplicate.
+  // Set when the save came back flagged: a model file here already lives on another model (issue #118). Flag-only — "Save anyway" re-runs the same save with confirmDuplicate.
   const [pendingDuplicates, setPendingDuplicates] = useState<
     DuplicateMatch[] | null
   >(null);
-  // The save payload built by handleSubmit, kept so "Save anyway" can re-issue
-  // it without re-uploading the files (they are already staged in S3).
+  // The save payload built by handleSubmit, kept so "Save anyway" can re-issue it without re-uploading the files (they are already staged in S3).
   const pendingSaveRef = useRef<
     | { mode: "create"; input: CreateModelInput }
     | { mode: "update"; input: UpdateModelInput }
@@ -197,18 +186,13 @@ export function ModelForm({
     model,
   );
 
-  // The popstate listener below is installed once, so it reads `dirty` through
-  // a ref to always see the current value.
+  // The popstate listener below is installed once, so it reads `dirty` through a ref to always see the current value.
   const dirtyRef = useRef(dirty);
   useEffect(() => {
     dirtyRef.current = dirty;
   }, [dirty]);
 
-  // Trap the browser back button behind the same discard-changes prompt as
-  // the Cancel button — but only when there are unsaved changes. Push a
-  // same-URL history entry so a back press is a popstate we can intercept:
-  // when dirty, re-push it to neutralize the back and show the confirm dialog;
-  // when clean, let the exit proceed to the cancel target.
+  // Trap the browser back button behind the same discard-changes prompt as the Cancel button — but only when there are unsaved changes. Push a same-URL history entry so a back press is a popstate we can intercept: when dirty, re-push it to neutralize the back and show the confirm dialog; when clean, let the exit proceed to the cancel target.
   useEffect(() => {
     window.history.pushState(null, "", window.location.href);
     const handlePopState = () => {
@@ -223,8 +207,7 @@ export function ModelForm({
     return () => window.removeEventListener("popstate", handlePopState);
   }, [router, cancelHref]);
 
-  // Hydrate from an import draft handed over by /models/import. Create mode
-  // only; runs once after hydration (sessionStorage is client-only).
+  // Hydrate from an import draft handed over by /models/import. Create mode only; runs once after hydration (sessionStorage is client-only).
   useEffect(() => {
     if (model) return;
     const raw = sessionStorage.getItem(IMPORT_DRAFT_KEY);
@@ -238,15 +221,14 @@ export function ModelForm({
       setTags((draft.tags ?? []).join(", "));
       setSourceCategories(draft.categories ?? []);
       setSourceUrl(draft.sourceUrl ?? null);
-      setOnshapeMicroversion(draft.onshapeMicroversion ?? null);
+      setSourceRevision(draft.sourceRevision ?? null);
       setDuplicateOfIds(draft.duplicateOfIds ?? []);
       setModelFileEntries(
         (draft.files ?? [])
           .filter((f) => f.kind === "model")
           .map(stagedModelFileEntry),
       );
-      // Staged photos/videos and any linked videos the archive carried, woven
-      // back into the one order the exporting instance showed them in.
+      // Staged photos/videos and any linked videos the archive carried, woven back into the one order the exporting instance showed them in.
       setMedia(
         mediaFromInitial(
           (draft.files ?? [])
@@ -267,9 +249,7 @@ export function ModelForm({
     }
   }, [model]);
 
-  // Keep the category synced to the best suggestion (from title, tags and the
-  // import source's own categories) until the user picks one; "Other" when
-  // nothing matches, so no model is created without a category.
+  // Keep the category synced to the best suggestion (from title, tags and the import source's own categories) until the user picks one; "Other" when nothing matches, so no model is created without a category.
   useEffect(() => {
     if (categoryTouched) return;
     const suggested =
@@ -302,15 +282,13 @@ export function ModelForm({
     setMedia((prev) => [...prev, ...files.map(newMediaFileEntry)]);
   }
 
-  // Adds a pasted YouTube link as a gallery tile. Returns why it couldn't,
-  // for the field to show — the picker owns the input, this owns the list.
+  // Adds a pasted YouTube link as a gallery tile. Returns why it couldn't, for the field to show — the picker owns the input, this owns the list.
   function addVideo(url: string): string | null {
     const video = parseYouTubeUrl(url);
     if (!video) {
       return "Paste a YouTube link, e.g. https://www.youtube.com/watch?v=…";
     }
-    // Same video twice is a mistake; say so rather than silently dropping it
-    // (the save would dedupe it away anyway).
+    // Same video twice is a mistake; say so rather than silently dropping it (the save would dedupe it away anyway).
     if (media.some((entry) => entry.key === video.id)) {
       return "That video is already in the gallery";
     }
@@ -354,8 +332,7 @@ export function ModelForm({
     setModelFileEntries((prev) => prev.filter((entry) => entry.key !== key));
   }
 
-  // Queues/unqueues one .3mf for slicing. Nothing runs until the form is
-  // saved — createModel/updateModel apply it (see handleSubmit).
+  // Queues/unqueues one .3mf for slicing. Nothing runs until the form is saved — createModel/updateModel apply it (see handleSubmit).
   function toggleSlicing(entry: ModelFileEntry) {
     setSliceOverrides((prev) => toggleSliceQueue(prev, entry));
   }
@@ -435,7 +412,8 @@ export function ModelForm({
 
   function goToStep(target: 1 | 2) {
     if (target === step) return;
-    if (target === 2 && (!hasModelFile || extracting > 0)) return;
+    // Only the .3mf metadata read holds up the details step, so it opens already prefilled. A missing model file is caught on save instead (handleSubmit) — gating the step on it stranded an import whose files all failed to download on step 1 once the user went back there.
+    if (target === 2 && extracting > 0) return;
     setPreview(false);
     setStep(target);
   }
@@ -449,8 +427,7 @@ export function ModelForm({
       setStep(1);
       return;
     }
-    // The title input is unmounted while previewing, so native `required`
-    // can't catch this there.
+    // The title input is unmounted while previewing, so native `required` can't catch this there.
     if (!title.trim()) {
       toast.error("Title is required");
       setPreview(false);
@@ -458,10 +435,7 @@ export function ModelForm({
     }
 
     try {
-      // Model files and gallery media upload in display order so their
-      // positions (and the cover) match what the user arranged. Linked videos
-      // carry no bytes — only their slot in the media list travels with the
-      // save.
+      // Model files and gallery media upload in display order so their positions (and the cover) match what the user arranged. Linked videos carry no bytes — only their slot in the media list travels with the save.
       const newModelFiles = modelFileEntries.filter((entry) => entry.type === "new");
       const mediaFileEntries = mediaFiles(media);
       const newMedia = mediaFileEntries.filter((entry) => entry.type === "new");
@@ -478,8 +452,7 @@ export function ModelForm({
         ...pdfFiles.map((f) => ({ file: f.file, kind: "pdf" as const, filename: f.name })),
         ...newMedia.map((entry) => ({
           file: entry.file,
-          // Photo or video — the picker classified it by extension, and the
-          // upload route re-checks that against the same allowlist.
+          // Photo or video — the picker classified it by extension, and the upload route re-checks that against the same allowlist.
           kind: entry.kind,
           filename: entry.file.name,
         })),
@@ -490,8 +463,7 @@ export function ModelForm({
         uploaded.push(await uploadFile(file, kind, filename));
       }
 
-      // Files the user took out of the slice queue, by the S3 key they were
-      // stored under — everything else .3mf is sliced as usual.
+      // Files the user took out of the slice queue, by the S3 key they were stored under — everything else .3mf is sliced as usual.
       const skipSliceKeys = skippedSliceKeys(
         modelFileEntries,
         sliceOverrides,
@@ -533,8 +505,7 @@ export function ModelForm({
             mediaOrder,
             bom,
             videos: mediaLinkedVideos(media),
-            // Existing .3mf files the user put back in the queue — re-sliced to
-            // refresh estimates and printer info (or retry a failure).
+            // Existing .3mf files the user put back in the queue — re-sliced to refresh estimates and printer info (or retry a failure).
             resliceFileIds: modelFileEntries.flatMap((entry) =>
               entry.type === "existing" && isQueuedForSlicing(entry, sliceOverrides)
                 ? [entry.id]
@@ -561,7 +532,7 @@ export function ModelForm({
             bom,
             videos: mediaLinkedVideos(media),
             sourceUrl,
-            onshapeMicroversion,
+            sourceRevision,
             skipSliceKeys,
             duplicateOfIds,
           },
@@ -575,11 +546,7 @@ export function ModelForm({
     }
   }
 
-  // Issues the save built by handleSubmit. Split out so the duplicate prompt's
-  // "Save anyway" can re-run it with confirmDuplicate — the files are already
-  // staged in S3, so re-submitting the form from scratch would upload them all
-  // over again. On success the action redirects (thrown and handled by Next);
-  // it only returns a value when the save didn't happen.
+  // Issues the save built by handleSubmit. Split out so the duplicate prompt's "Save anyway" can re-run it with confirmDuplicate — the files are already staged in S3, so re-submitting the form from scratch would upload them all over again. On success the action redirects (thrown and handled by Next); it only returns a value when the save didn't happen.
   async function save(confirmDuplicate: boolean) {
     const pending = pendingSaveRef.current;
     if (!pending) return;
@@ -610,9 +577,7 @@ export function ModelForm({
     }
   }
 
-  // Content is capped at max-w-2xl (42rem) for readability, so the sidebar
-  // column sits snugly against it — except in preview mode, where
-  // ModelPreview wants the full column width to mimic the real model page.
+  // Content is capped at max-w-2xl (42rem) for readability, so the sidebar column sits snugly against it — except in preview mode, where ModelPreview wants the full column width to mimic the real model page.
   const wide = step === 2 && preview;
 
   return (
@@ -627,7 +592,7 @@ export function ModelForm({
         <div className="grid gap-6 max-w-2xl">
           <StepIndicator
             step={step}
-            canGoToDetails={hasModelFile && extracting === 0}
+            canGoToDetails={extracting === 0}
             onSelect={goToStep}
           />
 
@@ -836,13 +801,8 @@ export function ModelForm({
             type="button"
             variant="outline"
             className="w-full"
-            disabled={
-              status !== null || step === 2 || !hasModelFile || extracting > 0
-            }
-            onClick={() => {
-              setPreview(false);
-              setStep(2);
-            }}
+            disabled={status !== null || step === 2 || extracting > 0}
+            onClick={() => goToStep(2)}
           >
             {extracting > 0 ? "Reading…" : "Next"}
             <ArrowRight className="size-4" />

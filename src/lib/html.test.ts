@@ -28,8 +28,7 @@ test("htmlishToText leaves plain text untouched", () => {
   assert.equal(htmlishToText("Just a description."), "Just a description.");
 });
 
-// htmlishToMarkdown keeps the source formatting so the <Markdown> renderer can
-// re-render headings/emphasis/lists/links, instead of flattening to plain text.
+// htmlishToMarkdown keeps the source formatting so the <Markdown> renderer can re-render headings/emphasis/lists/links, instead of flattening to plain text.
 test("htmlishToMarkdown preserves headings, emphasis, lists and links", () => {
   assert.equal(
     htmlishToMarkdown(
@@ -39,8 +38,7 @@ test("htmlishToMarkdown preserves headings, emphasis, lists and links", () => {
   );
 });
 
-// Bambu Studio descriptions arrive double-escaped ("&amp;lt;h3&amp;gt;…"); the
-// entity peeling must expose real tags before conversion.
+// Bambu Studio descriptions arrive double-escaped ("&amp;lt;h3&amp;gt;…"); the entity peeling must expose real tags before conversion.
 test("htmlishToMarkdown unwraps double-escaped HTML into markdown", () => {
   assert.equal(
     htmlishToMarkdown("&amp;lt;h3&amp;gt;Assembly&amp;lt;/h3&amp;gt;Use glue"),

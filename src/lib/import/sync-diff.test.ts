@@ -67,8 +67,7 @@ test("upstream files without a local counterpart are imported", () => {
 });
 
 test("imported files gone upstream are removed; manual files and variants are invisible", () => {
-  // Manual uploads (imported: false) and generated variants never sync, so
-  // they must appear in no bucket — especially not toRemove.
+  // Manual uploads (imported: false) and generated variants never sync, so they must appear in no bucket — especially not toRemove.
   const plan = computeSyncPlan(
     [
       local(),
@@ -86,9 +85,7 @@ test("imported files gone upstream are removed; manual files and variants are in
 });
 
 test("legacy imports without ids are adopted by filename and stamped", () => {
-  // Files imported before source ids existed: same filename upstream, and the
-  // upstream date predates the local import → our copy already is that
-  // version, so only the bookkeeping columns get stamped.
+  // Files imported before source ids existed: same filename upstream, and the upstream date predates the local import → our copy already is that version, so only the bookkeeping columns get stamped.
   const plan = computeSyncPlan(
     [local({ sourceFileId: null, sourceModifiedAt: null })],
     [upstream({ modifiedAt: "2025-01-01T00:00:00Z" })],
@@ -104,8 +101,7 @@ test("legacy imports without ids are adopted by filename and stamped", () => {
 });
 
 test("an adopted file modified upstream after the import is replaced", () => {
-  // Legacy import (no stored token): upstream edited the file after we
-  // imported it, so the local copy is stale.
+  // Legacy import (no stored token): upstream edited the file after we imported it, so the local copy is stale.
   const plan = computeSyncPlan(
     [local({ sourceFileId: null, sourceModifiedAt: null })],
     [upstream({ modifiedAt: "2025-03-01T00:00:00Z" })],
@@ -114,8 +110,7 @@ test("an adopted file modified upstream after the import is replaced", () => {
 });
 
 test("a missing upstream token counts as unchanged, never as changed", () => {
-  // MakerWorld doc PDFs carry no timestamp — a match must not re-download on
-  // every sync.
+  // MakerWorld doc PDFs carry no timestamp — a match must not re-download on every sync.
   const plan = computeSyncPlan(
     [
       local({

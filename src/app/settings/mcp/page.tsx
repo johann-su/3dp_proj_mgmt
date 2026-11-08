@@ -9,8 +9,7 @@ export const dynamic = "force-dynamic";
 export default async function McpSettingsPage() {
   const session = await getSession();
   if (!session) redirect(await signInRedirect());
-  // Not configured on this instance — the nav entry hides too, but a
-  // bookmarked URL must not render a page for a feature that isn't there.
+  // Not configured on this instance — the nav entry hides too, but a bookmarked URL must not render a page for a feature that isn't there.
   if (!mcpEnabled) notFound();
 
   const clients = await listMcpClients(session.user.id);

@@ -44,10 +44,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 
-// Default tab selection, following Onshape's workflow: Part Studios hold the
-// printable geometry (preselected); Assemblies only position parts, so their
-// exports overlap when sliced (deselected). Assembly-only documents fall back
-// to the linked tab, then to everything.
+// Default tab selection, following Onshape's workflow: Part Studios hold the printable geometry (preselected); Assemblies only position parts, so their exports overlap when sliced (deselected). Assembly-only documents fall back to the linked tab, then to everything.
 function defaultOnshapeSelection(tabs: OnshapeImportTab[], maxTabs: number): string[] {
   let preselected = tabs.filter((t) => t.elementType === "PARTSTUDIO");
   if (preselected.length === 0) {
@@ -57,8 +54,7 @@ function defaultOnshapeSelection(tabs: OnshapeImportTab[], maxTabs: number): str
   return preselected.slice(0, maxTabs).map((t) => t.id);
 }
 
-// The "What gets imported?" reference, split per source so each import type
-// shows only its relevant sources (see HELP_SECTIONS_BY_TYPE).
+// The "What gets imported?" reference, split per source so each import type shows only its relevant sources (see HELP_SECTIONS_BY_TYPE).
 const HELP_SECTIONS: Record<string, React.ReactNode> = {
   printables: (
     <section className="grid gap-1.5">
@@ -145,17 +141,13 @@ export function ImportForm({ type }: { type: ImportType }) {
   const config = IMPORT_TYPES[type];
   const router = useRouter();
   const [fetching, setFetching] = useState(false);
-  // Set when the importer reports a model has a lot of files — drives the
-  // Continue/Cancel confirmation dialog before we download them all.
+  // Set when the importer reports a model has a lot of files — drives the Continue/Cancel confirmation dialog before we download them all.
   const [pendingConfirm, setPendingConfirm] = useState<{
     url: string;
     fileCount: number;
     title: string;
   } | null>(null);
-  // Set when an Onshape document has several tabs or branches/versions —
-  // drives the tab-selection dialog (see defaultOnshapeSelection for the
-  // preselect rules). `selected` is the branch/version the tab list was read
-  // from; picking another in the dropdown re-requests the listing.
+  // Set when an Onshape document has several tabs or branches/versions — drives the tab-selection dialog (see defaultOnshapeSelection for the preselect rules). `selected` is the branch/version the tab list was read from; picking another in the dropdown re-requests the listing.
   const [pendingOnshape, setPendingOnshape] = useState<{
     url: string;
     title: string;
@@ -165,19 +157,14 @@ export function ImportForm({ type }: { type: ImportType }) {
     selected: OnshapeBranchPick;
   } | null>(null);
   const [onshapeSelected, setOnshapeSelected] = useState<string[]>([]);
-  // Set when the catalog already holds the design this URL names — drives the
-  // Skip/Import-anyway dialog (issue #118). Flag-only: nothing is blocked.
+  // Set when the catalog already holds the design this URL names — drives the Skip/Import-anyway dialog (issue #118). Flag-only: nothing is blocked.
   const [pendingDuplicate, setPendingDuplicate] = useState<{
     url: string;
     duplicates: DuplicateMatch[];
   } | null>(null);
-  // "Import anyway" has been answered for the URL in flight. A ref, not state:
-  // the duplicate prompt comes before the many-files and Onshape-tab prompts,
-  // and every one of those re-POSTs synchronously from its own handler, which
-  // would read a stale state value.
+  // "Import anyway" has been answered for the URL in flight. A ref, not state: the duplicate prompt comes before the many-files and Onshape-tab prompts, and every one of those re-POSTs synchronously from its own handler, which would read a stale state value.
   const duplicateOkRef = useRef(false);
-  // Branch switch in flight — freezes the dialog's controls until the new
-  // tab list arrives.
+  // Branch switch in flight — freezes the dialog's controls until the new tab list arrives.
   const [onshapeSwitching, setOnshapeSwitching] = useState(false);
 
   async function importCollection(url: string) {
@@ -211,11 +198,9 @@ export function ImportForm({ type }: { type: ImportType }) {
       body: JSON.stringify({
         url,
         confirm: opts.confirm ?? false,
-        // Carried on every follow-up POST for this URL, so answering the
-        // duplicate prompt once doesn't re-open it behind the next dialog.
+        // Carried on every follow-up POST for this URL, so answering the duplicate prompt once doesn't re-open it behind the next dialog.
         confirmDuplicate: duplicateOkRef.current,
-        // Absent on the first POST — for multi-tab Onshape documents the
-        // route then answers with the tab list instead of importing.
+        // Absent on the first POST — for multi-tab Onshape documents the route then answers with the tab list instead of importing.
         onshapeElements: opts.onshapeElements,
         // The dialog's branch/version pick; overrides the URL's /w|v/ pin.
         onshapeWvm: opts.onshapeBranch?.wvm,
@@ -226,8 +211,7 @@ export function ImportForm({ type }: { type: ImportType }) {
     if (!res.ok) {
       throw new Error(body?.error ?? `Import failed (${res.status})`);
     }
-    // This design is already in the catalog — pause before downloading
-    // anything and let the user skip or continue.
+    // This design is already in the catalog — pause before downloading anything and let the user skip or continue.
     if (body?.needsDuplicateConfirmation) {
       setFetching(false);
       setPendingDuplicate({
@@ -236,9 +220,7 @@ export function ImportForm({ type }: { type: ImportType }) {
       });
       return;
     }
-    // The model has a lot of files — pause and open the Continue/Cancel dialog
-    // before downloading them all. The dialog is modal, so drop the fetching
-    // state; it resumes when the user confirms.
+    // The model has a lot of files — pause and open the Continue/Cancel dialog before downloading them all. The dialog is modal, so drop the fetching state; it resumes when the user confirms.
     if (body?.needsConfirmation) {
       setFetching(false);
       setPendingConfirm({
@@ -248,8 +230,7 @@ export function ImportForm({ type }: { type: ImportType }) {
       });
       return;
     }
-    // Multi-tab or multi-branch Onshape document — open (or, on a branch
-    // switch, refresh) the tab-selection dialog.
+    // Multi-tab or multi-branch Onshape document — open (or, on a branch switch, refresh) the tab-selection dialog.
     if (body?.needsOnshapeSelection) {
       const tabs: OnshapeImportTab[] = Array.isArray(body.tabs) ? body.tabs : [];
       const maxTabs = typeof body.maxTabs === "number" ? body.maxTabs : 8;
@@ -268,17 +249,13 @@ export function ImportForm({ type }: { type: ImportType }) {
     handOffDraft(body);
   }
 
-  // Every importer ends the same way: stash the draft where the create form
-  // picks it up (it can't travel in the URL — the files are already staged and
-  // the payload is far too big) and open the form.
+  // Every importer ends the same way: stash the draft where the create form picks it up (it can't travel in the URL — the files are already staged and the payload is far too big) and open the form.
   function handOffDraft(draft: unknown) {
     sessionStorage.setItem(IMPORT_DRAFT_KEY, JSON.stringify(draft));
     router.push("/models/new");
   }
 
-  // The archive is POSTed as the raw request body (like /api/upload) — one
-  // file, no wrapper to parse. The name rides along in the query string as the
-  // title of last resort for an archive with neither a manifest nor a README.
+  // The archive is POSTed as the raw request body (like /api/upload) — one file, no wrapper to parse. The name rides along in the query string as the title of last resort for an archive with neither a manifest nor a README.
   async function importArchive(file: File) {
     const res = await fetch(
       `/api/import/archive?filename=${encodeURIComponent(file.name)}`,
@@ -332,9 +309,7 @@ export function ImportForm({ type }: { type: ImportType }) {
     }
   }
 
-  // Re-requests the tab listing for the picked branch/version; the response
-  // is always another selection payload (the dropdown only renders when the
-  // document has more than one branch choice), which refreshes the dialog.
+  // Re-requests the tab listing for the picked branch/version; the response is always another selection payload (the dropdown only renders when the document has more than one branch choice), which refreshes the dialog.
   async function switchOnshapeBranch(value: string) {
     if (!pendingOnshape || onshapeSwitching) return;
     const choice = pendingOnshape.branches.find((b) => `${b.wvm}:${b.id}` === value);
@@ -347,8 +322,7 @@ export function ImportForm({ type }: { type: ImportType }) {
         onshapeBranch: { wvm: choice.wvm, wvmId: choice.id },
       });
     } catch (err) {
-      // Keep the dialog on the previous branch; the select snaps back since
-      // its value derives from pendingOnshape.selected.
+      // Keep the dialog on the previous branch; the select snaps back since its value derives from pendingOnshape.selected.
       toast.error(err instanceof Error ? err.message : "Couldn't load that branch");
     } finally {
       setOnshapeSwitching(false);
@@ -370,13 +344,11 @@ export function ImportForm({ type }: { type: ImportType }) {
       return;
     }
     const url = String(data.get("url") ?? "").trim();
-    // A new submission asks about duplicates again — the URL may be a
-    // different design than the one that was waved through last time.
+    // A new submission asks about duplicates again — the URL may be a different design than the one that was waved through last time.
     duplicateOkRef.current = false;
     setFetching(true);
     try {
-      // The import type is chosen up front in the sidebar, so route by it
-      // directly rather than sniffing the URL for a collection link.
+      // The import type is chosen up front in the sidebar, so route by it directly rather than sniffing the URL for a collection link.
       if (type === "archive") {
         await importArchive(archive as File);
       } else if (type === "collection") {

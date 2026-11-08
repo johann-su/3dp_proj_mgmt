@@ -1,12 +1,6 @@
-// YouTube videos attached to a model's gallery. The whole feature is
-// URL-shaped — nothing is downloaded or stored but the link — so every layer
-// (save, render, archive import) goes through the parser here, and the iframe
-// src is always *rebuilt* from the parsed video id rather than echoing back
-// whatever string was stored. That is what keeps a hostile "URL" from ever
-// reaching an iframe: a value that doesn't parse has no embed.
+// YouTube videos attached to a model's gallery. The whole feature is URL-shaped — nothing is downloaded or stored but the link — so every layer (save, render, archive import) goes through the parser here, and the iframe src is always *rebuilt* from the parsed video id rather than echoing back whatever string was stored. That is what keeps a hostile "URL" from ever reaching an iframe: a value that doesn't parse has no embed.
 //
-// Pure and DB-free so both the server actions and the client gallery can
-// import it (see src/lib/video.test.ts).
+// Pure and DB-free so both the server actions and the client gallery can import it (see src/lib/video.test.ts).
 
 // Bounded so the carousel stays navigable and the models row stays small.
 export const MAX_MODEL_VIDEOS = 10;
@@ -14,9 +8,7 @@ export const MAX_MODEL_VIDEOS = 10;
 // The opaque 11-character id YouTube gives every video.
 const VIDEO_ID_RE = /^[A-Za-z0-9_-]{11}$/;
 
-// Hosts that address a YouTube video, compared for *equality* after dropping a
-// leading "www." — a suffix test would happily accept
-// "youtube.com.evil.example".
+// Hosts that address a YouTube video, compared for *equality* after dropping a leading "www." — a suffix test would happily accept "youtube.com.evil.example".
 const YOUTUBE_HOSTS = new Set([
   "youtube.com",
   "m.youtube.com",
@@ -36,17 +28,13 @@ export type YouTubeVideo = {
   start: number | null;
 };
 
-// One video as stored on the model (models.videos). `position` is the slot the
-// video occupies in the *combined* gallery order — images and videos share one
-// sequence, so a video dragged between two images keeps that place (see
-// orderGalleryItems).
+// One video as stored on the model (models.videos). `position` is the slot the video occupies in the *combined* gallery order — images and videos share one sequence, so a video dragged between two images keeps that place (see orderGalleryItems).
 export type ModelVideo = {
   url: string;
   position: number;
 };
 
-// YouTube writes start offsets as "90", "90s" or "1h2m3s"; all three appear in
-// links people copy out of the player ("Copy video URL at current time").
+// YouTube writes start offsets as "90", "90s" or "1h2m3s"; all three appear in links people copy out of the player ("Copy video URL at current time").
 function parseStart(raw: string | null): number | null {
   if (!raw) return null;
   if (/^\d+$/.test(raw)) {
@@ -60,8 +48,7 @@ function parseStart(raw: string | null): number | null {
   return seconds > 0 ? seconds : null;
 }
 
-// The video a link points at, or null if it isn't a YouTube video link at all.
-// Accepts the forms people actually paste: watch?v=, youtu.be/, /shorts/,
+// The video a link points at, or null if it isn't a YouTube video link at all. Accepts the forms people actually paste: watch?v=, youtu.be/, /shorts/,
 // /embed/, /live/ and /v/.
 export function parseYouTubeUrl(raw: string): YouTubeVideo | null {
   let url: URL;
@@ -92,18 +79,14 @@ export function parseYouTubeUrl(raw: string): YouTubeVideo | null {
   };
 }
 
-// The single form a video is stored in, whichever of the accepted forms was
-// pasted. Storing the canonical watch URL (rather than the bare id) keeps the
-// column readable and the value directly openable on youtube.com.
+// The single form a video is stored in, whichever of the accepted forms was pasted. Storing the canonical watch URL (rather than the bare id) keeps the column readable and the value directly openable on youtube.com.
 export function canonicalYouTubeUrl(video: YouTubeVideo): string {
   return `https://www.youtube.com/watch?v=${video.id}${
     video.start ? `&t=${video.start}` : ""
   }`;
 }
 
-// The iframe src — YouTube's own share embed (youtube.com/embed/<id>), with
-// the two params we have a reason to add: the start offset a timestamped link
-// carried, and autoplay when the viewer has just clicked play on the poster.
+// The iframe src — YouTube's own share embed (youtube.com/embed/<id>), with the two params we have a reason to add: the start offset a timestamped link carried, and autoplay when the viewer has just clicked play on the poster.
 export function youTubeEmbedUrl(
   video: YouTubeVideo,
   opts: { autoplay?: boolean } = {},
@@ -115,11 +98,7 @@ export function youTubeEmbedUrl(
   return `https://www.youtube.com/embed/${video.id}${query ? `?${query}` : ""}`;
 }
 
-// Poster frame, from YouTube's thumbnail host. "mq" (320×180) for the small
-// tiles in the carousel strip and the edit form, "hq" (480×360) for the main
-// frame — deliberately not maxresdefault, which 404s on videos never uploaded
-// in HD. Both are plain <img> sources: they're remote, so next/image would
-// need its own allowlist for no benefit at these sizes.
+// Poster frame, from YouTube's thumbnail host. "mq" (320×180) for the small tiles in the carousel strip and the edit form, "hq" (480×360) for the main frame — deliberately not maxresdefault, which 404s on videos never uploaded in HD. Both are plain <img> sources: they're remote, so next/image would need its own allowlist for no benefit at these sizes.
 export function youTubeThumbnailUrl(
   video: YouTubeVideo,
   size: "sm" | "lg" = "sm",
@@ -127,22 +106,12 @@ export function youTubeThumbnailUrl(
   return `https://i.ytimg.com/vi/${video.id}/${size === "lg" ? "hq" : "mq"}default.jpg`;
 }
 
-// The src to use when an *uploaded* video is shown but not playing (a card
-// cover at rest, a carousel thumbnail). No poster image is generated when a
-// video is uploaded, so the still is taken from the file: the media fragment
-// makes the browser seek a hair past the start and paint that frame. Without
-// it Safari leaves the element blank until something forces a decode, and a
-// video cover renders as a black box.
+// The src to use when an *uploaded* video is shown but not playing (a card cover at rest, a carousel thumbnail). No poster image is generated when a video is uploaded, so the still is taken from the file: the media fragment makes the browser seek a hair past the start and paint that frame. Without it Safari leaves the element blank until something forces a decode, and a video cover renders as a black box.
 export function posterSrc(src: string): string {
   return `${src}#t=0.1`;
 }
 
-// Validates and canonicalizes what a save was given. Returns the cleaned list
-// or an error string, like sanitizeBomItems. Duplicates are dropped by video
-// id (the same video twice in one carousel is a mistake, not an intent), and
-// a start offset makes no difference to that. Positions are kept as given —
-// orderGalleryItems is what makes sense of gaps, duplicates and overshoot, so
-// nothing here has to know how many images the model has.
+// Validates and canonicalizes what a save was given. Returns the cleaned list or an error string, like sanitizeBomItems. Duplicates are dropped by video id (the same video twice in one carousel is a mistake, not an intent), and a start offset makes no difference to that. Positions are kept as given — orderGalleryItems is what makes sense of gaps, duplicates and overshoot, so nothing here has to know how many images the model has.
 export function sanitizeModelVideos(
   videos: ModelVideo[],
 ): { videos: ModelVideo[] } | { error: string } {
@@ -157,8 +126,7 @@ export function sanitizeModelVideos(
     seen.add(video.id);
     cleaned.push({
       url: canonicalYouTubeUrl(video),
-      // A missing or nonsense position falls back to "after everything placed
-      // so far", which is where an appended video belongs.
+      // A missing or nonsense position falls back to "after everything placed so far", which is where an appended video belongs.
       position:
         Number.isSafeInteger(entry.position) && entry.position >= 0
           ? entry.position
@@ -171,16 +139,9 @@ export function sanitizeModelVideos(
   return { videos: cleaned };
 }
 
-// Weaves the videos into the image list to produce the gallery's single
-// display order. Each video claims the slot its `position` names; images fill
-// what's left, in their own order.
+// Weaves the videos into the image list to produce the gallery's single display order. Each video claims the slot its `position` names; images fill what's left, in their own order.
 //
-// Deliberately total: positions are written by the edit form against the state
-// it saw, but images can also disappear underneath them (a sync, a revert, an
-// edit from another session), so this has to do something sensible with a
-// position that's out of range or claimed twice — it never drops or duplicates
-// an item, it only slides the collision later. Generic over the image type so
-// the model page, the version preview and the wizard preview can all use it.
+// Deliberately total: positions are written by the edit form against the state it saw, but images can also disappear underneath them (a sync, a revert, an edit from another session), so this has to do something sensible with a position that's out of range or claimed twice — it never drops or duplicates an item, it only slides the collision later. Generic over the image type so the model page, the version preview and the wizard preview can all use it.
 export function orderGalleryItems<I, V extends { position: number }>(
   images: I[],
   videos: V[],

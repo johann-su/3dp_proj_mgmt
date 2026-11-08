@@ -1,6 +1,4 @@
-// Pure parsing/serialization for the homepage feed's sort control — mirrors
-// search-params.ts's split (pure logic here, the DB query in list-queries.ts)
-// so this stays unit-testable without a DB import.
+// Pure parsing/serialization for the homepage feed's sort control — mirrors search-params.ts's split (pure logic here, the DB query in list-queries.ts) so this stays unit-testable without a DB import.
 
 export type FeedSort = "newest" | "oldest" | "updated" | "views" | "downloads";
 
@@ -11,19 +9,12 @@ export function parseFeedSort(v: string | string[] | undefined): FeedSort {
   return SORTS.includes(s as FeedSort) ? (s as FeedSort) : "newest";
 }
 
-// "downloads" totals model_files.download_count; collections have no
-// equivalent column (there's nothing to sum), so that sort only ranks models
-// — the caller drops collections from the feed entirely rather than order
-// them arbitrarily within it.
+// "downloads" totals model_files.download_count; collections have no equivalent column (there's nothing to sum), so that sort only ranks models — the caller drops collections from the feed entirely rather than order them arbitrarily within it.
 export function feedSortIsModelOnly(sort: FeedSort): boolean {
   return sort === "downloads";
 }
 
-// Self-describing keyset cursor for the (models ∪ collections) feed. "time"
-// covers both recency sorts — newest/oldest keyset on created_at, "updated" on
-// updated_at — the query picks the column, the cursor just carries its value.
-// "metric" covers the count-based sorts (views, downloads). `|` never appears
-// in a UUID, ISO timestamp, or number, so it's a safe separator.
+// Self-describing keyset cursor for the (models ∪ collections) feed. "time" covers both recency sorts — newest/oldest keyset on created_at, "updated" on updated_at — the query picks the column, the cursor just carries its value. "metric" covers the count-based sorts (views, downloads). `|` never appears in a UUID, ISO timestamp, or number, so it's a safe separator.
 export type FeedCursor =
   | { kind: "time"; at: string; id: string }
   | { kind: "metric"; value: number; id: string };
@@ -36,10 +27,7 @@ export function encodeFeedCursor(cursor: FeedCursor): string {
   return Buffer.from(raw, "utf8").toString("base64url");
 }
 
-// Returns null for anything we didn't produce (tampered/truncated) so a bad
-// cursor degrades to "first page" rather than throwing. Splits on the first
-// two separators only (not a 3-way split) so an id that happens to contain
-// "|" survives intact.
+// Returns null for anything we didn't produce (tampered/truncated) so a bad cursor degrades to "first page" rather than throwing. Splits on the first two separators only (not a 3-way split) so an id that happens to contain "|" survives intact.
 export function decodeFeedCursor(raw: string): FeedCursor | null {
   let decoded: string;
   try {

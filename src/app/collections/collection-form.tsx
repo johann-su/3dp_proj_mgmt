@@ -13,11 +13,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { RuleBuilder, emptyRuleGroup, type RuleBuilderFacets } from "./rule-builder";
 
-// Shared create/edit collection form. Passing a collectionId switches it to
-// edit mode (updateCollection); both actions redirect to the collection on
-// success. The smart-collection toggle reveals the rule builder (issue #46);
-// it's hidden for MakerWorld-imported collections, whose membership is owned
-// by "Sync from MakerWorld".
+// Shared create/edit collection form. Passing a collectionId switches it to edit mode (updateCollection); both actions redirect to the collection on success. The smart-collection toggle reveals the rule builder (issue #46); it's hidden for MakerWorld-imported collections, whose membership is owned by "Sync from MakerWorld".
 export function CollectionForm({
   collectionId,
   initialTitle = "",

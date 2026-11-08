@@ -9,9 +9,7 @@ import { UsersTable } from "./users-table";
 
 export const dynamic = "force-dynamic";
 
-// Admin-only user management (issue #54): everyone with an account on this
-// instance, with a control to change their role. The settings layout already
-// ran the ensureInitialAdmin bootstrap before this page renders.
+// Admin-only user management (issue #54): everyone with an account on this instance, with a control to change their role. The settings layout already ran the ensureInitialAdmin bootstrap before this page renders.
 export default async function UsersSettingsPage() {
   const session = await getSession();
   if (!session) redirect(await signInRedirect());
@@ -22,8 +20,7 @@ export default async function UsersSettingsPage() {
     columns: { id: true, name: true, email: true, role: true, createdAt: true },
   });
 
-  // Owned models per user, trashed included — deleting an account purges all
-  // of them permanently, so the delete dialog warns with this number.
+  // Owned models per user, trashed included — deleting an account purges all of them permanently, so the delete dialog warns with this number.
   const modelCounts = new Map(
     (
       await db

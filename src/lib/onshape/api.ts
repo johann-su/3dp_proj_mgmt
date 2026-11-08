@@ -1,51 +1,18 @@
-// Onshape REST API client (https://onshape-public.github.io/docs/). Auth is a
-// per-user OAuth2 access token sent as a Bearer header (see
-// src/lib/onshape/oauth.ts for the flow). Model exports are asynchronous
-// translations: starting one returns a translation id that is polled until
-// DONE, then the result is downloaded from the externaldata endpoint. Onshape
-// only has format-specific export routes for glTF/OBJ/STEP; every other
-// format (including 3MF) starts via the generic …/translations route with
-// formatName in the body (see buildExportRequest). Exports are always 3MF so
-// the headless slicer can slice the file (STEP is not a print format).
-// Endpoint shapes verified against cad.onshape.com/api/openapi and
-// https://onshape-public.github.io/docs/api-adv/translation/.
+// Onshape REST API client (https://onshape-public.github.io/docs/). Auth is a per-user OAuth2 access token sent as a Bearer header (see src/lib/onshape/oauth.ts for the flow). Model exports are asynchronous translations: starting one returns a translation id that is polled until DONE, then the result is downloaded from the externaldata endpoint. Onshape only has format-specific export routes for glTF/OBJ/STEP; every other format (including 3MF) starts via the generic …/translations route with formatName in the body (see buildExportRequest). Exports are always 3MF so the headless slicer can slice the file (STEP is not a print format). Endpoint shapes verified against cad.onshape.com/api/openapi and https://onshape-public.github.io/docs/api-adv/translation/.
 
-export const ONSHAPE_HOST = "cad.onshape.com";
+import { isOnshapeId, ONSHAPE_HOST } from "@/lib/sources/registry";
+
+// The URL shapes (document pins, ids) live with the source registry so client components can parse them too; re-exported for this module's callers.
+export {
+  isOnshapeId,
+  ONSHAPE_HOST,
+  parseOnshapeUrl,
+  type OnshapePin,
+} from "@/lib/sources/registry";
+
 const API_BASE = `https://${ONSHAPE_HOST}/api/v6`;
 
-const ID_RE = /^[0-9a-f]{24}$/;
-
-export function isOnshapeId(value: unknown): value is string {
-  return typeof value === "string" && ID_RE.test(value);
-}
-
-// A parsed document URL: cad.onshape.com/documents/{did}[/w|v|m/{wvmid}][/e/{eid}].
-// w = workspace (branch, syncable), v = version (immutable snapshot),
-// m = microversion (rejected at import — not exportable via the wv endpoints).
-export type OnshapePin = {
-  documentId: string;
-  wvm: "w" | "v" | "m" | null;
-  wvmId: string | null;
-  elementId: string | null;
-};
-
-export function parseOnshapeUrl(url: URL): OnshapePin | null {
-  if (url.hostname !== ONSHAPE_HOST) return null;
-  const match = url.pathname.match(
-    /^\/documents\/([0-9a-f]{24})(?:\/(w|v|m)\/([0-9a-f]{24}))?(?:\/e\/([0-9a-f]{24}))?/,
-  );
-  if (!match) return null;
-  return {
-    documentId: match[1],
-    wvm: (match[2] as "w" | "v" | "m" | undefined) ?? null,
-    wvmId: match[3] ?? null,
-    elementId: match[4] ?? null,
-  };
-}
-
-// The canonical URL stored as a model's sourceUrl; it doubles as the
-// "Edit in Onshape" link and carries everything sync needs except the
-// microversion (a separate column).
+// The canonical URL stored as a model's sourceUrl; it doubles as the "Edit in Onshape" link and carries everything sync needs except the microversion (a separate column).
 export function onshapeDocumentUrl(pin: {
   documentId: string;
   wvm: string;
@@ -75,9 +42,7 @@ export class OnshapeError extends Error {
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
-// Onshape rate-limits, and a single import issues dozens of calls (listing,
-// up to MAX_EXPORT_ELEMENTS translations, polling each) — so 429s get a
-// couple of retries, honoring Retry-After when it's a sane number of seconds.
+// Onshape rate-limits, and a single import issues dozens of calls (listing, up to MAX_EXPORT_ELEMENTS translations, polling each) — so 429s get a couple of retries, honoring Retry-After when it's a sane number of seconds.
 const RATE_LIMIT_RETRIES = 2;
 const MAX_RETRY_AFTER_MS = 15_000;
 
@@ -101,8 +66,7 @@ async function onshapeFetch<T>(
         const retryAfter = Number(res.headers.get("retry-after"));
         await sleep(
           Math.min(
-            // Retry-After can also be an HTTP date; treat anything that isn't
-            // a plain number of seconds as absent and back off instead.
+            // Retry-After can also be an HTTP date; treat anything that isn't a plain number of seconds as absent and back off instead.
             Number.isFinite(retryAfter) && retryAfter >= 0
               ? retryAfter * 1000
               : 2000 * (attempt + 1),
@@ -137,10 +101,7 @@ async function onshapeFetch<T>(
 
 export type OnshapeSessionInfo = { name?: string; email?: string };
 
-// Fetches the connected user's identity (for the settings page display).
-// Invalid credentials don't necessarily 401 here — Onshape falls back to an
-// anonymous session and answers 204 No Content — so only a 200 with a body
-// counts as authenticated.
+// Fetches the connected user's identity (for the settings page display). Invalid credentials don't necessarily 401 here — Onshape falls back to an anonymous session and answers 204 No Content — so only a 200 with a body counts as authenticated.
 export async function getSessionInfo(auth: OnshapeAuth): Promise<OnshapeSessionInfo> {
   const res = await fetch(`${API_BASE}/users/sessioninfo`, {
     headers: { ...onshapeAuthHeaders(auth), Accept: "application/json" },
@@ -169,10 +130,7 @@ export type OnshapeElement = {
   id?: string;
   name?: string;
   elementType?: string;
-  // BTDocumentElementInfo.microversionId — the document microversion in which
-  // this element (tab) was last changed. Unlike the workspace-wide
-  // currentmicroversion, it moves only when *this* tab changes, so sync can
-  // tell an edited Part Studio apart from an untouched one (issue #70).
+  // BTDocumentElementInfo.microversionId — the document microversion in which this element (tab) was last changed. Unlike the workspace-wide currentmicroversion, it moves only when *this* tab changes, so sync can tell an edited Part Studio apart from an untouched one (issue #70).
   microversionId?: string;
 };
 
@@ -188,8 +146,7 @@ export async function getElements(
   );
 }
 
-// Workspace (branch) / version entries as the documents API returns them
-// (BTWorkspaceInfo / BTVersionInfo — id, name, parent, createdAt).
+// Workspace (branch) / version entries as the documents API returns them (BTWorkspaceInfo / BTVersionInfo — id, name, parent, createdAt).
 export type OnshapeWvmInfo = {
   id?: string;
   name?: string;
@@ -218,11 +175,7 @@ export type OnshapeBranchChoice = {
   name: string;
 };
 
-// Flattens the document's branches and versions into the dropdown list:
-// workspaces first (in API order — "Main" leads), then versions newest-first.
-// The root "Start" version (parent null on every document) is the empty
-// initial state — nothing to import, so it's dropped; the name is checked too
-// so a missing `parent` field can never wipe out real versions.
+// Flattens the document's branches and versions into the dropdown list: workspaces first (in API order — "Main" leads), then versions newest-first. The root "Start" version (parent null on every document) is the empty initial state — nothing to import, so it's dropped; the name is checked too so a missing `parent` field can never wipe out real versions.
 export function branchChoices(
   workspaces: OnshapeWvmInfo[],
   versions: OnshapeWvmInfo[],
@@ -262,18 +215,10 @@ type TranslationInfo = {
   resultExternalDataIds?: string[];
 };
 
-// How long to wait for one export. Exports of typical hobby models take
-// seconds; the importing route caps the whole request at 300s anyway.
+// How long to wait for one export. Exports of typical hobby models take seconds; the importing route caps the whole request at 300s anyway.
 const TRANSLATION_TIMEOUT_MS = 240_000;
 
-// Builds the request that starts an async 3MF export. There is no dedicated
-// …/export/3mf route (the docs list format-specific routes for glTF/OBJ/STEP
-// only — POST …/export/3MF 404s, which the UI surfaces as "document not
-// found"), so the export goes through the generic …/translations route with
-// the format named in the body. Mesh formats also require tessellation detail
-// settings (BTTranslateFormatParams: a resolution preset or custom
-// tolerances, plus the unit) — without them the translation fails with
-// "Invalid 3MF detail parameters were specified".
+// Builds the request that starts an async 3MF export. There is no dedicated …/export/3mf route (the docs list format-specific routes for glTF/OBJ/STEP only — POST …/export/3MF 404s, which the UI surfaces as "document not found"), so the export goes through the generic …/translations route with the format named in the body. Mesh formats also require tessellation detail settings (BTTranslateFormatParams: a resolution preset or custom tolerances, plus the unit) — without them the translation fails with "Invalid 3MF detail parameters were specified".
 export function buildExportRequest(
   elementType: string,
   pin: { documentId: string; wvm: "w" | "v"; wvmId: string },
@@ -293,9 +238,7 @@ export function buildExportRequest(
   };
 }
 
-// Exports one element as 3MF and returns an authenticated download URL for
-// the resulting file (the caller streams it to S3 with the same auth
-// headers). 3MF rather than a CAD format so the headless slicer can slice it.
+// Exports one element as 3MF and returns an authenticated download URL for the resulting file (the caller streams it to S3 with the same auth headers). 3MF rather than a CAD format so the headless slicer can slice it.
 export async function exportModel(
   auth: OnshapeAuth,
   pin: { documentId: string; wvm: "w" | "v"; wvmId: string },
@@ -338,21 +281,14 @@ export type OnshapeExport = {
   elementId: string;
   filename: string;
   url: string;
-  // Per-element microversion at export time; the caller stores it on the file
-  // (model_files.sourceModifiedAt) so the next sync can skip an unchanged tab.
+  // Per-element microversion at export time; the caller stores it on the file (model_files.sourceModifiedAt) so the next sync can skip an unchanged tab.
   microversionId?: string;
 };
 
-// Exports run sequentially and take seconds each; the cap keeps one import
-// inside the route's 300s budget. Surfaced to the tab-selection dialog so the
-// user picks which tabs count against it instead of getting a silent cut-off.
+// Exports run sequentially and take seconds each; the cap keeps one import inside the route's 300s budget. Surfaced to the tab-selection dialog so the user picks which tabs count against it instead of getting a silent cut-off.
 export const MAX_EXPORT_ELEMENTS = 8;
 
-// A document tab that can be exported as 3MF. Part Studios hold the geometry
-// and are the natural printable unit (Onshape's recommended workflows model
-// each part in a Part Studio — sometimes one studio per part — and only
-// position them in Assemblies); an Assembly export places every part at its
-// mated position, so interlocking parts come out overlapping.
+// A document tab that can be exported as 3MF. Part Studios hold the geometry and are the natural printable unit (Onshape's recommended workflows model each part in a Part Studio — sometimes one studio per part — and only position them in Assemblies); an Assembly export places every part at its mated position, so interlocking parts come out overlapping.
 export type OnshapeExportElement = {
   id: string;
   name: string;
@@ -371,25 +307,14 @@ export function eligibleExportElements(
   );
 }
 
-// One imported Onshape tab as sync needs to reason about it: the element it
-// came from and the per-element microversion stored when it was last exported
-// (model_files.sourceModifiedAt — the opaque-token slot the MakerWorld/
-// Printables sync also uses; an Onshape file never takes part in that sync, so
-// the slot is free to hold the element microversion here).
+// One imported Onshape tab as sync needs to reason about it: the element it came from and the per-element microversion stored when it was last exported (model_files.sourceModifiedAt — the opaque-token slot the MakerWorld/Printables sync also uses; an Onshape file never takes part in that sync, so the slot is free to hold the element microversion here).
 export type ImportedOnshapeTab = {
   elementId: string;
   microversion: string | null;
 };
 
-// Decides, per imported tab, whether sync must re-export it. The workspace-wide
-// currentmicroversion moves on *any* edit — a drawing, an unimported tab, a
-// Variable Studio flip — so it can't say which tabs actually changed; each
-// element carries its own microversion that moves only when that tab changes.
-// A tab whose stored token still matches its current microversion is the same
-// export we already have and is left untouched (no re-export, no S3 write, no
-// version). A tab with no stored token (an import predating issue #70) or an
-// unknown current microversion can't be proven identical, so it re-exports. A
-// tab missing from the listing was deleted upstream and is dropped.
+// Decides, per imported tab, whether sync must re-export it. The workspace-wide currentmicroversion moves on *any* edit — a drawing, an unimported tab, a Variable Studio flip — so it can't say which tabs actually changed; each element carries its own microversion that moves only when that tab changes.
+// A tab whose stored token still matches its current microversion is the same export we already have and is left untouched (no re-export, no S3 write, no version). A tab with no stored token (an import predating issue #70) or an unknown current microversion can't be proven identical, so it re-exports. A tab missing from the listing was deleted upstream and is dropped.
 export function planOnshapeSync(
   imported: ImportedOnshapeTab[],
   eligible: OnshapeExportElement[],
@@ -413,10 +338,7 @@ export function planOnshapeSync(
   return { changedIds, unchangedIds, deletedIds };
 }
 
-// Picks which tabs to export, in document tab order. An explicit selection
-// (the import dialog, or sync re-exporting the tabs a model was imported
-// with) wins over the URL's pinned tab — the pin is just whichever tab was
-// open when the user copied the link, not a deliberate choice.
+// Picks which tabs to export, in document tab order. An explicit selection (the import dialog, or sync re-exporting the tabs a model was imported with) wins over the URL's pinned tab — the pin is just whichever tab was open when the user copied the link, not a deliberate choice.
 export function selectExportElements(
   elements: OnshapeExportElement[],
   opts: {
@@ -465,16 +387,14 @@ function modelFilename(name: string): string {
   return `${base}.3mf`;
 }
 
-// Exports document tabs as 3MF: the explicitly selected elements when given
-// (import dialog / sync), else the pinned element when the URL contains
+// Exports document tabs as 3MF: the explicitly selected elements when given (import dialog / sync), else the pinned element when the URL contains
 // /e/{eid}, else every Part Studio and Assembly tab (capped). Used by both
 // the URL importer and the sync endpoint so they stay in lockstep.
 export async function exportPinnedModels(
   auth: OnshapeAuth,
   pin: { documentId: string; wvm: "w" | "v"; wvmId: string; elementId: string | null },
   selectedElementIds?: string[] | null,
-  // Pre-fetched eligible elements — sync already lists them for its per-tab
-  // diff, so it passes them in to avoid a second /elements call.
+  // Pre-fetched eligible elements — sync already lists them for its per-tab diff, so it passes them in to avoid a second /elements call.
   elements?: OnshapeExportElement[],
 ): Promise<{ exports: OnshapeExport[]; warnings: string[] }> {
   const eligible =

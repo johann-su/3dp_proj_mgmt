@@ -1,7 +1,4 @@
-// Thin HTTP wrapper around the headless OpenSCAD CLI, mirroring the slicer
-// service (slicer/server.mjs). Zero npm dependencies: the container is just
-// debian + openscad (+ MCAD/BOSL2 libraries) + nodejs. Renders a parametric
-// .scad source with a set of customizer values into a .3mf mesh.
+// Thin HTTP wrapper around the headless OpenSCAD CLI, mirroring the slicer service (slicer/server.mjs). Zero npm dependencies: the container is just debian + openscad (+ MCAD/BOSL2 libraries) + nodejs. Renders a parametric .scad source with a set of customizer values into a .3mf mesh.
 //
 //   GET  /healthz   liveness probe
 //   POST /render    body = JSON { source, parameters: {name: string}, format? }
@@ -12,12 +9,7 @@
 //     -> 422 { ok: false, error }   OpenSCAD rejected the source / timed out
 //     -> 413/500 on oversize body / unexpected errors
 //
-// Parameters are applied via OpenSCAD's parameter-set JSON (-p/-P), never via
-// -D — values cannot become extra CLI flags. The app validates the source
-// before calling (customizer schema, include allowlist in
-// src/lib/scad-params.ts); this service additionally runs inside a container
-// with nothing sensitive, renders in an empty temp dir, and enforces a hard
-// timeout because OpenSCAD happily recurses or $fn-explodes forever.
+// Parameters are applied via OpenSCAD's parameter-set JSON (-p/-P), never via -D — values cannot become extra CLI flags. The app validates the source before calling (customizer schema, include allowlist in src/lib/scad-params.ts); this service additionally runs inside a container with nothing sensitive, renders in an empty temp dir, and enforces a hard timeout because OpenSCAD happily recurses or $fn-explodes forever.
 //
 // Rendering is CPU-bound, so requests are processed one at a time.
 
@@ -33,9 +25,7 @@ const OPENSCAD_BIN = process.env.OPENSCAD_BIN ?? "openscad";
 const TIMEOUT_MS = Number(process.env.RENDER_TIMEOUT_MS ?? 120_000);
 const MAX_BODY_BYTES = Number(process.env.MAX_BODY_BYTES ?? 8 * 1024 * 1024);
 
-// Output formats the service will produce. Keys are the request values, the
-// entries name the output file and OpenSCAD's --export-format id (binstl =
-// binary STL, a fraction of the ascii size).
+// Output formats the service will produce. Keys are the request values, the entries name the output file and OpenSCAD's --export-format id (binstl = binary STL, a fraction of the ascii size).
 const FORMATS = {
   "3mf": { file: "output.3mf", exportFormat: "3mf", contentType: "model/3mf" },
   stl: {

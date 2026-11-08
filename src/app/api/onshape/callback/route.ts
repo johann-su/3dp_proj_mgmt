@@ -12,9 +12,7 @@ import { reportError } from "@/lib/telemetry";
 
 export const runtime = "nodejs";
 
-// OAuth redirect target (registered for the app at dev-portal.onshape.com).
-// Verifies the CSRF state set by /api/onshape/authorize, exchanges the code
-// for tokens and stores them encrypted for the signed-in user.
+// OAuth redirect target (registered for the app at dev-portal.onshape.com). Verifies the CSRF state set by /api/onshape/authorize, exchanges the code for tokens and stores them encrypted for the signed-in user.
 export async function GET(req: NextRequest) {
   const settings = (error?: string) => {
     const res = NextResponse.redirect(

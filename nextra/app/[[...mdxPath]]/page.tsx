@@ -5,10 +5,7 @@ type PageProps = Readonly<{
   params: Promise<{ mdxPath?: string[] }>;
 }>;
 
-// content/architecture (docs/architecture/ in the repo) holds the dev/agent
-// architecture notes, which are not part of the operator docs site. Dropping
-// their routes here keeps them out of the static export and the Pagefind
-// search index; docs/_meta.js additionally hides the folder from the sidebar.
+// content/architecture (docs/architecture/ in the repo) holds the dev/agent architecture notes, which are not part of the operator docs site. Dropping their routes here keeps them out of the static export and the Pagefind search index; docs/_meta.js additionally hides the folder from the sidebar.
 export async function generateStaticParams() {
   const params = await generateStaticParamsFor("mdxPath")();
   return params.filter((p) => p.mdxPath?.[0] !== "architecture");

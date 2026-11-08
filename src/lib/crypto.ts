@@ -5,19 +5,15 @@ import {
   scryptSync,
 } from "node:crypto";
 
-// Symmetric encryption for secrets we must store and later reuse (e.g. a user's
-// Bambu Cloud access token). AES-256-GCM with a key derived from an app secret.
+// Symmetric encryption for secrets we must store and later reuse (e.g. a user's Bambu Cloud access token). AES-256-GCM with a key derived from an app secret.
 //
-// The key comes from BAMBU_TOKEN_SECRET, falling back to BETTER_AUTH_SECRET so
-// existing deployments need no new configuration. Rotating that secret
-// invalidates stored ciphertexts (users simply reconnect).
+// The key comes from BAMBU_TOKEN_SECRET, falling back to BETTER_AUTH_SECRET so existing deployments need no new configuration. Rotating that secret invalidates stored ciphertexts (users simply reconnect).
 
 const SECRET =
   process.env.BAMBU_TOKEN_SECRET?.trim() ||
   process.env.BETTER_AUTH_SECRET?.trim();
 
-// A fixed salt is fine here: the secret is high-entropy and per-deployment, and
-// the salt only needs to be stable so the derived key is reproducible.
+// A fixed salt is fine here: the secret is high-entropy and per-deployment, and the salt only needs to be stable so the derived key is reproducible.
 const KEY = SECRET
   ? scryptSync(SECRET, "stl-proj-mgmt/secret-box", 32)
   : null;

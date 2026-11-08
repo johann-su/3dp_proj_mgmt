@@ -168,12 +168,10 @@ function ParameterField({
   );
 }
 
-// How long after the last parameter change the preview re-renders. Long
-// enough to survive slider drags, short enough to feel live.
+// How long after the last parameter change the preview re-renders. Long enough to survive slider drags, short enough to feel live.
 const PREVIEW_DEBOUNCE_MS = 800;
 
-// Parameter panel width (px) on the lg row layout. Clamped so it can't shrink
-// past readability or grow big enough to crowd out the preview.
+// Parameter panel width (px) on the lg row layout. Clamped so it can't shrink past readability or grow big enough to crowd out the preview.
 const PANEL_DEFAULT_WIDTH = 384; // matches the previous fixed lg:w-96
 const PANEL_MIN_WIDTH = 280;
 const PANEL_MAX_WIDTH = 720;

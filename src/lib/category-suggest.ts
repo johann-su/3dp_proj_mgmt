@@ -1,20 +1,14 @@
-// Pure category suggestion — DB-free so it runs in the create-form client
-// bundle and in the collection-import job alike (and is unit-testable).
+// Pure category suggestion — DB-free so it runs in the create-form client bundle and in the collection-import job alike (and is unit-testable).
 //
-// A category's `keywords` (plus its name) are matched against three signals,
-// strongest first:
+// A category's `keywords` (plus its name) are matched against three signals, strongest first:
 //   1. the source platform's own category names (MakerWorld's `categories`,
 //      Printables' `category.path`) — the platform already classified the
 //      model, so an indicator match here should dominate;
 //   2. the model's tags;
 //   3. words in the title.
-// Descriptions are ignored on purpose: they are long and noisy ("print with
-// any tool you like" should not suggest Tools).
+// Descriptions are ignored on purpose: they are long and noisy ("print with any tool you like" should not suggest Tools).
 //
-// Matching is token-based with singular/plural folding ("puzzles" matches the
-// keyword "puzzle") so keyword lists don't need both forms. Multi-word
-// keywords must appear as a consecutive phrase. Nothing matched → null; the
-// caller falls back to the "Other" category (no model stays uncategorized).
+// Matching is token-based with singular/plural folding ("puzzles" matches the keyword "puzzle") so keyword lists don't need both forms. Multi-word keywords must appear as a consecutive phrase. Nothing matched → null; the caller falls back to the "Other" category (no model stays uncategorized).
 
 export type SuggestableCategory = {
   id: string;
@@ -25,9 +19,7 @@ export type SuggestableCategory = {
 export type CategorySignals = {
   title?: string;
   tags?: string[];
-  // Source platform category names, most specific first (e.g. MakerWorld's
-  // ["Signs & Logos", "Art"]). Only used as a ranking indicator against the
-  // existing categories — never creates new ones.
+  // Source platform category names, most specific first (e.g. MakerWorld's ["Signs & Logos", "Art"]). Only used as a ranking indicator against the existing categories — never creates new ones.
   sourceCategories?: string[];
 };
 
@@ -60,8 +52,7 @@ function phraseIn(textTokens: string[], keywordTokens: string[]): boolean {
   return false;
 }
 
-// Returns the id of the best-matching category, or null when no signal
-// matches any keyword (the caller should then fall back to "Other").
+// Returns the id of the best-matching category, or null when no signal matches any keyword (the caller should then fall back to "Other").
 export function suggestCategory(
   categories: SuggestableCategory[],
   signals: CategorySignals,
@@ -76,9 +67,7 @@ export function suggestCategory(
   for (const category of categories) {
     const terms = [category.name, ...category.keywords].map(tokenize);
     let score = 0;
-    // Each signal counts once per keyword list, not once per keyword — a
-    // category shouldn't win just because several of its synonyms overlap
-    // the same source category name.
+    // Each signal counts once per keyword list, not once per keyword — a category shouldn't win just because several of its synonyms overlap the same source category name.
     for (const source of sourceTokens) {
       if (terms.some((term) => phraseIn(source, term))) score += SOURCE_WEIGHT;
     }

@@ -28,8 +28,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 
-// Dropdown options for the rule editor, queried server-side (searchFacets plus
-// tags/categories) and passed down because the builder is a client component.
+// Dropdown options for the rule editor, queried server-side (searchFacets plus tags/categories) and passed down because the builder is a client component.
 export type RuleBuilderFacets = {
   users: { id: string; name: string }[];
   categories: { id: string; name: string }[];
@@ -53,8 +52,7 @@ const FIELD_ORDER: RuleField[] = [
   "downloads",
 ];
 
-// A freshly-added condition for a field: valid where an obvious default exists,
-// otherwise empty — parseRuleTree rejects it at save time with a message.
+// A freshly-added condition for a field: valid where an obvious default exists, otherwise empty — parseRuleTree rejects it at save time with a message.
 function defaultCondition(field: RuleField, facets: RuleBuilderFacets): RuleCondition {
   switch (field) {
     case "tags":
@@ -88,8 +86,7 @@ export function emptyRuleGroup(): RuleGroup {
   return { op: "AND", rules: [] };
 }
 
-// Recursive AND/OR rule editor (issue #46). Purely controlled: edits produce a
-// new tree via onChange; validation happens server-side on save.
+// Recursive AND/OR rule editor (issue #46). Purely controlled: edits produce a new tree via onChange; validation happens server-side on save.
 export function RuleBuilder({
   value,
   onChange,
@@ -279,9 +276,7 @@ function ConditionRow({
   );
 }
 
-// The value input(s) for a condition, per field type. Facet-backed fields use
-// a select; free-form ones a plain input. Text inputs are uncontrolled (keyed
-// by field) so typing isn't disturbed by the round-trip through the tree.
+// The value input(s) for a condition, per field type. Facet-backed fields use a select; free-form ones a plain input. Text inputs are uncontrolled (keyed by field) so typing isn't disturbed by the round-trip through the tree.
 function ValueEditor({
   condition,
   onChange,

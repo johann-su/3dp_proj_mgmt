@@ -13,11 +13,7 @@ import {
 } from "@/lib/import/makerworld";
 
 test("importFromMakerworld downloads the OpenSCAD source of parametric designs", async (t) => {
-  // Parametric designs list their .scad under designExtension.model_files
-  // (modelType "scad"); the raw-model download endpoint exchanges the design
-  // id for a presigned URL of one zip with every raw file (modelType=all is
-  // the only value the API accepts — "scad" answers 404). The staged asset
-  // carries extractScad so staging pulls just the .scad entries out.
+  // Parametric designs list their .scad under designExtension.model_files (modelType "scad"); the raw-model download endpoint exchanges the design id for a presigned URL of one zip with every raw file (modelType=all is the only value the API accepts — "scad" answers 404). The staged asset carries extractScad so staging pulls just the .scad entries out.
   const design = {
     id: 777516,
     modelId: "US31d64271d31f2",
@@ -59,11 +55,7 @@ test("importFromMakerworld downloads the OpenSCAD source of parametric designs",
   assert.ok(project.assets.some((a) => a.filename === "Default.3mf"));
 });
 
-// The raw-model-file panel is a tree: makers group files under labelled
-// folders, so a .scad frequently sits nested under a folder's `children`
-// (here a "SCAD File" folder) rather than at the top level — where the top
-// entries are the folders themselves (modelType ""). Missing these nested
-// sources was why parametric models with many folders imported no .scad.
+// The raw-model-file panel is a tree: makers group files under labelled folders, so a .scad frequently sits nested under a folder's `children` (here a "SCAD File" folder) rather than at the top level — where the top entries are the folders themselves (modelType ""). Missing these nested sources was why parametric models with many folders imported no .scad.
 test("collectScadModelFiles finds .scad entries nested under folders", () => {
   const scad = collectScadModelFiles([
     {
@@ -90,11 +82,7 @@ test("collectScadModelFiles finds .scad entries nested under folders", () => {
   assert.deepEqual(collectScadModelFiles([{ modelType: "3mf" }]), []);
 });
 
-// A popular design accumulates community-uploaded print profiles (no green
-// "Designer" tag). We import only the designer's own — an instance whose
-// author matches the design author — so other people's remixes aren't pulled
-// in. That author filter, not a file count, is the primary limit. The .scad
-// source imports regardless.
+// A popular design accumulates community-uploaded print profiles (no green "Designer" tag). We import only the designer's own — an instance whose author matches the design author — so other people's remixes aren't pulled in. That author filter, not a file count, is the primary limit. The .scad source imports regardless.
 test("importFromMakerworld imports only the designer's own print profiles", async (t) => {
   const design = {
     id: 47599,
@@ -144,11 +132,7 @@ test("importFromMakerworld imports only the designer's own print profiles", asyn
   assert.ok(project.assets.some((a) => a.extractScad));
 });
 
-// The designer's-own filter is the only limit — there is no cap on how many of
-// their profiles import. But a model with a lot of them (popular parametric
-// models carry ~100) first stops for a Continue/Cancel confirmation so the user
-// isn't surprised by a slow bulk download: without confirmation the importer
-// resolves NO downloads and reports the projected count; with it, all import.
+// The designer's-own filter is the only limit — there is no cap on how many of their profiles import. But a model with a lot of them (popular parametric models carry ~100) first stops for a Continue/Cancel confirmation so the user isn't surprised by a slow bulk download: without confirmation the importer resolves NO downloads and reports the projected count; with it, all import.
 function manyProfilesDesign(count: number) {
   return {
     id: 999,
@@ -204,8 +188,7 @@ test("importFromMakerworld imports all of the designer's own profiles once confi
 });
 
 test("importFromMakerworld surfaces the design's category names leaf-first", async (t) => {
-  // MakerWorld lists the leaf category before its parent; the importer keeps
-  // that order so category suggestion can weight the most specific one.
+  // MakerWorld lists the leaf category before its parent; the importer keeps that order so category suggestion can weight the most specific one.
   const design = {
     id: 605675,
     title: "Swift Logo Desktop Decoration",
@@ -231,9 +214,7 @@ test("parseMakerworldUrl returns the model id for makerworld hosts", () => {
   );
 });
 
-// MakerWorld returns each text field as an original + a single English
-// machine-translation; the translation is empty for already-English models. We
-// import English when it exists, else the original — matching the site default.
+// MakerWorld returns each text field as an original + a single English machine-translation; the translation is empty for already-English models. We import English when it exists, else the original — matching the site default.
 test("preferEnglish uses the translation when present, else the original", () => {
   // non-English original → take the English translation
   assert.equal(preferEnglish("Model Airplane Rudder Angle", "航模舵角"), "Model Airplane Rudder Angle");
@@ -246,9 +227,7 @@ test("preferEnglish uses the translation when present, else the original", () =>
   assert.equal(preferEnglish(undefined, undefined), "");
 });
 
-// The cover (often the GIF) lives in coverUrl, separate from the gallery — it
-// is the first media on the site and must lead the imported images, not be
-// dropped when the gallery is non-empty (the original bug).
+// The cover (often the GIF) lives in coverUrl, separate from the gallery — it is the first media on the site and must lead the imported images, not be dropped when the gallery is non-empty (the original bug).
 test("selectImageUrls leads with the cover, then the gallery, deduped", () => {
   const urls = selectImageUrls({
     coverUrl: "https://cdn/cover.gif",
@@ -274,9 +253,7 @@ test("selectImageUrls leads with the cover, then the gallery, deduped", () => {
   );
 });
 
-// Attached PDFs (assembly guide, BOM sheet) import as document files. Both the
-// guide and the BOM sheet live under designExtension as {name, url} links; a
-// missing name falls back to the URL's filename, and non-http links are dropped.
+// Attached PDFs (assembly guide, BOM sheet) import as document files. Both the guide and the BOM sheet live under designExtension as {name, url} links; a missing name falls back to the URL's filename, and non-http links are dropped.
 test("selectDocs collects guide + BOM documents as pdf assets", () => {
   const docs = selectDocs({
     designExtension: {
@@ -317,10 +294,7 @@ test("selectDocs collects guide + BOM documents as pdf assets", () => {
   );
 });
 
-// The structured BOM is split across product arrays (purchasable kits,
-// filaments, materials) plus a hand-listed "other parts" list. Products carry a
-// store link (handle) and image; other parts are name + quantity only. Each
-// group becomes its own section so the BOM mirrors the source layout.
+// The structured BOM is split across product arrays (purchasable kits, filaments, materials) plus a hand-listed "other parts" list. Products carry a store link (handle) and image; other parts are name + quantity only. Each group becomes its own section so the BOM mirrors the source layout.
 test("selectBomItems flattens the structured BOM into sectioned rows", () => {
   const items = selectBomItems({
     designExtension: {
@@ -376,11 +350,7 @@ test("parseMakerworldUrl rejects non-makerworld or non-model URLs", () => {
 });
 
 test("listMakerworldUpstreamFiles ids profiles, scads and docs for sync", () => {
-  // Ids must match what the import path stamps (profile:<id> from
-  // resolveDownloads, scad:<basename> from staging, doc:<name> from
-  // selectDocs) — the sync planner joins on them. The profile token is
-  // publishTime, NOT the design/instance updateTime, which MakerWorld
-  // touches on counter activity (an untouched design shows today's date).
+  // Ids must match what the import path stamps (profile:<id> from resolveDownloads, scad:<basename> from staging, doc:<name> from selectDocs) — the sync planner joins on them. The profile token is publishTime, NOT the design/instance updateTime, which MakerWorld touches on counter activity (an untouched design shows today's date).
   const files = listMakerworldUpstreamFiles({
     id: 777516,
     modelId: "US31d64271d31f2",
@@ -421,9 +391,7 @@ test("listMakerworldUpstreamFiles ids profiles, scads and docs for sync", () => 
 });
 
 test("makerworld import stamps the same sync ids on its staged assets", async (t) => {
-  // The contract behind the sync planner: listMakerworldUpstreamFiles and the
-  // import path must produce identical ids, or every sync would re-import
-  // everything as new.
+  // The contract behind the sync planner: listMakerworldUpstreamFiles and the import path must produce identical ids, or every sync would re-import everything as new.
   const design = {
     id: 777516,
     modelId: "US31d64271d31f2",
@@ -464,10 +432,7 @@ test("makerworld import stamps the same sync ids on its staged assets", async (t
   assert.equal(doc?.sourceFileId, "doc:Guide.pdf");
 });
 
-// MakerWorld hands out gallery videos as direct CDN file links under
-// designExtension.design_video — the same shape as design_pictures. They are
-// downloaded and stored like a photo, so what matters here is that only real
-// video files survive the selection.
+// MakerWorld hands out gallery videos as direct CDN file links under designExtension.design_video — the same shape as design_pictures. They are downloaded and stored like a photo, so what matters here is that only real video files survive the selection.
 test("selectVideoUrls keeps the design's video files, in order and deduped", () => {
   assert.deepEqual(
     selectVideoUrls({
@@ -491,8 +456,7 @@ test("selectVideoUrls keeps the design's video files, in order and deduped", () 
   );
 });
 
-// Staging would drop these anyway (it re-checks the extension), but filtering
-// here keeps the import from reporting a download it was never going to keep.
+// Staging would drop these anyway (it re-checks the extension), but filtering here keeps the import from reporting a download it was never going to keep.
 test("selectVideoUrls drops entries that don't name a playable video file", () => {
   assert.deepEqual(
     selectVideoUrls({

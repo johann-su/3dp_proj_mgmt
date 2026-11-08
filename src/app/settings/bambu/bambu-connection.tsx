@@ -33,8 +33,7 @@ export function BambuConnection({ status }: { status: BambuConnectionStatus }) {
   const [mode, setMode] = useState<Mode>("login");
   const [step, setStep] = useState<Step>("credentials");
   const [busy, setBusy] = useState(false);
-  // Re-login over an existing connection (Bambu tokens can't be refreshed
-  // silently — see src/lib/bambu/token-expiry.ts).
+  // Re-login over an existing connection (Bambu tokens can't be refreshed silently — see src/lib/bambu/token-expiry.ts).
   const [renewing, setRenewing] = useState(false);
 
   const [account, setAccount] = useState("");

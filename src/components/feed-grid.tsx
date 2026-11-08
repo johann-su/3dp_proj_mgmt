@@ -12,8 +12,7 @@ function itemKey(item: FeedItem): string {
   return item.kind === "model" ? `m:${item.model.id}` : `c:${item.collection.id}`;
 }
 
-// Continuous homepage feed mixing model and collection cards, ordered by the
-// active sort and loaded via endless scroll.
+// Continuous homepage feed mixing model and collection cards, ordered by the active sort and loaded via endless scroll.
 export function FeedGrid({
   initialItems,
   initialCursor,

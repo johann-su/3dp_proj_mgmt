@@ -7,8 +7,7 @@ import {
   parseFeedSort,
 } from "@/lib/feed-params";
 
-// Unknown or missing values must degrade to "newest" rather than reach the
-// SQL builder — a crafted/stale ?sort= shouldn't error the page.
+// Unknown or missing values must degrade to "newest" rather than reach the SQL builder — a crafted/stale ?sort= shouldn't error the page.
 test("parseFeedSort defaults to newest and rejects unknown values", () => {
   assert.equal(parseFeedSort(undefined), "newest");
   assert.equal(parseFeedSort("sideways"), "newest");
@@ -16,8 +15,7 @@ test("parseFeedSort defaults to newest and rejects unknown values", () => {
   assert.equal(parseFeedSort(["downloads", "views"]), "downloads");
 });
 
-// Collections have no download_count equivalent to sum, so that sort is
-// models-only; every other sort ranks both tables together.
+// Collections have no download_count equivalent to sum, so that sort is models-only; every other sort ranks both tables together.
 test("feedSortIsModelOnly is true only for downloads", () => {
   assert.equal(feedSortIsModelOnly("downloads"), true);
   assert.equal(feedSortIsModelOnly("newest"), false);
@@ -26,8 +24,7 @@ test("feedSortIsModelOnly is true only for downloads", () => {
   assert.equal(feedSortIsModelOnly("views"), false);
 });
 
-// The cursor is self-describing: it carries its own kind so decode never needs
-// to know which sort produced it.
+// The cursor is self-describing: it carries its own kind so decode never needs to know which sort produced it.
 test("feed cursor round-trips both keyset shapes", () => {
   const time = { kind: "time", at: "2026-01-02T03:04:05.000Z", id: "abc" } as const;
   assert.deepEqual(decodeFeedCursor(encodeFeedCursor(time)), time);
@@ -36,8 +33,7 @@ test("feed cursor round-trips both keyset shapes", () => {
   assert.deepEqual(decodeFeedCursor(encodeFeedCursor(metric)), metric);
 });
 
-// ids are UUIDs today, but the codec must not corrupt an id that happens to
-// contain "|" — splitting on the first two separators keeps the rest intact.
+// ids are UUIDs today, but the codec must not corrupt an id that happens to contain "|" — splitting on the first two separators keeps the rest intact.
 test("feed cursor survives an id containing the separator character", () => {
   const cursor = { kind: "metric", value: 7, id: "a|b|c" } as const;
   assert.equal(decodeFeedCursor(encodeFeedCursor(cursor))?.id, "a|b|c");

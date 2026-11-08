@@ -1,13 +1,6 @@
 // Extracts the OpenSCAD sources from MakerWorld's raw-model download.
 //
-// That download (GET …/design/{id}/model?modelType=all) is a single zip of
-// *every* raw file the maker uploaded — for a parametric model that means the
-// tiny .scad sources sit alongside hundreds of megabytes of geometry (e.g. the
-// Gridfinity bins model bundles ~450 MB of "raw 3mf export" zips next to a
-// 22 KB .scad). We only want the .scad, so we stream the archive through
-// fflate's incremental Unzip and only ever decompress the .scad entries —
-// geometry entries are skipped without being read into memory. Kept pure (no
-// S3/network) so it can be unit-tested with an in-memory zip fixture.
+// That download (GET …/design/{id}/model?modelType=all) is a single zip of *every* raw file the maker uploaded — for a parametric model that means the tiny .scad sources sit alongside hundreds of megabytes of geometry (e.g. the Gridfinity bins model bundles ~450 MB of "raw 3mf export" zips next to a 22 KB .scad). We only want the .scad, so we stream the archive through fflate's incremental Unzip and only ever decompress the .scad entries — geometry entries are skipped without being read into memory. Kept pure (no S3/network) so it can be unit-tested with an in-memory zip fixture.
 
 import { Unzip, UnzipInflate } from "fflate";
 import { fileExtension } from "@/lib/file-kind";
@@ -28,10 +21,7 @@ function isScadEntry(name: string): boolean {
   return fileExtension(name) === ".scad" && !name.startsWith("__MACOSX");
 }
 
-// Streams `stream`, returning every .scad it contains. If the download is a
-// bare .scad file rather than a zip, it is returned under `fallbackName`.
-// Any single entry larger than `maxFileBytes` is dropped (a .scad source is
-// text — a huge one is not what we're after and shouldn't be buffered).
+// Streams `stream`, returning every .scad it contains. If the download is a bare .scad file rather than a zip, it is returned under `fallbackName`. Any single entry larger than `maxFileBytes` is dropped (a .scad source is text — a huge one is not what we're after and shouldn't be buffered).
 export async function extractScadFiles(
   stream: ReadableStream<Uint8Array>,
   opts: { fallbackName: string; maxFileBytes: number },

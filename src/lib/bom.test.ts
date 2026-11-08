@@ -94,10 +94,7 @@ test("bomToCsv output survives a round-trip through parseBomCsv", () => {
   );
 });
 
-// Sections are an ordering convention, not a stored tree: ungrouped items come
-// first, then each section in the order it first appears, and an item joins the
-// section it names even if that run was interrupted. The model page and the MCP
-// tool both present the BOM this way.
+// Sections are an ordering convention, not a stored tree: ungrouped items come first, then each section in the order it first appears, and an item joins the section it names even if that run was interrupted. The model page and the MCP tool both present the BOM this way.
 test("groupBySection puts ungrouped items first and keeps first-appearance order", () => {
   const grouped = groupBySection([
     { name: "Filament", section: null },
@@ -121,8 +118,7 @@ test("groupBySection omits the ungrouped bucket when every item has a section", 
   assert.deepEqual(grouped, [{ section: "Electronics", items: [{ name: "ESC", section: "Electronics" }] }]);
 });
 
-// The proxy serves vendor images on our origin: raster types only. SVG is an
-// image/* type that can run script when the proxy URL is opened directly.
+// The proxy serves vendor images on our origin: raster types only. SVG is an image/* type that can run script when the proxy URL is opened directly.
 test("allowedBomImageType passes raster images and rejects SVG and non-images", () => {
   assert.equal(allowedBomImageType("image/png"), "image/png");
   assert.equal(allowedBomImageType("IMAGE/JPEG; charset=binary"), "image/jpeg");

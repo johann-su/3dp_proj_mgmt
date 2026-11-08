@@ -6,9 +6,7 @@ import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { STLLoader } from "three/addons/loaders/STLLoader.js";
 import { Loader2, TriangleAlert } from "lucide-react";
 
-// The viewport's fixed scene pieces, created once per mount. Rendering is
-// on-demand (orbit change / resize / new geometry), not a rAF loop — the
-// scene is static between interactions and this keeps laptops cool.
+// The viewport's fixed scene pieces, created once per mount. Rendering is on-demand (orbit change / resize / new geometry), not a rAF loop — the scene is static between interactions and this keeps laptops cool.
 type SceneRefs = {
   renderer: THREE.WebGLRenderer;
   scene: THREE.Scene;
@@ -53,8 +51,7 @@ export function ScadPreview({
     );
     camera.position.set(120, 110, 140);
 
-    // Soft studio-ish light: sky/ground fill plus one key light, matching how
-    // slicers present a matte print on the plate.
+    // Soft studio-ish light: sky/ground fill plus one key light, matching how slicers present a matte print on the plate.
     scene.add(new THREE.HemisphereLight(0xffffff, 0x777777, 1.1));
     const key = new THREE.DirectionalLight(0xffffff, 1.6);
     key.position.set(180, 320, 220);
@@ -136,8 +133,7 @@ export function ScadPreview({
     r.scene.add(grid);
     r.grid = grid;
 
-    // Frame the part only on the first load — later previews keep the user's
-    // camera so tweaking a value doesn't yank the view around.
+    // Frame the part only on the first load — later previews keep the user's camera so tweaking a value doesn't yank the view around.
     if (!r.controls.target.lengthSq()) {
       const radius = Math.max(size.length() / 2, 10);
       r.camera.position.set(radius * 1.7, radius * 1.5, radius * 2.1);

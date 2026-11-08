@@ -5,36 +5,19 @@ description: Hand-picked groups and rule-based collections evaluated live as a s
 
 # Collections & smart collections
 
-A **collection** groups models together — the equivalent of a MakerWorld
-collection or a playlist. Collections appear in the same grid as models across
-the homepage and search, have their own page with a
-[markdown description](/features/models#markdown-descriptions), and — like
-models — are editable by any signed-in user but deletable only by their owner
-and [moderators/admins](/roles).
+A **collection** groups models together — the equivalent of a MakerWorld collection or a playlist. Collections appear in the same grid as models across the homepage and search, have their own page with a [markdown description](/features/models#markdown-descriptions), and — like models — are editable by any signed-in user but deletable only by their owner and [moderators/admins](/roles).
 
 There are two kinds, and they differ in *how membership is decided*.
 
 ## Manual collections
 
-A manual collection is a **hand-picked list**. Model pages carry an **"Add to
-collection"** action, and membership is stored explicitly as rows linking the
-model to the collection. Adding or removing a model is a direct edit to that
-list.
+A manual collection is a **hand-picked list**. Model pages carry an **"Add to collection"** action, and membership is stored explicitly as rows linking the model to the collection. Adding or removing a model is a direct edit to that list.
 
 ## Smart collections
 
-A smart collection defines its membership as a **rule tree** instead of a
-hand-picked list — the Lightroom / smart-playlist shape: nested **AND/OR**
-groups of field conditions, each condition optionally **negated**. The rule tree
-is stored as JSON on the collection.
+A smart collection defines its membership as a **rule tree** instead of a hand-picked list — the Lightroom / smart-playlist shape: nested **AND/OR** groups of field conditions, each condition optionally **negated**. The rule tree is stored as JSON on the collection.
 
-The key property: **membership is never materialized.** There is no stored list
-of member models. Instead the rule tree is **compiled to a SQL `WHERE` clause
-and evaluated live** against the models table every time the collection is
-viewed — the same way `/search` builds its query. So a smart collection **can
-never go stale**: a model that starts matching the rules (a new import, an edit,
-a fresh download count) appears automatically, and one that stops matching
-drops out, with no re-indexing step.
+The key property: **membership is never materialized.** There is no stored list of member models. Instead the rule tree is **compiled to a SQL `WHERE` clause and evaluated live** against the models table every time the collection is viewed — the same way `/search` builds its query. So a smart collection **can never go stale**: a model that starts matching the rules (a new import, an edit, a fresh download count) appears automatically, and one that stops matching drops out, with no re-indexing step.
 
 ### Available conditions
 
@@ -57,33 +40,15 @@ The rule builder offers these fields:
 
 ### Things to know
 
-- **Negation is NULL-safe by design.** "NOT category = X" *includes*
-  uncategorized models, and "NOT printer = X" includes models with no slicer
-  metadata — i.e. negation means "everything that isn't a match," which is what
-  users expect, rather than silently dropping rows where the field is empty.
-- **Guardrails.** A rule tree nests at most **3 groups deep** and holds at most
-  **32 conditions** (each condition is a subquery, so this bounds the cost of
-  evaluating the collection), with at most 20 tags per tag condition. Trees that
-  don't validate — including a row edited by hand into an invalid shape —
-  **degrade to "no matches"** rather than erroring or matching everything.
-- **The collection page is bounded** to the newest ~200 matching models. Rules
-  broad enough to match the whole catalog are fine; the page just shows the most
-  recent slice, ordered newest-first (smart membership has no per-model "added"
-  date, so recency of the model itself is the natural order).
-- **Deleted models never appear** — every membership query filters out
-  [trashed](/features/versioning#trash) models, the same as everywhere else.
+- **Negation is NULL-safe by design.** "NOT category = X" *includes* uncategorized models, and "NOT printer = X" includes models with no slicer metadata — i.e. negation means "everything that isn't a match," which is what users expect, rather than silently dropping rows where the field is empty.
+- **Guardrails.** A rule tree nests at most **3 groups deep** and holds at most **32 conditions** (each condition is a subquery, so this bounds the cost of evaluating the collection), with at most 20 tags per tag condition. Trees that don't validate — including a row edited by hand into an invalid shape — **degrade to "no matches"** rather than erroring or matching everything.
+- **The collection page is bounded** to the newest ~200 matching models. Rules broad enough to match the whole catalog are fine; the page just shows the most recent slice, ordered newest-first (smart membership has no per-model "added" date, so recency of the model itself is the natural order).
+- **Deleted models never appear** — every membership query filters out [trashed](/features/versioning#trash) models, the same as everywhere else.
 
 ## Importing and syncing collections
 
-Whole MakerWorld collections can be **bulk-imported** into a new local
-collection, and later **re-synced** to pull in models added upstream. That flow
-(background job, 200-design cap, resume-on-failure, sync-never-deletes) is
-covered under
-[MakerWorld collection import](/integrations/makerworld-printables#collection-import).
+Whole MakerWorld collections can be **bulk-imported** into a new local collection, and later **re-synced** to pull in models added upstream. That flow (background job, 200-design cap, resume-on-failure, sync-never-deletes) is covered under [MakerWorld collection import](/integrations/makerworld-printables#collection-import).
 
 ## Sharing
 
-The collection page has a **Share** button that copies its URL. Because the
-catalog is private, the link opens only for other signed-in users on the
-instance — but sign-in preserves the destination, so they land on the shared
-collection after logging in.
+The collection page has a **Share** button that copies its URL. Because the catalog is private, the link opens only for other signed-in users on the instance — but sign-in preserves the destination, so they land on the shared collection after logging in.

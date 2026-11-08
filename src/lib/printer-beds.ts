@@ -1,14 +1,12 @@
 import type { PrinterInfo } from "@/db/schema";
 
-// Known nominal build-plate sizes (mm) for common printers, matched loosely by
-// substring against a PrinterInfo.model string. Used in two places:
+// Known nominal build-plate sizes (mm) for common printers, matched loosely by substring against a PrinterInfo.model string. Used in two places:
 //   - as a last resort when a file's embedded config carries no usable bed
 //     shape (see bedSizeFromPoints in threemf-slice-info.ts), and
 //   - at read time (resolveBedSizeMm) so models processed before bed parsing
 //     existed — their stored printerInfo has a model but no bedSizeMm — still
 //     get a real plate without re-slicing.
-// Order matters: the narrower rule comes first (the A1 mini must beat the
-// broader A1 rule).
+// Order matters: the narrower rule comes first (the A1 mini must beat the broader A1 rule).
 const KNOWN_BED_SIZES: ReadonlyArray<readonly [RegExp, { x: number; y: number }]> =
   [
     [/a1\s*mini/i, { x: 180, y: 180 }],
@@ -30,23 +28,14 @@ export function bedSizeForModel(
   return undefined;
 }
 
-// The bed the 3D preview should draw for a file: the exact size parsed from its
-// embedded config when present, else a known-model lookup so files sliced
-// before bed parsing existed still get a real plate. Null when neither yields a
-// size — the viewer then falls back to a footprint-sized square (issue #80).
+// The bed the 3D preview should draw for a file: the exact size parsed from its embedded config when present, else a known-model lookup so files sliced before bed parsing existed still get a real plate. Null when neither yields a size — the viewer then falls back to a footprint-sized square (issue #80).
 export function resolveBedSizeMm(
   info: PrinterInfo | null | undefined,
 ): { x: number; y: number } | null {
   return info?.bedSizeMm ?? bedSizeForModel(info?.model) ?? null;
 }
 
-// Common build plates offered in the 3D preview's plate-size dropdown, so a
-// model can be checked against a bed other than the one it was sliced for
-// (issue #80 follow-up). `x`/`y` are the nominal printable area (mm); `group`
-// drives the <optgroup>s. Members of a family that share a plate are listed
-// together on one entry. This is a convenience picker, not an exhaustive
-// registry — the per-file default still comes from the embedded config or
-// bedSizeForModel above.
+// Common build plates offered in the 3D preview's plate-size dropdown, so a model can be checked against a bed other than the one it was sliced for (issue #80 follow-up). `x`/`y` are the nominal printable area (mm); `group` drives the <optgroup>s. Members of a family that share a plate are listed together on one entry. This is a convenience picker, not an exhaustive registry — the per-file default still comes from the embedded config or bedSizeForModel above.
 export type BedPreset = {
   id: string;
   group: string;
@@ -79,8 +68,7 @@ export const BED_PRESETS: readonly BedPreset[] = [
   { id: "voron-350", group: "Voron", label: "2.4 / Trident 350", x: 350, y: 350 },
 ];
 
-// BED_PRESETS grouped by brand, preserving the array's order, for rendering the
-// dropdown's <optgroup>s without regrouping on every render.
+// BED_PRESETS grouped by brand, preserving the array's order, for rendering the dropdown's <optgroup>s without regrouping on every render.
 export const BED_PRESET_GROUPS: ReadonlyArray<
   readonly [string, readonly BedPreset[]]
 > = (() => {
@@ -93,22 +81,16 @@ export const BED_PRESET_GROUPS: ReadonlyArray<
   return [...groups.entries()];
 })();
 
-// The plate-size dropdown's value is a preset id or one of two sentinels:
-// "file" (the bed from the .3mf's own config — the per-file default) and "auto"
-// (no real bed; the viewer draws a square sized to the geometry's footprint).
+// The plate-size dropdown's value is a preset id or one of two sentinels: "file" (the bed from the .3mf's own config — the per-file default) and "auto" (no real bed; the viewer draws a square sized to the geometry's footprint).
 export const BED_CHOICE_FILE = "file";
 export const BED_CHOICE_AUTO = "auto";
 
-// Default the picker to the file's own bed when the config gave us one, else to
-// the footprint-sized square.
+// Default the picker to the file's own bed when the config gave us one, else to the footprint-sized square.
 export function defaultBedChoice(fileBed: { x: number; y: number } | null) {
   return fileBed ? BED_CHOICE_FILE : BED_CHOICE_AUTO;
 }
 
-// Resolve a dropdown value to the bed the viewer should draw. Null means "no
-// real bed" → the footprint-square fallback. An unknown/missing preset (e.g. a
-// value left over after the preset list changed) falls back to the file's own
-// bed so a stale choice can't blank the plate.
+// Resolve a dropdown value to the bed the viewer should draw. Null means "no real bed" → the footprint-square fallback. An unknown/missing preset (e.g. a value left over after the preset list changed) falls back to the file's own bed so a stale choice can't blank the plate.
 export function bedForChoice(
   choice: string,
   fileBed: { x: number; y: number } | null,

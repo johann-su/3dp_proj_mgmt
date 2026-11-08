@@ -11,11 +11,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 
-// Global ⌘K / Ctrl+K shortcut focuses the homepage search box, with a hint
-// badge mirroring the shortcut mark in its idle state (hidden once focused
-// so it doesn't collide with typed text). The ⌘ glyph is shown regardless of
-// platform (both Cmd and Ctrl trigger it) — that's the convention users
-// recognize, and avoids a client-only OS check that would mismatch SSR output.
+// Global ⌘K / Ctrl+K shortcut focuses the homepage search box, with a hint badge mirroring the shortcut mark in its idle state (hidden once focused so it doesn't collide with typed text). The ⌘ glyph is shown regardless of platform (both Cmd and Ctrl trigger it) — that's the convention users recognize, and avoids a client-only OS check that would mismatch SSR output.
 export function SearchBar() {
   const inputRef = useRef<HTMLInputElement>(null);
   const [focused, setFocused] = useState(false);

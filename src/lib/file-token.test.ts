@@ -1,8 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-// The module derives its key from the environment at load time, so the secret
-// must be set before the (dynamic) import.
+// The module derives its key from the environment at load time, so the secret must be set before the (dynamic) import.
 process.env.BETTER_AUTH_SECRET ??= "unit-test-secret";
 
 const FILE_ID = "0f80559e-2ffa-4b26-a26b-4a2e04ac2bc0";
@@ -36,8 +35,7 @@ test("tampering with expiry or signature invalidates the token", async () => {
 });
 
 test("fileToken buckets expiry so URLs stay stable within a week", async () => {
-  // Stable URLs let the browser and the next/image optimizer cache images
-  // across renders; the bucket still guarantees at least a week of validity.
+  // Stable URLs let the browser and the next/image optimizer cache images across renders; the bucket still guarantees at least a week of validity.
   const { fileToken, verifyFileToken } = await import("@/lib/file-token");
   const now = Date.now();
   const later = now + 6 * 24 * 3600 * 1000; // < one bucket width apart
@@ -47,9 +45,7 @@ test("fileToken buckets expiry so URLs stay stable within a week", async () => {
 });
 
 test("namedFileSrc carries the filename in the path so a URL is identifiable by extension", async () => {
-  // Some consumers (Orca/Bambu deep links, and MCP clients fetching a
-  // downloadUrl on their own) decide how to handle a URL by its apparent
-  // extension; fileSrc()'s bare-UUID form gives them nothing to go on.
+  // Some consumers (Orca/Bambu deep links, and MCP clients fetching a downloadUrl on their own) decide how to handle a URL by its apparent extension; fileSrc()'s bare-UUID form gives them nothing to go on.
   const { namedFileSrc, verifyFileToken } = await import("@/lib/file-token");
   const src = namedFileSrc(FILE_ID, "manual v2.pdf");
   const [id, token, name] = src.split("/").slice(-3);
@@ -59,8 +55,7 @@ test("namedFileSrc carries the filename in the path so a URL is identifiable by 
 });
 
 test("version-file tokens are scoped to one version and file index", async () => {
-  // The version-preview page serves snapshot files by (version row, index);
-  // a token minted for one file must not unlock its neighbours.
+  // The version-preview page serves snapshot files by (version row, index); a token minted for one file must not unlock its neighbours.
   const { fileToken, verifyFileToken, versionFileTokenId } = await import(
     "@/lib/file-token"
   );

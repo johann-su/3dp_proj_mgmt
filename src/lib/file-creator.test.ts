@@ -24,8 +24,7 @@ test("parseFileCreator reads Bambu Studio and PrusaSlicer from Application", () 
   });
 });
 
-// OrcaSlicer saves Application = BambuStudio-<compat version> for
-// compatibility; its own metadata entry is what identifies it.
+// OrcaSlicer saves Application = BambuStudio-<compat version> for compatibility; its own metadata entry is what identifies it.
 test("parseFileCreator identifies OrcaSlicer despite its Bambu Application tag", () => {
   assert.deepEqual(
     parseFileCreator(model(["Application", "BambuStudio-02.06.00.51"], ["OrcaSlicer", "2.4.2"])),

@@ -43,8 +43,7 @@ test("parseSliceInfo sums prediction, weight and filament length over plates", (
   </config>`;
   assert.deepEqual(parseSliceInfo(xml), {
     plates: 2,
-    // Per plate, since one plate is one print: plate 2 changes filament
-    // mid-print, plate 1 doesn't.
+    // Per plate, since one plate is one print: plate 2 changes filament mid-print, plate 1 doesn't.
     plateFilaments: [["PLA"], ["PLA", "PETG"]],
     engine: "OrcaSlicer 2.4.2",
     printTimeSeconds: 30383,

@@ -3,8 +3,7 @@ import assert from "node:assert/strict";
 import { scrubErrorOutput, toParameterSetJson } from "./lib.mjs";
 
 test("toParameterSetJson builds OpenSCAD's -p file shape", () => {
-  // The service always renders parameter set "app" — the JSON must match what
-  // `openscad -p params.json -P app` expects.
+  // The service always renders parameter set "app" — the JSON must match what `openscad -p params.json -P app` expects.
   const parsed = JSON.parse(toParameterSetJson({ arm_count: "4", label: "big" }));
   assert.deepEqual(parsed.parameterSets.app, { arm_count: "4", label: "big" });
 });
@@ -16,8 +15,7 @@ test("toParameterSetJson allows $-prefixed special variables", () => {
 });
 
 test("toParameterSetJson rejects names that are not OpenSCAD identifiers", () => {
-  // Values never reach a command line, but a hostile *name* must not be able
-  // to smuggle structure into the JSON or the .scad namespace.
+  // Values never reach a command line, but a hostile *name* must not be able to smuggle structure into the JSON or the .scad namespace.
   assert.throws(() => toParameterSetJson({ "a b": "1" }));
   assert.throws(() => toParameterSetJson({ "a=1;": "1" }));
   assert.throws(() => toParameterSetJson({ "": "1" }));

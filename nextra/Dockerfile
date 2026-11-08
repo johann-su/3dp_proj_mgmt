@@ -1,10 +1,6 @@
-# Operator docs site (Nextra static export behind nginx). Deployed separately
-# on its own subdomain — deliberately NOT a compose.yml service and never part
-# of the app image: the docs describe the software, not one deployment, and are
-# published once by the project rather than bundled with every instance.
+# Operator docs site (Nextra static export behind nginx). Deployed separately on its own subdomain — deliberately NOT a compose.yml service and never part of the app image: the docs describe the software, not one deployment, and are published once by the project rather than bundled with every instance.
 #
-# Build from the REPOSITORY ROOT so the content symlink (nextra/content ->
-# ../docs) resolves inside the build context:
+# Build from the REPOSITORY ROOT so the content symlink (nextra/content -> ../docs) resolves inside the build context:
 #
 #   docker build -f nextra/Dockerfile -t print-vault-docs .
 

@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { getSession, mcpEnabled, signInRedirect } from "@/lib/auth";
+import { apiEnabled, getSession, mcpEnabled, signInRedirect } from "@/lib/auth";
 import { ensureInitialAdmin } from "@/lib/admin";
 import { isAdmin, isModerator } from "@/lib/roles";
 import { countOpenDuplicates } from "@/lib/duplicates";
@@ -10,9 +10,7 @@ export default async function SettingsLayout({
 }: {
   children: React.ReactNode;
 }) {
-  // First-admin bootstrap: while no admin exists, promote the
-  // INITIAL_ADMIN_EMAIL account. Runs before getSession so the fresh role is
-  // already on the session and the Users nav entry shows on this very load.
+  // First-admin bootstrap: while no admin exists, promote the INITIAL_ADMIN_EMAIL account. Runs before getSession so the fresh role is already on the session and the Users nav entry shows on this very load.
   await ensureInitialAdmin();
 
   const session = await getSession();
@@ -28,6 +26,7 @@ export default async function SettingsLayout({
         <aside className="sm:sticky sm:top-20 sm:self-start">
           <SettingsNav
             showMcp={mcpEnabled}
+            showApiKeys={apiEnabled}
             showUsers={isAdmin(session.user.role)}
             showDuplicates={canModerate}
             duplicateCount={duplicateCount}

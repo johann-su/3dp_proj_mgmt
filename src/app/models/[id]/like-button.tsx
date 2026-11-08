@@ -7,8 +7,7 @@ import { toggleModelLike } from "@/app/models/actions";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 
-// Like/favorite toggle for the model page. Optimistic like AddToCollection:
-// flip the UI immediately, roll back if the server action reports an error.
+// Like/favorite toggle for the model page. Optimistic like AddToCollection: flip the UI immediately, roll back if the server action reports an error.
 export function LikeButton({
   modelId,
   initialLiked,

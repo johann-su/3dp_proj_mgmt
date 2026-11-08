@@ -4,30 +4,22 @@ import { useCallback, useEffect, useRef, useState, useTransition } from "react";
 import type { Page } from "@/lib/pagination";
 import { useListRestore } from "@/hooks/use-list-restore";
 
-// Drives endless (cursor-based) scrolling for a list. `loadMore` is a closure
-// over a server action; it takes the current cursor and resolves the next
-// page. Attach `sentinelRef` to an element below the list — when it scrolls
-// into view the next page is fetched and appended.
+// Drives endless (cursor-based) scrolling for a list. `loadMore` is a closure over a server action; it takes the current cursor and resolves the next page. Attach `sentinelRef` to an element below the list — when it scrolls into view the next page is fetched and appended.
 //
-// Pass `restoreKey` (unique per query) to have Back/Forward return to the
-// pages and scroll offset the user left — see useListRestore.
+// Pass `restoreKey` (unique per query) to have Back/Forward return to the pages and scroll offset the user left — see useListRestore.
 export function useInfiniteScroll<T>(
   initialItems: T[],
   initialCursor: string | null,
   loadMore: (cursor: string) => Promise<Page<T>>,
   { restoreKey }: { restoreKey?: string } = {},
 ) {
-  // Callers give this component a `key` tied to the query (search/filter), so a
-  // fresh first page remounts it and these initial values seed a clean slate —
-  // no in-effect resync, and any in-flight load from the previous query is torn
-  // down with the old instance.
+  // Callers give this component a `key` tied to the query (search/filter), so a fresh first page remounts it and these initial values seed a clean slate — no in-effect resync, and any in-flight load from the previous query is torn down with the old instance.
   const [items, setItems] = useState(initialItems);
   const [cursor, setCursor] = useState(initialCursor);
   const [error, setError] = useState(false);
   const [isPending, startTransition] = useTransition();
   const sentinelRef = useRef<HTMLDivElement | null>(null);
-  // Guards against overlapping loads: the observer can fire again before the
-  // transition flips isPending, which would fetch the same cursor twice.
+  // Guards against overlapping loads: the observer can fire again before the transition flips isPending, which would fetch the same cursor twice.
   const loadingRef = useRef(false);
 
   useListRestore({

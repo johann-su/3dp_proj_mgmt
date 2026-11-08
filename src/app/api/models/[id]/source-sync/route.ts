@@ -48,13 +48,7 @@ export const runtime = "nodejs";
 // Confirming a sync can download many print profiles.
 export const maxDuration = 300;
 
-// "Sync from MakerWorld/Printables": diffs the model's imported files against
-// the platform's current file list (see src/lib/import/sync-diff.ts for the
-// contract — imported files mirror upstream, manual files and metadata are
-// never touched). POST without `confirm` answers with a preview of the plan;
-// POST {confirm:true} downloads the new/changed files and applies it, with
-// the pre-sync state kept as a version (like Onshape sync). Open to any
-// signed-in user, like editing.
+// "Sync from MakerWorld/Printables": diffs the model's imported files against the platform's current file list (see src/lib/import/sync-diff.ts for the contract — imported files mirror upstream, manual files and metadata are never touched). POST without `confirm` answers with a preview of the plan; POST {confirm:true} downloads the new/changed files and applies it, with the pre-sync state kept as a version (like Onshape sync). Open to any signed-in user, like editing.
 export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
@@ -92,8 +86,7 @@ export async function POST(
   }
 
   try {
-    // The user's own Bambu connection drives MakerWorld downloads (and the
-    // API region); Printables needs no account.
+    // The user's own Bambu connection drives MakerWorld downloads (and the API region); Printables needs no account.
     const cred = makerworldId ? await getBambuCredential(session.user.id) : null;
     const region: BambuRegion = cred?.region ?? "global";
 
@@ -109,8 +102,7 @@ export async function POST(
     const plan = computeSyncPlan(model.files, upstream);
 
     if (planIsEmpty(plan)) {
-      // Bookkeeping only: refresh stale ids/tokens (adopted legacy imports)
-      // so the next diff is cheap. Not a content change — no version row.
+      // Bookkeeping only: refresh stale ids/tokens (adopted legacy imports) so the next diff is cheap. Not a content change — no version row.
       for (const stamp of plan.toStamp) {
         await db
           .update(modelFiles)
@@ -126,8 +118,7 @@ export async function POST(
       });
     }
 
-    // MakerWorld profile/scad downloads need a connected Bambu account; docs
-    // and the whole Printables flow don't.
+    // MakerWorld profile/scad downloads need a connected Bambu account; docs and the whole Printables flow don't.
     const needsBambu =
       makerworldId !== null &&
       [...plan.toImport, ...plan.toReplace.map((r) => r.upstream)].some(
@@ -171,12 +162,7 @@ export async function POST(
       );
     }
 
-    // Apply: staged files upsert into the imported set (replacing their
-    // matched row in place, keeping its position), planned removals drop
-    // whatever staging didn't already replace. Replaced/removed rows keep
-    // their S3 objects — the pre-sync version still references them; only
-    // generated variants (cascaded away with their .scad source) and keys
-    // orphaned by version pruning are deleted.
+    // Apply: staged files upsert into the imported set (replacing their matched row in place, keeping its position), planned removals drop whatever staging didn't already replace. Replaced/removed rows keep their S3 objects — the pre-sync version still references them; only generated variants (cascaded away with their .scad source) and keys orphaned by version pruning are deleted.
     const importedSet = model.files.filter(
       (f) =>
         f.imported &&
@@ -259,8 +245,7 @@ export async function POST(
         .set({ updatedAt: new Date() })
         .where(eq(models.id, model.id));
 
-      // Variants of a replaced/removed .scad cascade away with their source;
-      // snapshots never reference them, so their bytes go now.
+      // Variants of a replaced/removed .scad cascade away with their source; snapshots never reference them, so their bytes go now.
       const variantKeys = model.files
         .filter((f) => f.generatedFromId !== null && deletedIds.has(f.generatedFromId))
         .map((f) => f.s3Key);
@@ -297,10 +282,7 @@ export async function POST(
   }
 }
 
-// Resolves download URLs for the MakerWorld files the plan wants: each print
-// profile individually, all .scad sources via the single raw-files zip, docs
-// directly. Failed resolutions become warnings (the matched local row simply
-// stays); an expired login aborts the whole sync.
+// Resolves download URLs for the MakerWorld files the plan wants: each print profile individually, all .scad sources via the single raw-files zip, docs directly. Failed resolutions become warnings (the matched local row simply stays); an expired login aborts the whole sync.
 async function buildMakerworldAssets(
   plan: SyncPlan<MakerworldUpstreamFile>,
   design: Awaited<ReturnType<typeof fetchMakerworldDesign>>,
@@ -336,9 +318,7 @@ async function buildMakerworldAssets(
     });
   }
 
-  // Any changed/new .scad re-downloads the whole raw-files zip; staging
-  // extracts and re-stages every .scad entry, which the upsert step then
-  // matches back by id/name.
+  // Any changed/new .scad re-downloads the whole raw-files zip; staging extracts and re-stages every .scad entry, which the upsert step then matches back by id/name.
   const scad = wanted.find((e) => e.group === "scad");
   if (scad && typeof design.id === "number") {
     const result = await fetchRawModelDownload(design.id, "all", cred.token, cred.region);

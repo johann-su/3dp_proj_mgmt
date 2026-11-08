@@ -21,15 +21,7 @@ export const dynamic = "force-dynamic";
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-// Read-only preview of one version snapshot, so History entries can be
-// inspected before restoring. Renders the same ModelView as the model page,
-// but fed from the snapshot: files, images, PDFs, title/description, tags,
-// category and BOM all show the version's state. Interactive affordances
-// (edit, collections, sync, customize, per-file delete) are disabled by
-// passing modelId: null — the only actions are Restore and Back. Historical
-// bytes are served by /api/files/versions/[versionId]/[index]; the snapshot
-// keeps every referenced S3 object alive, so previews work even for files
-// that were later removed.
+// Read-only preview of one version snapshot, so History entries can be inspected before restoring. Renders the same ModelView as the model page, but fed from the snapshot: files, images, PDFs, title/description, tags, category and BOM all show the version's state. Interactive affordances (edit, collections, sync, customize, per-file delete) are disabled by passing modelId: null — the only actions are Restore and Back. Historical bytes are served by /api/files/versions/[versionId]/[index]; the snapshot keeps every referenced S3 object alive, so previews work even for files that were later removed.
 export default async function ModelVersionPreviewPage({
   params,
 }: {
@@ -58,8 +50,7 @@ export default async function ModelVersionPreviewPage({
   if (!version) notFound();
   const snapshot = version.snapshot;
 
-  // Version number = position in insertion order (identity ids — rows in one
-  // transaction share created_at), same numbering as the History panel.
+  // Version number = position in insertion order (identity ids — rows in one transaction share created_at), same numbering as the History panel.
   const versionIds = await db
     .select({ id: modelVersions.id })
     .from(modelVersions)
@@ -84,9 +75,7 @@ export default async function ModelVersionPreviewPage({
   const printFiles = files.filter((f) => f.kind === "model");
   const pdfFiles = files.filter((f) => f.kind === "pdf");
 
-  // Same estimate sourcing as the model page: embedded Bambu slice_info read
-  // live from S3 (ranged GETs), falling back to the values persisted in the
-  // snapshot.
+  // Same estimate sourcing as the model page: embedded Bambu slice_info read live from S3 (ranged GETs), falling back to the values persisted in the snapshot.
   const sliceInfos = await Promise.all(
     printFiles.map((f) => get3mfSliceInfo(f.s3Key, f.size)),
   );
@@ -115,8 +104,7 @@ export default async function ModelVersionPreviewPage({
     parametric: printFiles.some((f) => fileExtension(f.filename) === ".scad"),
     sourceUrl: model.sourceUrl ?? null,
     sourceName,
-    // Suppress the Onshape/source sync rows — syncing from inside a
-    // historical preview would be confusing (it acts on the live model).
+    // Suppress the Onshape/source sync rows — syncing from inside a historical preview would be confusing (it acts on the live model).
     onshapeWvm: null,
     makerworldUrl: null,
     media: media.map((f) => ({
@@ -152,8 +140,7 @@ export default async function ModelVersionPreviewPage({
         approx: isApproxEstimate(file),
         plateCount: info?.plateCount ?? null,
         printer: file.printerInfo ?? null,
-        // Historic rows may say "pending" forever — never show the
-        // "estimating…" pulse in a preview.
+        // Historic rows may say "pending" forever — never show the "estimating…" pulse in a preview.
         sliceStatus: file.sliceStatus === "failed" ? "failed" : null,
         sliceError: file.sliceError ?? null,
         sliceEngine: file.sliceEngine ?? null,
@@ -166,8 +153,7 @@ export default async function ModelVersionPreviewPage({
       filename: file.filename,
       size: file.size,
     })),
-    // null disables every mutating affordance in ModelView (collections,
-    // sync, customize, delete, history) — this page is read-only.
+    // null disables every mutating affordance in ModelView (collections, sync, customize, delete, history) — this page is read-only.
     modelId: null,
     canManage: false,
     isLoggedIn: false,

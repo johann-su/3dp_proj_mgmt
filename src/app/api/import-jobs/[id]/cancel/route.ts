@@ -6,8 +6,7 @@ import { getSession } from "@/lib/auth";
 
 export const runtime = "nodejs";
 
-// Flags a running job as canceled; the runner checks the status between
-// designs and stops. Models imported so far stay.
+// Flags a running job as canceled; the runner checks the status between designs and stops. Models imported so far stay.
 export async function POST(
   _req: NextRequest,
   { params }: { params: Promise<{ id: string }> },

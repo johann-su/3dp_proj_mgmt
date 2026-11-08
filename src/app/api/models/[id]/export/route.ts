@@ -12,29 +12,21 @@ import {
 import { readFileBytes } from "@/lib/storage";
 
 export const runtime = "nodejs";
-// Every attached file is read from S3 before the zip is built, so this is
-// slower than the other model routes on a file-heavy model.
+// Every attached file is read from S3 before the zip is built, so this is slower than the other model routes on a file-heavy model.
 export const maxDuration = 120;
 
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-// zipSync buffers the whole archive (plus its inputs) in memory, so the export
-// refuses models whose files together would blow up the server. Well past any
-// realistic model; revisit with a streaming zip if that stops being true.
+// zipSync buffers the whole archive (plus its inputs) in memory, so the export refuses models whose files together would blow up the server. Well past any realistic model; revisit with a streaming zip if that stops being true.
 const MAX_EXPORT_BYTES = 250 * 1024 * 1024;
 
-// Downloads the model's current state as a .zip: README.md (title, version,
-// description), bom.csv, and the live files under files/ documents/ images/.
-// Only the live files — model_versions snapshots are not exported (see
-// docs/architecture/versioning.md). Non-destructive, so it is session-gated
-// but not owner-gated, exactly like the per-file downloads it bundles.
+// Downloads the model's current state as a .zip: README.md (title, version, description), bom.csv, and the live files under files/ documents/ images/. Only the live files — model_versions snapshots are not exported (see docs/architecture/versioning.md). Non-destructive, so it is session-gated but not owner-gated, exactly like the per-file downloads it bundles.
 export async function GET(
   _req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
-  // Fetched by the model page's Export button (export-button.tsx), so the
-  // session cookie is always present — no need for the file-token mechanism.
+  // Fetched by the model page's Export button (export-button.tsx), so the session cookie is always present — no need for the file-token mechanism.
   if (!(await getSession())) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
@@ -50,12 +42,11 @@ export async function GET(
       title: true,
       description: true,
       sourceUrl: true,
-      onshapeMicroversion: true,
+      sourceRevision: true,
       videos: true,
     },
     with: {
-      // Ordered so the dedupe suffixes ("part-2.3mf") are stable across
-      // repeated exports of an unchanged model.
+      // Ordered so the dedupe suffixes ("part-2.3mf") are stable across repeated exports of an unchanged model.
       files: {
         columns: {
           kind: true,
@@ -88,9 +79,7 @@ export async function GET(
     );
   }
 
-  // The exported state is the current one, so the version it corresponds to is
-  // the newest — named after the History panel's numbering so a downloaded
-  // "…_v5.zip" matches the v5 the user sees in the app.
+  // The exported state is the current one, so the version it corresponds to is the newest — named after the History panel's numbering so a downloaded "…_v5.zip" matches the v5 the user sees in the app.
   const version = exportedVersionNumber(
     await db.$count(modelVersions, eq(modelVersions.modelId, id)),
   );
@@ -122,15 +111,14 @@ export async function GET(
     tags: model.modelTags.map((mt) => mt.tag.name),
     category: model.category?.name ?? null,
     sourceUrl: model.sourceUrl,
-    onshapeMicroversion: model.onshapeMicroversion,
+    sourceRevision: model.sourceRevision,
     videos: model.videos,
     exportedAt: new Date(),
     bomItems: model.bomItems,
     files,
   });
 
-  // BodyInit only accepts an ArrayBuffer-backed view; zipSync never allocates
-  // onto a SharedArrayBuffer, so the narrowing is safe.
+  // BodyInit only accepts an ArrayBuffer-backed view; zipSync never allocates onto a SharedArrayBuffer, so the narrowing is safe.
   return new Response(zip as Uint8Array<ArrayBuffer>, {
     headers: {
       "Content-Type": "application/zip",

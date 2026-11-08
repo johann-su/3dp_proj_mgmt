@@ -11,8 +11,7 @@ function decodeEntities(value: string) {
     .replace(/&amp;/g, "&");
 }
 
-// Decodes (possibly multiply-escaped) HTML-ish content and flattens it to
-// readable plain text with line breaks. Used for slicer/platform descriptions.
+// Decodes (possibly multiply-escaped) HTML-ish content and flattens it to readable plain text with line breaks. Used for slicer/platform descriptions.
 export function htmlishToText(raw: string): string {
   let text = raw;
   for (let i = 0; i < 4; i++) {
@@ -29,10 +28,7 @@ export function htmlishToText(raw: string): string {
     .trim();
 }
 
-// Peels off HTML-entity escaping until real tags surface, so both plain HTML
-// ("<h3>…") and Bambu Studio's double-escaped variety ("&amp;lt;h3&amp;gt;…")
-// reach the parser as actual markup. Once tags are present we stop and let the
-// parser decode the remaining entities in text nodes itself.
+// Peels off HTML-entity escaping until real tags surface, so both plain HTML ("<h3>…") and Bambu Studio's double-escaped variety ("&amp;lt;h3&amp;gt;…") reach the parser as actual markup. Once tags are present we stop and let the parser decode the remaining entities in text nodes itself.
 function decodeToHtml(raw: string): string {
   let text = raw;
   for (let i = 0; i < 4; i++) {
@@ -50,11 +46,7 @@ const turndown = new TurndownService({
   codeBlockStyle: "fenced",
 });
 
-// Converts (possibly multiply-escaped) HTML-ish content to Markdown, preserving
-// headings, emphasis, lists, links and images (images stay hot-linked to the
-// source CDN, since we don't stage description images to S3). The output is
-// rendered by the <Markdown> component, which ignores any raw HTML, so the
-// result stays safe to display.
+// Converts (possibly multiply-escaped) HTML-ish content to Markdown, preserving headings, emphasis, lists, links and images (images stay hot-linked to the source CDN, since we don't stage description images to S3). The output is rendered by the <Markdown> component, which ignores any raw HTML, so the result stays safe to display.
 export function htmlishToMarkdown(raw: string): string {
   return turndown
     .turndown(decodeToHtml(raw))

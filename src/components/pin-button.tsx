@@ -7,8 +7,7 @@ import { setHomePin } from "@/app/actions";
 import type { PinKind } from "@/lib/pins";
 import { Button } from "@/components/ui/button";
 
-// Pin/unpin a model or collection to the shared homepage "Pinned" section.
-// Optimistic like LikeButton: flip immediately, roll back on a server error.
+// Pin/unpin a model or collection to the shared homepage "Pinned" section. Optimistic like LikeButton: flip immediately, roll back on a server error.
 export function PinButton({
   kind,
   id,

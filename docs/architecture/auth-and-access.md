@@ -1,182 +1,43 @@
 # Auth & access control
 
-*Read before touching auth, sessions, roles, or any page/route/action's access
-checks. Update in the same PR that changes this behaviour.*
+*Read before touching auth, sessions, roles, or any page/route/action's access checks. Update in the same PR that changes this behaviour.*
 
 ## The whole catalog is private
 
-Instances hold paid models. Two layers: `src/proxy.ts` (Next 16's renamed
-middleware) redirects pages without a session *cookie* to `/sign-in`, but
-that's an optimistic presence check a hand-set cookie defeats and its matcher
-skips `/api` — so every page also verifies the session server-side
-(`getSession()` + redirect), and every API route and server action checks it
-too (list-type actions return an empty page instead). Keep both checks when
-adding a page. Both layers preserve the requested page across login (shared
-links land where they pointed): the proxy redirects to
-`/sign-in?callbackUrl=<path>` and also forwards the original path as the
-`x-callback-path` request header, which the page-level guard reads — so write
-the guard as `if (!session) redirect(await signInRedirect())` (from
-`@/lib/auth`), not a bare `redirect("/sign-in")`. The callback value is
-attacker-controlled (URL bar); `safeCallbackPath` (`src/lib/callback-url.ts`,
-unit-tested) validates it down to an in-app path — reject-listing
-absolute/protocol-relative URLs, control chars, and `/api`/auth paths — before
-anything redirects to it, and the sign-in/sign-up pages re-validate server-side
-before handing it to the client forms (email `router.push` and the OIDC
-`callbackURL`).
+Instances hold paid models. Two layers: `src/proxy.ts` (Next 16's renamed middleware) redirects pages without a session *cookie* to `/sign-in`, but that's an optimistic presence check a hand-set cookie defeats and its matcher skips `/api` — so every page also verifies the session server-side (`getSession()` + redirect), and every API route and server action checks it too (list-type actions return an empty page instead). Keep both checks when adding a page. Both layers preserve the requested page across login (shared links land where they pointed): the proxy redirects to `/sign-in?callbackUrl=<path>` and also forwards the original path as the `x-callback-path` request header, which the page-level guard reads — so write the guard as `if (!session) redirect(await signInRedirect())` (from `@/lib/auth`), not a bare `redirect("/sign-in")`. The callback value is attacker-controlled (URL bar); `safeCallbackPath` (`src/lib/callback-url.ts`, unit-tested) validates it down to an in-app path — reject-listing absolute/protocol-relative URLs, control chars, and `/api`/auth paths — before anything redirects to it, and the sign-in/sign-up pages re-validate server-side before handing it to the client forms (email `router.push` and the OIDC `callbackURL`).
 
-There is no finer-grained RBAC on purpose: signed in = full read access, and
-**editing is collaborative — any signed-in user can edit a model or
-collection** (update fields/files, generate customizer variants, run
-Onshape/MakerWorld sync, add/remove collection members), since a self-hosted
-instance serves a trusted group and shared editing is worth more than the risk.
-**Destructive/owner-scoped actions stay owner-gated**: deleting a model
-(`deleteModel`, a soft delete into the owner's trash — see
-[versioning](./versioning.md)) or collection (`deleteCollection`); deleting a
-generated variant is owner-or-its-generator. When adding a mutation, follow
-this split — open editing to any session, gate only deletion/ownership transfer
-on `canActAsOwner(session.user, record.userId)` (owner, or a moderator/admin
-acting owner-equivalent — see the roles section below).
+There is no finer-grained RBAC on purpose: signed in = full read access, and **editing is collaborative — any signed-in user can edit a model or collection** (update fields/files, generate customizer variants, run Onshape/MakerWorld sync, add/remove collection members), since a self-hosted instance serves a trusted group and shared editing is worth more than the risk. **Destructive/owner-scoped actions stay owner-gated**: deleting a model (`deleteModel`, a soft delete into the owner's trash — see [versioning](./versioning.md)) or collection (`deleteCollection`); deleting a generated variant is owner-or-its-generator. When adding a mutation, follow this split — open editing to any session, gate only deletion/ownership transfer on `canActAsOwner(session.user, record.userId)` (owner, or a moderator/admin acting owner-equivalent — see the roles section below).
 
 ## Public share links
 
-The one deliberate hole in "signed in = read access": an owner can give a single
-model or collection a **public link** (`/share/<token>`) that works without a
-session. Everything about it is built so the token is the *only* credential
-and revoking it takes effect immediately:
+The one deliberate hole in "signed in = read access": an owner can give a single model or collection a **public link** (`/share/<token>`) that works without a session. Everything about it is built so the token is the *only* credential and revoking it takes effect immediately:
 
-- **Storage** — `model_share_links` / `collection_share_links`, keyed by the
-  target id (≤ 1 live link per item, cascading with it). The token is 32 random
-  bytes base64url (`generateShareToken`, `src/lib/share-token.ts`), stored
-  in plaintext so the dialog can show it again — a DB-read compromise already
-  exposes far more. Revoke = delete the row; re-enable mints a new token, so a
-  revoked URL never resolves again.
-- **Who** — `setPublicShare` (`src/app/share/actions.ts`) is asymmetric:
-  *enabling* is owner-gated (`canActAsOwner`) because it publishes possibly paid
-  content outside the instance; *revoking* is open to any session because it
-  only ever makes things more private. **Known gap, accepted for now:** the
-  gate is on the *collection's* owner, not its members' owners — a user's
-  public collection exposes every model in it, including other users' models
-  they couldn't share individually, and since collection editing is
-  collaborative anyone can add models to a public collection. A stricter
-  `shareGrantsModel` (e.g. only members whose owner could share them, or a
-  per-model opt-in) would close it; the user docs warn about it
-  (`docs/features/sharing.mdx`).
-- **Resolution** — every public page and file request goes through
-  `resolveShareLink` + `shareGrantsModel` (`src/lib/share-links.ts`): token
-  shape check before any query, `DISABLE_PUBLIC_SHARING` checked per request
-  (kill switch that keeps the rows), trashed models resolve to nothing, and
-  collection links grant only *current* non-trashed members (live rule
-  evaluation for smart collections — so a smart link can widen by itself; the
-  dialog warns). Every failure is a plain 404, never a sign-in redirect.
-- **Surface** — `/share/<token>` and `/share/<token>/models/<id>` (allowed
-  through `proxy.ts`'s `PUBLIC_PATHS`) and `/api/files/shared/<fileId>?share=`
-  (plus its path form `/api/files/shared/<fileId>/<token>/<name>` for slicer
-  deep links — `sharedSlicerFileBase`, same check), and the BOM image proxy's
-  item mode `/api/bom-image?share=<token>&item=<bomItemId>`
-  (`sharedBomImageSrc`): it fetches only the URL stored on that item after the
-  same share/model check, so visitors name an item, never a URL. The proxy's
-  member `?url=` mode (an arbitrary server-side fetch) stays session-only.
-  The pages render `ModelView` from `loadSharedModelView`
-  (`src/app/share/[token]/shared-model.ts`), an **allowlist** projection: no
-  history, likes, collections or customizer, category/tag badges
-  unlinked, `modelId: null` so no mutating UI renders. **Adding a field to the
-  member model page does not expose it publicly** — add it there only if it is
-  meant for anonymous visitors.
-- **Files** are served with share-scoped URLs (`sharedFileSrc`), never
-  `fileSrc` file tokens — those live 1–2 weeks and would outlive a revocation.
-  The route sends `private, max-age=300` (no shared/CDN caching). Accepted
-  residual: the next/image optimizer keeps resized images for
-  `minimumCacheTTL`, reachable only via the optimizer URL of someone who had
-  the link.
-- **Chrome / indexing** — anonymous visitors on `/share/*` get a bare header
-  instead of the catalog sidebar (`src/components/app-shell.tsx`); pages carry
-  `robots: noindex` metadata and an `X-Robots-Tag` header (`next.config.ts`).
-  Referrer-Policy `strict-origin-when-cross-origin` keeps the token out of
-  third-party `Referer`s.
+- **Storage** — `model_share_links` / `collection_share_links`, keyed by the target id (≤ 1 live link per item, cascading with it). The token is 32 random bytes base64url (`generateShareToken`, `src/lib/share-token.ts`), stored in plaintext so the dialog can show it again — a DB-read compromise already exposes far more. Revoke = delete the row; re-enable mints a new token, so a revoked URL never resolves again.
+- **Who** — `setPublicShare` (`src/app/share/actions.ts`) is asymmetric: *enabling* is owner-gated (`canActAsOwner`) because it publishes possibly paid content outside the instance; *revoking* is open to any session because it only ever makes things more private. **Known gap, accepted for now:** the gate is on the *collection's* owner, not its members' owners — a user's public collection exposes every model in it, including other users' models they couldn't share individually, and since collection editing is collaborative anyone can add models to a public collection. A stricter `shareGrantsModel` (e.g. only members whose owner could share them, or a per-model opt-in) would close it; the user docs warn about it (`docs/features/sharing.mdx`).
+- **Resolution** — every public page and file request goes through `resolveShareLink` + `shareGrantsModel` (`src/lib/share-links.ts`): token shape check before any query, `DISABLE_PUBLIC_SHARING` checked per request (kill switch that keeps the rows), trashed models resolve to nothing, and collection links grant only *current* non-trashed members (live rule evaluation for smart collections — so a smart link can widen by itself; the dialog warns). Every failure is a plain 404, never a sign-in redirect.
+- **Surface** — `/share/<token>` and `/share/<token>/models/<id>` (allowed through `proxy.ts`'s `PUBLIC_PATHS`) and `/api/files/shared/<fileId>?share=` (plus its path form `/api/files/shared/<fileId>/<token>/<name>` for slicer deep links — `sharedSlicerFileBase`, same check), and the BOM image proxy's item mode `/api/bom-image?share=<token>&item=<bomItemId>` (`sharedBomImageSrc`): it fetches only the URL stored on that item after the same share/model check, so visitors name an item, never a URL. The proxy's member `?url=` mode (an arbitrary server-side fetch) stays session-only. The pages render `ModelView` from `loadSharedModelView` (`src/app/share/[token]/shared-model.ts`), an **allowlist** projection: no history, likes, collections or customizer, category/tag badges unlinked, `modelId: null` so no mutating UI renders. **Adding a field to the member model page does not expose it publicly** — add it there only if it is meant for anonymous visitors.
+- **Files** are served with share-scoped URLs (`sharedFileSrc`), never `fileSrc` file tokens — those live 1–2 weeks and would outlive a revocation. The route sends `private, max-age=300` (no shared/CDN caching). Accepted residual: the next/image optimizer keeps resized images for `minimumCacheTTL`, reachable only via the optimizer URL of someone who had the link.
+- **Chrome / indexing** — anonymous visitors on `/share/*` get a bare header instead of the catalog sidebar (`src/components/app-shell.tsx`); pages carry `robots: noindex` metadata and an `X-Robots-Tag` header (`next.config.ts`). Referrer-Policy `strict-origin-when-cross-origin` keeps the token out of third-party `Referer`s.
 
 ## User roles
 
-(issue #54; tier definitions + pure helpers in `src/lib/roles.ts`):
-`user.role` is `user | moderator | admin`, exposed as `session.user.role` via
-BetterAuth `user.additionalFields` (`input: false`, so sign-up payloads can't
-self-assign a role). **Moderator = owner-equivalent on content**:
-`canActAsOwner(session.user, ownerId)` is the standard owner gate and passes
-for moderators/admins — model trash/restore/purge, collection deletion, variant
-deletion, and the matching UI flags all use it; moderators also see (and their
-page load sweeps) *everyone's* trash, and Settings → Duplicates
-(`src/app/settings/duplicates/`, `isModerator` on the page *and* both actions)
-is theirs to work through — see
-[`import.md`](./import.md#duplicate-detection). **Admin = moderator + user
-management**:
-Settings → Users (`src/app/settings/users/`) lists all accounts, edits roles
-(`setUserRole`) and deletes accounts (`deleteUser`) — the two mutations gated
-on `isAdmin`; admins cannot change their own role or delete their own account,
-so someone can always undo a mistake. Deleting a user purges their models up
-front via `purgeModel` (the user-row FK cascade would leak the S3 objects) and
-then lets the cascades take sessions, collections and credentials; their
-version edits and generated variants on other users' models survive with the
-reference nulled.
+(issue #54; tier definitions + pure helpers in `src/lib/roles.ts`): `user.role` is `user | moderator | admin`, exposed as `session.user.role` via BetterAuth `user.additionalFields` (`input: false`, so sign-up payloads can't self-assign a role). **Moderator = owner-equivalent on content**: `canActAsOwner(session.user, ownerId)` is the standard owner gate and passes for moderators/admins — model trash/restore/purge, collection deletion, variant deletion, and the matching UI flags all use it; moderators also see (and their page load sweeps) *everyone's* trash, and Settings → Duplicates (`src/app/settings/duplicates/`, `isModerator` on the page *and* both actions) is theirs to work through — see [`import.md`](./import.md#duplicate-detection). **Admin = moderator + user management**: Settings → Users (`src/app/settings/users/`) lists all accounts, edits roles (`setUserRole`) and deletes accounts (`deleteUser`) — the two mutations gated on `isAdmin`; admins cannot change their own role or delete their own account, so someone can always undo a mistake. Deleting a user purges their models up front via `purgeModel` (the user-row FK cascade would leak the S3 objects) and then lets the cascades take sessions, collections and credentials; their version edits and generated variants on other users' models survive with the reference nulled.
 
-First-admin bootstrap: `INITIAL_ADMIN_EMAIL` applies only while the DB has
-**no admin at all** — enforced at user creation
-(`databaseHooks.user.create.before` in `src/lib/auth.ts`, covers fresh DBs
-incl. first OIDC login) and lazily on settings-layout load
-(`ensureInitialAdmin` in `src/lib/admin.ts`, covers accounts predating the
-feature; same no-scheduler pattern as the trash sweep) — once an admin exists
-it is inert, doubling as recovery for a zero-admin DB.
+First-admin bootstrap: `INITIAL_ADMIN_EMAIL` applies only while the DB has **no admin at all** — enforced at user creation (`databaseHooks.user.create.before` in `src/lib/auth.ts`, covers fresh DBs incl. first OIDC login) and lazily on settings-layout load (`ensureInitialAdmin` in `src/lib/admin.ts`, covers accounts predating the feature; same no-scheduler pattern as the trash sweep) — once an admin exists it is inert, doubling as recovery for a zero-admin DB.
 
-**OIDC group mapping**: `OIDC_ADMIN_GROUP` / `OIDC_MODERATOR_GROUP` name IdP
-groups (exact strings from the `groups` claim; Authentik sends it with the
-`profile` scope) whose membership is authoritative on every SSO login — synced
-in `mapProfileToUser` (`applyOidcGroupRole`), which must update the row itself
-because BetterAuth strips `input: false` fields from provider profiles; first
-logins hand the role to the create hook via the `pendingOidcRoles` map. A
-missing/malformed claim leaves stored roles untouched (no mass-demotion on IdP
-misconfig). Deliberately **not** BetterAuth's organization plugin
-(per-organization membership roles + org/member/invitation tables — the wrong
-shape for one instance-global role) nor its admin plugin (would add
-ban/impersonation endpoints and schema columns this app doesn't want). When
-adding an owner-gated mutation use `canActAsOwner`; gate admin-only surfaces on
-`isAdmin(session.user.role)`.
+**OIDC group mapping**: `OIDC_ADMIN_GROUP` / `OIDC_MODERATOR_GROUP` name IdP groups (exact strings from the `groups` claim; Authentik sends it with the `profile` scope) whose membership is authoritative on every SSO login — synced in `mapProfileToUser` (`applyOidcGroupRole`), which must update the row itself because BetterAuth strips `input: false` fields from provider profiles; first logins hand the role to the create hook via the `pendingOidcRoles` map. A missing/malformed claim leaves stored roles untouched (no mass-demotion on IdP misconfig). Deliberately **not** BetterAuth's organization plugin (per-organization membership roles + org/member/invitation tables — the wrong shape for one instance-global role) nor its admin plugin (would add ban/impersonation endpoints and schema columns this app doesn't want). When adding an owner-gated mutation use `canActAsOwner`; gate admin-only surfaces on `isAdmin(session.user.role)`.
 
 ## Auth provider
 
-Auth is BetterAuth email/password with sessions stored in Postgres.
-`DISABLE_SIGNUP=true` turns off self-registration (BetterAuth's
-`emailAndPassword.disableSignUp` plus hiding the `/sign-up` page); OIDC keeps
-provisioning users on first login regardless — who may authenticate through SSO
-is the IdP's decision.
+Auth is BetterAuth email/password with sessions stored in Postgres. `DISABLE_SIGNUP=true` turns off self-registration (BetterAuth's `emailAndPassword.disableSignUp` plus hiding the `/sign-up` page); OIDC keeps provisioning users on first login regardless — who may authenticate through SSO is the IdP's decision.
 
-`DISABLE_PASSWORD_LOGIN=true` goes further and sets
-`emailAndPassword.enabled: false`, so BetterAuth stops serving the email
-sign-in endpoint and the IdP becomes the only way in (existing sessions are
-untouched; existing credential rows simply stop working). The sign-in page
-hides the email/password fields and `/sign-up` redirects away, since
-registering is email/password only. **The flag is ignored unless `oidcEnabled`**
-— honouring it without an IdP would leave nobody able to sign in, and locking
-the operator out is worse than the door it closes; the resolution lives in
-`passwordLoginEnabled` (`src/lib/auth-config.ts`, unit-tested), kept in its own
-module because `@/lib/auth` opens a DB pool at import time. Setting it without
-OIDC logs a warning at boot.
+`DISABLE_PASSWORD_LOGIN=true` goes further and sets `emailAndPassword.enabled: false`, so BetterAuth stops serving the email sign-in endpoint and the IdP becomes the only way in (existing sessions are untouched; existing credential rows simply stop working). The sign-in page hides the email/password fields and `/sign-up` redirects away, since registering is email/password only. **The flag is ignored unless `oidcEnabled`** — honouring it without an IdP would leave nobody able to sign in, and locking the operator out is worse than the door it closes; the resolution lives in `passwordLoginEnabled` (`src/lib/auth-config.ts`, unit-tested), kept in its own module because `@/lib/auth` opens a DB pool at import time. Setting it without OIDC logs a warning at boot.
 
-**One surface authenticates without a session cookie**: the MCP server
-(`/api/mcp`, issue #96) takes an OAuth bearer token instead, minted by
-BetterAuth's `mcp` plugin, and a token carries the same whole-catalog read
-access its user has. The whole thing — plugin, endpoint, discovery documents,
-consent page — is off unless `ENABLE_MCP` is set, because enabling it also
-opens an unauthenticated client-registration endpoint. See
-[mcp.md](./mcp.md) before touching any of it.
+**Two surfaces authenticate without a session cookie**, each off unless the operator opts in:
 
-Because signing in grants read access to the *whole* catalog, these two flags
-plus `TRUSTED_PROXY_CIDRS` are the perimeter for any internet-facing instance —
-see [self-hosting.mdx](../self-hosting.mdx#exposing-an-instance-to-the-internet).
-Baseline security headers (CSP, HSTS, `frame-ancestors: none`, `nosniff`,
-`Referrer-Policy`, `Permissions-Policy`) are set in `next.config.ts` rather than
-at the proxy, so they hold however the app is fronted. The CSP keeps
-`'unsafe-inline'` for scripts and styles: Next inlines its bootstrap/flight
-payload, and tightening it means nonces, which means making every page dynamic.
-Everything else is same-origin bar one third party, the model gallery's
-YouTube videos (`src/lib/video.ts`): `frame-src` allows
-`https://www.youtube.com` (the player, framed only after a click) and `img-src`
-allows `https://i.ytimg.com` (poster frames). Both srcs are rebuilt from the
-parsed 11-character video id, never from the stored string.
+- **The MCP server** (`/api/mcp`, issue #96) takes an OAuth bearer token (a short-lived JWT) minted by `@better-auth/mcp`; a token carries the same whole-catalog read access its user has. `ENABLE_MCP` gates it because enabling it also opens an unauthenticated client-registration endpoint. See [mcp.md](./mcp.md).
+- **The REST API** (`/api/v1`) takes a personal API key (`@better-auth/api-key`) limited to scopes the user picked, acting as that user — so editing is collaborative and deletion owner-gated exactly as in the browser, because both paths call the same mutation core (`src/lib/model-mutations.ts`). Keys never double as sessions (`enableSessionForAPIKeys: false`), and cookie-authenticated routes don't accept them. `ENABLE_API` gates it because a key bypasses SSO and its MFA. See [api.md](./api.md).
+
+**OIDC callback path.** BetterAuth 1.7 serves generic OAuth providers on the core `/api/auth/callback/<id>` route; the provider is configured with `redirectURI` = the pre-1.7 `/api/auth/oauth2/callback/oidc`, and `src/app/api/auth/oauth2/callback/[providerId]/route.ts` forwards that path to the new handler, so operators' IdP registrations survive the upgrade (with `DISABLE_PASSWORD_LOGIN` a broken callback would lock everyone out). 1.7 also verifies ID tokens against the IdP's JWKS and uses PKCE — an IdP signing with HS256 fails sign-in. Verified end to end against a mock OIDC provider (navikt `mock-oauth2-server`).
+
+Because signing in grants read access to the *whole* catalog, these two flags plus `TRUSTED_PROXY_CIDRS` are the perimeter for any internet-facing instance — see [self-hosting.mdx](../self-hosting.mdx#exposing-an-instance-to-the-internet). Baseline security headers (CSP, HSTS, `frame-ancestors: none`, `nosniff`, `Referrer-Policy`, `Permissions-Policy`) are set in `next.config.ts` rather than at the proxy, so they hold however the app is fronted. The CSP keeps `'unsafe-inline'` for scripts and styles: Next inlines its bootstrap/flight payload, and tightening it means nonces, which means making every page dynamic. Everything else is same-origin bar one third party, the model gallery's YouTube videos (`src/lib/video.ts`): `frame-src` allows `https://www.youtube.com` (the player, framed only after a click) and `img-src` allows `https://i.ytimg.com` (poster frames). Both srcs are rebuilt from the parsed 11-character video id, never from the stored string.

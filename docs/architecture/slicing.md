@@ -1,302 +1,74 @@
 # Slicer estimates & "open in slicer" deep links
 
-*Read before touching print estimates, the slicer service, or the slicer deep
-links. Update in the same PR that changes this behaviour.*
+*Read before touching print estimates, the slicer service, or the slicer deep links. Update in the same PR that changes this behaviour.*
 
 ## Print estimates
 
-Print estimates come from two sources. Files sliced in Bambu Studio /
-OrcaSlicer embed per-plate predictions in `Metadata/slice_info.config`, which
-are read directly from S3 via ranged GETs (`src/lib/threemf-remote.ts`).
-Unsliced `.3mf` files are sent to the **slicer service** (`slicer/`, the third
-compose container): a zero-dependency Node HTTP wrapper around the headless
-**OrcaSlicer CLI** (the extracted Linux AppImage, pinned by `ORCA_VERSION` in
-`slicer/Dockerfile` and bumped by Renovate). It runs
-`--slice <plate> --export-3mf` and reads the totals from the *output's*
-`slice_info.config` — the same file the embedded path parses, summed over
-plates — and failures from the `result.json` the CLI writes next to it.
+Print estimates come from two sources. Files sliced in Bambu Studio / OrcaSlicer embed per-plate predictions in `Metadata/slice_info.config`, which are read directly from S3 via ranged GETs (`src/lib/threemf-remote.ts`). Unsliced `.3mf` files are sent to the **slicer service** (`slicer/`, the third compose container): a zero-dependency Node HTTP wrapper around the headless **OrcaSlicer CLI** (the extracted Linux AppImage, pinned by `ORCA_VERSION` in `slicer/Dockerfile` and bumped by Renovate). It runs `--slice <plate> --export-3mf` and reads the totals from the *output's* `slice_info.config` — the same file the embedded path parses, summed over plates — and failures from the `result.json` the CLI writes next to it.
 
-How a file is sliced depends on what it carries (`planSlice` in
-`slicer/server.mjs`, pure helpers in `slicer/lib.mjs`):
+How a file is sliced depends on what it carries (`planSlice` in `slicer/server.mjs`, pure helpers in `slicer/lib.mjs`):
 
-- **Bambu/Orca projects** (`project_settings.config`) slice **natively**: the
-  project's own printer/process/filament settings and plate layout, no
-  translation. Checked against Bambu Studio on a real project: 24157 s vs
-  24180 s, 202.21 g vs 202.25 g. Two CLI quirks are handled here — an **empty
-  plate aborts a whole `--slice 0` run** (return code -50), so a project with
-  any empty plate (`model_settings.config` plate without `<model_instance>`)
-  is sliced plate by plate, skipping the empty ones; and the CLI **rejects any
-  project whose settings name a `post_process` script** (it never runs them —
-  upstream commented the call out), so those are stripped and the entry
-  rewritten in the archive with `zip` first. `--allow-newer-file=1` keeps
-  projects from a newer slicer than the CLI from being flagged unsliceable.
-  Such projects can still carry **values Orca rejects**: out-of-range "auto"
-  sentinels (return code -18, `key: -1 not in range`) and custom G-code with
-  placeholders Orca lacks (-100, `machine_start_gcode Parsing error`). The
-  service repairs and retries (`repairSettings`, up to 5 rounds — a Bambu
-  Studio 02.08 A2L project from MakerWorld needed 3): out-of-range keys are
-  dropped (Orca's default applies), unparsable G-code blanked. Orca's error
-  names can differ from the project's keys by underscores (`timelapse_gcode`
-  vs `time_lapse_gcode`). Blanking `change_filament_gcode` drops the purge and
-  swap moves, so a repaired multi-colour estimate runs low (that A2L file:
-  7.2 h vs MakerWorld's 12.7 h); the response lists `repairedSettings` and the
-  service logs them. Slicing such files exactly needs a slicer that knows
-  them — the Bambu Studio CLI is the obvious second backend.
-- **PrusaSlicer projects** (`Slic3r_PE.config`) — Orca **ignores that file**,
-  so known keys are translated to Orca names (`prusaIniToOrca`: layer height,
-  walls, infill, speeds, accelerations, machine limits, and the per-extruder
-  filament values of the extruder the objects use, per
-  `Slic3r_PE_model.config`) and passed as `--key=value` CLI flags over the
-  generic profile, including the project's `bed_shape`/`max_print_height`
-  so "doesn't fit" refers to the project's printer. Only whitelisted keys
-  with plain values carry over. Orca
-  rejects unknown flags ("setup params error"), so a mapping typo fails every
-  PrusaSlicer file — verify new mappings against the real CLI.
-- **Anything else** uses the **generic profile**: Orca system presets named
-  by `SLICER_GENERIC_MACHINE`/`_PROCESS`/`_FILAMENT` on the slicer container
-  (default `Bambu Lab P1S 0.4 nozzle` / `0.20mm Standard @BBL X1C` / `Bambu
-  PLA Basic @BBL X1C`), **flattened at startup** by `presets.mjs` — a bad
-  name fails the service at startup, naming it. Presets are found through
-  each vendor's index (`profiles/<Vendor>.json`, `{name, sub_path}` per kind
-  — files are nested and named unlike their `name`), and inheritance
-  resolves within the vendor a preset came from (base presets like
-  `fdm_filament_pla` exist per vendor with different content; shared
-  filaments come from `OrcaFilamentLibrary`). The CLI's `--load-settings`
-  does **not** resolve `inherits`, so an unflattened system preset silently
-  loses every value defined on its bases (filament density → empty weight,
-  the start G-code → "incorrect slicing parameters"). The process/filament
-  must also list the machine in `compatible_printers`, or the CLI refuses the
-  combination. The machine keeps its **real bed**, with `--arrange 1` (these
-  files have no plate layout to honor).
+- **Bambu/Orca projects** (`project_settings.config`) slice **natively**: the project's own printer/process/filament settings and plate layout, no translation. Checked against Bambu Studio on a real project: 24157 s vs 24180 s, 202.21 g vs 202.25 g. Two CLI quirks are handled here — an **empty plate aborts a whole `--slice 0` run** (return code -50), so a project with any empty plate (`model_settings.config` plate without `<model_instance>`) is sliced plate by plate, skipping the empty ones; and the CLI **rejects any project whose settings name a `post_process` script** (it never runs them — upstream commented the call out), so those are stripped and the entry rewritten in the archive with `zip` first. `--allow-newer-file=1` keeps projects from a newer slicer than the CLI from being flagged unsliceable. Such projects can still carry **values Orca rejects**: out-of-range "auto" sentinels (return code -18, `key: -1 not in range`) and custom G-code with placeholders Orca lacks (-100, `machine_start_gcode Parsing error`). The service repairs and retries (`repairSettings`, up to 5 rounds — a Bambu Studio 02.08 A2L project from MakerWorld needed 3): out-of-range keys are dropped (Orca's default applies), unparsable G-code blanked. Orca's error names can differ from the project's keys by underscores (`timelapse_gcode` vs `time_lapse_gcode`). Blanking `change_filament_gcode` drops the purge and swap moves, so a repaired multi-colour estimate runs low (that A2L file: 7.2 h vs MakerWorld's 12.7 h); the response lists `repairedSettings` and the service logs them. Slicing such files exactly needs a slicer that knows them — the Bambu Studio CLI is the obvious second backend.
+- **PrusaSlicer projects** (`Slic3r_PE.config`) — Orca **ignores that file**, so known keys are translated to Orca names (`prusaIniToOrca`: layer height, walls, infill, speeds, accelerations, machine limits, and the per-extruder filament values of the extruder the objects use, per `Slic3r_PE_model.config`) and passed as `--key=value` CLI flags over the generic profile, including the project's `bed_shape`/`max_print_height` so "doesn't fit" refers to the project's printer. Only whitelisted keys with plain values carry over. Orca rejects unknown flags ("setup params error"), so a mapping typo fails every PrusaSlicer file — verify new mappings against the real CLI.
+- **Anything else** uses the **generic profile**: Orca system presets named by `SLICER_GENERIC_MACHINE`/`_PROCESS`/`_FILAMENT` on the slicer container (default `Bambu Lab P1S 0.4 nozzle` / `0.20mm Standard @BBL X1C` / `Bambu PLA Basic @BBL X1C`), **flattened at startup** by `presets.mjs` — a bad name fails the service at startup, naming it. Presets are found through each vendor's index (`profiles/<Vendor>.json`, `{name, sub_path}` per kind — files are nested and named unlike their `name`), and inheritance resolves within the vendor a preset came from (base presets like `fdm_filament_pla` exist per vendor with different content; shared filaments come from `OrcaFilamentLibrary`). The CLI's `--load-settings` does **not** resolve `inherits`, so an unflattened system preset silently loses every value defined on its bases (filament density → empty weight, the start G-code → "incorrect slicing parameters"). The process/filament must also list the machine in `compatible_printers`, or the CLI refuses the combination. The machine keeps its **real bed**, with `--arrange 1` (these files have no plate layout to honor).
 
-A model that doesn't fit its printer's bed fails with return code -50 — the
-same code as an empty plate, but empty plates are skipped before slicing, so
-the service reports it as `plate N: doesn't fit on the <printer> (X × Y × Z
-mm)` (`describePrinter`); the model page shows that sentence
-(`sliceFailureMessage` in `src/lib/printer-info.ts`) instead of "may not be
-printable". A successful response also names the `printer` and `engine`
-(from the output's `slice_info.config` header); the app stores the engine as
-`model_files.slice_engine` (embedded estimates record their own slicer the
-same way) and, for `profile: "generic"`, the printer as `slice_printer`,
-which the file card shows when the file names no printer of its own.
+A model that doesn't fit its printer's bed fails with return code -50 — the same code as an empty plate, but empty plates are skipped before slicing, so the service reports it as `plate N: doesn't fit on the <printer> (X × Y × Z mm)` (`describePrinter`); the model page shows that sentence (`sliceFailureMessage` in `src/lib/printer-info.ts`) instead of "may not be printable". A successful response also names the `printer` and `engine` (from the output's `slice_info.config` header); the app stores the engine as `model_files.slice_engine` (embedded estimates record their own slicer the same way) and, for `profile: "generic"`, the printer as `slice_printer`, which the file card shows when the file names no printer of its own.
 
 ### Which app created a file
 
-`model_files.creator_app`/`creator_version` record the application that
-**created** the `.3mf` — not the slicer behind the estimate (`slice_engine`) —
-so slicing can later be routed to a matching backend. `parseFileCreator`
-(`src/lib/file-creator.ts`) reads it from the archive: OrcaSlicer's own
-`<metadata name="OrcaSlicer">` first (Orca writes `Application =
-BambuStudio-<compat version>` for compatibility, so checking `Application`
-first would call every Orca file Bambu Studio), then `Application`, then
-PrusaSlicer's `Slic3r_PE.config` header. Only the head of `3D/3dmodel.model`
-is fetched and stream-inflated (`readEntryHead`): the metadata precedes the
-geometry, which is inline (and can be huge) for PrusaSlicer and CAD exports.
-Files that name no creator fall back to their origin (`creatorFallback`):
-Onshape exports → "Onshape", OpenSCAD variants → "OpenSCAD"; anything else
-stays null. Written with `printer_info` on upload/re-slice (independent of
-`SLICER_URL`); `npm run db:backfill-creator` fills existing rows. Not shown in
-the UI yet.
+`model_files.creator_app`/`creator_version` record the application that **created** the `.3mf` — not the slicer behind the estimate (`slice_engine`) — so slicing can later be routed to a matching backend. `parseFileCreator` (`src/lib/file-creator.ts`) reads it from the archive: OrcaSlicer's own `<metadata name="OrcaSlicer">` first (Orca writes `Application = BambuStudio-<compat version>` for compatibility, so checking `Application` first would call every Orca file Bambu Studio), then `Application`, then PrusaSlicer's `Slic3r_PE.config` header. Only the head of `3D/3dmodel.model` is fetched and stream-inflated (`readEntryHead`): the metadata precedes the geometry, which is inline (and can be huge) for PrusaSlicer and CAD exports. Files that name no creator fall back to their origin (`creatorFallback`): Onshape exports → "Onshape", OpenSCAD variants → "OpenSCAD"; anything else stays null. Written with `printer_info` on upload/re-slice (independent of `SLICER_URL`); `npm run db:backfill-creator` fills existing rows. Not shown in the UI yet.
 
 ### Mid-print filament changes
 
-`printer_info.filamentChanges` answers MakerWorld's "AMS" question: does a
-**single plate** print from more than one filament? One plate is one print,
-so a project whose plates each use another filament needs no AMS. It comes
-from the **sliced** per-plate `<filament>` list in `slice_info.config` —
-painted multi-colour only resolves when slicing — either the file's own
-(embedded path, `readSliceData`) or the service's output (`plateFilaments`).
-`filamentChangesFromPlates` is the one rule for both: "none", "color" (same
-material) or "material"; null when no plate lists filaments (older slicers),
-which is unknown rather than "none". `filamentSummary().multi` uses it and
-falls back to the old used-slots guess only for rows sliced before it existed.
+`printer_info.filamentChanges` answers MakerWorld's "AMS" question: does a **single plate** print from more than one filament? One plate is one print, so a project whose plates each use another filament needs no AMS. It comes from the **sliced** per-plate `<filament>` list in `slice_info.config` — painted multi-colour only resolves when slicing — either the file's own (embedded path, `readSliceData`) or the service's output (`plateFilaments`). `filamentChangesFromPlates` is the one rule for both: "none", "color" (same material) or "material"; null when no plate lists filaments (older slicers), which is unknown rather than "none". `filamentSummary().multi` uses it and falls back to the old used-slots guess only for rows sliced before it existed.
 
-The CLI is the GUI binary run headless — no X server or xvfb is needed, but
-the GTK/WebKit/GL runtime libraries must be installed. Orca writes a log into
-its working directory and unpacks models under `$TMPDIR`, so both point at
-the per-request temp dir. The output dir must exist before the run, or early
-failures can't write `result.json`.
+The CLI is the GUI binary run headless — no X server or xvfb is needed, but the GTK/WebKit/GL runtime libraries must be installed. Orca writes a log into its working directory and unpacks models under `$TMPDIR`, so both point at the per-request temp dir. The output dir must exist before the run, or early failures can't write `result.json`.
 
-Slicing runs in the background after upload (`after()` in the model actions,
-`src/lib/slicer.ts`); results land on `model_files` (`slice_status`,
-`print_time_seconds`, `filament_grams`, …) together with the hardware the
-project was set up for (`printer_info`: printer model, nozzle, build plate,
-used filaments, and physical bed size — the latter parsed from the embedded
-`printable_area`/`bed_shape` polygon, or a known-model lookup, and used to draw
-the 3D preview's plate at real dimensions, issue #80; the preview's plate-size
-dropdown can swap in any of the `BED_PRESETS` in `src/lib/printer-beds.ts` to
-check fit against another printer; plus `usesSupport`, from the config's
-`enable_support`/`support_material` — tri-state on purpose, since a *missing*
-key means "the config didn't say", not "no supports", and the model page only
-badges the positive case), which the model page
-shows per file. The `~` prefix means **approximate**, not "the service
-sliced it": the service returns `approx` (`estimateIsApprox` in
-`slicer/lib.mjs`) — true for the generic printer, translated PrusaSlicer
-settings or repaired settings, false for a Bambu/Orca project sliced natively —
-stored as `model_files.slice_approx`; embedded estimates store false. Of the
-repairs only blanked G-code counts — a dropped out-of-range value falls back
-to Orca's default, typically the same "auto" (Orca-saved files derived from
-Bambu projects carry Bambu's `tree_support_wall_count = -1`; Orca's 0 = auto).
-`isApproxEstimate` (`src/lib/printer-info.ts`) is the one reader (model page,
-versions, trash, share page, MCP), falling back to the old "service-sliced =
-approximate" rule for rows with a null flag. Files OrcaSlicer cannot slice are
-flagged on the model page so the uploader notices a broken or unprintable file.
-Legacy `.step` files (from before Onshape imports switched to 3MF) and files
-uploaded before this feature are skipped. The service is optional: without
-`SLICER_URL`, unsliced files simply show no estimates and stay `pending`.
+Slicing runs in the background after upload (`after()` in the model actions, `src/lib/slicer.ts`); results land on `model_files` (`slice_status`, `print_time_seconds`, `filament_grams`, …) together with the hardware the project was set up for (`printer_info`: printer model, nozzle, build plate, used filaments, and physical bed size — the latter parsed from the embedded `printable_area`/`bed_shape` polygon, or a known-model lookup, and used to draw the 3D preview's plate at real dimensions, issue #80; the preview's plate-size dropdown can swap in any of the `BED_PRESETS` in `src/lib/printer-beds.ts` to check fit against another printer; plus `usesSupport`, from the config's `enable_support`/`support_material` — tri-state on purpose, since a *missing* key means "the config didn't say", not "no supports", and the model page only badges the positive case), which the model page shows per file. The `~` prefix means **approximate**, not "the service sliced it": the service returns `approx` (`estimateIsApprox` in `slicer/lib.mjs`) — true for the generic printer, translated PrusaSlicer settings or repaired settings, false for a Bambu/Orca project sliced natively — stored as `model_files.slice_approx`; embedded estimates store false. Of the repairs only blanked G-code counts — a dropped out-of-range value falls back to Orca's default, typically the same "auto" (Orca-saved files derived from Bambu projects carry Bambu's `tree_support_wall_count = -1`; Orca's 0 = auto). `isApproxEstimate` (`src/lib/printer-info.ts`) is the one reader (model page, versions, trash, share page, MCP), falling back to the old "service-sliced = approximate" rule for rows with a null flag. Files OrcaSlicer cannot slice are flagged on the model page so the uploader notices a broken or unprintable file. Legacy `.step` files (from before Onshape imports switched to 3MF) and files uploaded before this feature are skipped. The service is optional: without `SLICER_URL`, unsliced files simply show no estimates and stay `pending`.
 
 ### "Larger than this plate"
 
-The preview's overflow warning measures a plate's footprint from the geometry's
-**vertices** — `measureBounds` in `src/lib/plate-fit.ts`, which passes three's
-`precise` flag. The default `Box3.setFromObject` instead unions each mesh's
-bounding box *after* transforming it, i.e. the box around a rotated box, which
-overstates any part that doesn't fill its own box. That is the normal case, not
-a corner case: a slicer fits a long part onto a square bed by turning it
-diagonally. The Stallion fuselage's 296 × 128 mm section at 46° really covers
-219 × 223 mm, but its rotated box spans 299 × 302, so four of that file's
-sixteen plates warned against the 256 mm bed Bambu Studio prints them on.
+The preview's overflow warning measures a plate's footprint from the geometry's **vertices** — `measureBounds` in `src/lib/plate-fit.ts`, which passes three's `precise` flag. The default `Box3.setFromObject` instead unions each mesh's bounding box *after* transforming it, i.e. the box around a rotated box, which overstates any part that doesn't fill its own box. That is the normal case, not a corner case: a slicer fits a long part onto a square bed by turning it diagonally. The Stallion fuselage's 296 × 128 mm section at 46° really covers 219 × 223 mm, but its rotated box spans 299 × 302, so four of that file's sixteen plates warned against the 256 mm bed Bambu Studio prints them on.
 
-Because the measurement only happens at load, each plate carries its size (in
-the .3mf's Z-up space) and `showPlate` re-expresses it in world axes rather than
-re-measuring — which relies on the load step's recentering, so the two move
-together.
+Because the measurement only happens at load, each plate carries its size (in the .3mf's Z-up space) and `showPlate` re-expresses it in world axes rather than re-measuring — which relies on the load step's recentering, so the two move together.
 
 ### Queueing a file for (re-)slicing
 
-Every `.3mf` row in the create/edit wizard carries a toggle for handing that
-file to the slicer **when the form is saved** — nothing runs on the click
-itself, so one save covers the whole edit. The two sides want opposite
-defaults, so the form stores *overrides* of a per-entry default
-(`model-form-state.ts`: `defaultQueuedForSlicing` / `isQueuedForSlicing` /
-`toggleSliceQueue`) rather than a plain list: a file being added is queued (an
-upload queues it anyway) and can be taken out; a file already on the model is
-not, and adding it back re-slices. Keeping the map empty for an untouched form
-is what stops it from reading as dirty, so a toggle-and-toggle-back leaves no
-trace.
+Every `.3mf` row in the create/edit wizard carries a toggle for handing that file to the slicer **when the form is saved** — nothing runs on the click itself, so one save covers the whole edit. The two sides want opposite defaults, so the form stores *overrides* of a per-entry default (`model-form-state.ts`: `defaultQueuedForSlicing` / `isQueuedForSlicing` / `toggleSliceQueue`) rather than a plain list: a file being added is queued (an upload queues it anyway) and can be taken out; a file already on the model is not, and adding it back re-slices. Keeping the map empty for an untouched form is what stops it from reading as dirty, so a toggle-and-toggle-back leaves no trace.
 
-The two directions reach the actions differently, because a file being uploaded
-has no id yet: `skipSliceKeys` (S3 keys within `newFiles`, so `createModel`/
-`updateModel` insert `sliceStatus: null` instead of `"pending"`) and
-`resliceFileIds` (ids of kept files, which `updateModel` flips back to
-`"pending"`). Both are advisory — the server still gates on `sliceEligible` and
-on the ids belonging to the model.
+The two directions reach the actions differently, because a file being uploaded has no id yet: `skipSliceKeys` (S3 keys within `newFiles`, so `createModel`/`updateModel` insert `sliceStatus: null` instead of `"pending"`) and `resliceFileIds` (ids of kept files, which `updateModel` flips back to `"pending"`). Both are advisory — the server still gates on `sliceEligible` and on the ids belonging to the model.
 
-The re-slice flip happens **outside** the update transaction on purpose: the
-version snapshot covers `sliceStatus`/`printer_info`, so flipping it inside
-would record a version for what is only a request to recompute (the slicer's
-own writes land outside versioning too, for the same reason). Old estimates
-stay visible until the new ones replace them. Re-slicing a file that carries
-embedded Bambu/Orca predictions costs only a few ranged S3 reads — it re-reads
-`printer_info` and returns before the slicer-service path, which is what makes it
-a cheap way to backfill newly parsed fields onto older models, even on an
-instance with no `SLICER_URL`.
+The re-slice flip happens **outside** the update transaction on purpose: the version snapshot covers `sliceStatus`/`printer_info`, so flipping it inside would record a version for what is only a request to recompute (the slicer's own writes land outside versioning too, for the same reason). Old estimates stay visible until the new ones replace them. Re-slicing a file that carries embedded Bambu/Orca predictions costs only a few ranged S3 reads — it re-reads `printer_info` and returns before the slicer-service path, which is what makes it a cheap way to backfill newly parsed fields onto older models, even on an instance with no `SLICER_URL`.
 
 ### Filaments: per slot, and the multi-nozzle question
 
-`printer_info.filamentTypes` is **one entry per filament slot the objects
-actually print from, in slot order, and deliberately not deduped** — red PLA in
-slot 1 plus black PLA in slot 2 is a two-colour print, and a deduped `["PLA"]`
-would read as a single-colour one. `filamentColors` holds the matching
-`filament_colour` hexes and is index-parallel by contract: it's dropped entirely
-(rather than padded) when any used slot has no usable colour, so the two arrays
-always zip 1:1 for the badges. Rows written before this shipped keep their old
-deduped types and no colours, so they under-report multi-colour until re-sliced.
-`filamentSummary()` in `src/lib/printer-info.ts` does the zipping and the
-multi-colour/multi-material call for both the model page and the MCP payload.
+`printer_info.filamentTypes` is **one entry per filament slot the objects actually print from, in slot order, and deliberately not deduped** — red PLA in slot 1 plus black PLA in slot 2 is a two-colour print, and a deduped `["PLA"]` would read as a single-colour one. `filamentColors` holds the matching `filament_colour` hexes and is index-parallel by contract: it's dropped entirely (rather than padded) when any used slot has no usable colour, so the two arrays always zip 1:1 for the badges. Rows written before this shipped keep their old deduped types and no colours, so they under-report multi-colour until re-sliced. `filamentSummary()` in `src/lib/printer-info.ts` does the zipping and the multi-colour/multi-material call for both the model page and the MCP payload.
 
-Which slots count is decided by the archive's per-object `extruder` keys —
-Bambu/Orca's `model_settings.config`, PrusaSlicer's own
-`Slic3r_PE_model.config` (needed because an MMU/XL profile lists a filament per
-physical extruder whether or not it's used; a `value="0"` on a part means
-"inherit the object's extruder", not slot 0). No such entry → assume slot 1.
+Which slots count is decided by the archive's per-object `extruder` keys — Bambu/Orca's `model_settings.config`, PrusaSlicer's own `Slic3r_PE_model.config` (needed because an MMU/XL profile lists a filament per physical extruder whether or not it's used; a `value="0"` on a part means "inherit the object's extruder", not slot 0). No such entry → assume slot 1.
 
-An assigned slot the config defines no filament for (objects left on AMS slot 5
-after the project's filament list was cut down to one) lands in
-`missingFilamentSlots` and the model page shows a warning. It is **deliberately
-not remapped** to slot 1 or any other existing slot: whatever the slicer falls
-back to could be a different material entirely (ASA → nylon), so guessing a
-badge would state something the file doesn't.
+An assigned slot the config defines no filament for (objects left on AMS slot 5 after the project's filament list was cut down to one) lands in `missingFilamentSlots` and the model page shows a warning. It is **deliberately not remapped** to slot 1 or any other existing slot: whatever the slicer falls back to could be a different material entirely (ASA → nylon), so guessing a badge would state something the file doesn't.
 
-`requiresMultiNozzle` answers a *hardware* question, not a colour count: an
-AMS/MMU multiplexes many filaments through one nozzle, while an H2D, Prusa XL or
-IDEX genuinely needs a second nozzle the visitor may not own. It is true only
-when the used slots sit on different physical extruders, which each slicer says
-differently:
+`requiresMultiNozzle` answers a *hardware* question, not a colour count: an AMS/MMU multiplexes many filaments through one nozzle, while an H2D, Prusa XL or IDEX genuinely needs a second nozzle the visitor may not own. It is true only when the used slots sit on different physical extruders, which each slicer says differently:
 
-- **Bambu/Orca** — `filament_map` maps each slot to a physical extruder and is
-  only written by dual-nozzle machines. Without it, a single-slot print or a
-  one-entry `nozzle_diameter` (`nozzle_diameter` has one entry *per physical
-  extruder*) settles it as false; anything else stays undefined.
-- **PrusaSlicer/Orca ini** — `single_extruder_multi_material = 1` is the MMU
-  multiplexer, so false; the same multi-slot print with it `0` is a toolchanger.
+- **Bambu/Orca** — `filament_map` maps each slot to a physical extruder and is only written by dual-nozzle machines. Without it, a single-slot print or a one-entry `nozzle_diameter` (`nozzle_diameter` has one entry *per physical extruder*) settles it as false; anything else stays undefined.
+- **PrusaSlicer/Orca ini** — `single_extruder_multi_material = 1` is the MMU multiplexer, so false; the same multi-slot print with it `0` is a toolchanger.
 
-Undefined follows the `usesSupport` convention — a missing key means "the config
-didn't say", not false. `nozzleDiameterMm` stays "the nozzle actually used": on
-a dual-nozzle machine it indexes `nozzle_diameter` by the extruder the objects
-print from, not by the machine's first.
+Undefined follows the `usesSupport` convention — a missing key means "the config didn't say", not false. `nozzleDiameterMm` stays "the nozzle actually used": on a dual-nozzle machine it indexes `nozzle_diameter` by the extruder the objects print from, not by the machine's first.
 
 ## "Open in slicer" deep links
 
-`src/app/models/[id]/file-download-menu.tsx` hands a `.3mf` to Bambu Studio /
-OrcaSlicer via their custom URL schemes. The two apps register different schemes
-**and parse the link differently**, so the component builds a *different* URL
-per app (`SLICERS[].buildUrl`). Both apps fetch the URL themselves **without
-cookies**, so deep links use the token-authenticated path route
-`/api/files/<id>/<token>/<name>.3mf`
-(`src/app/api/files/[id]/[token]/[filename]/`, reusing the `[id]` handler; the
-token must be a path segment, not `?token=`, because Orca keeps the query string
-when deriving the filename). Do not try to unify the two link formats — every
-"obvious" shared format breaks one of them:
+`src/app/models/[id]/file-download-menu.tsx` hands a `.3mf` to Bambu Studio / OrcaSlicer via their custom URL schemes. The two apps register different schemes **and parse the link differently**, so the component builds a *different* URL per app (`SLICERS[].buildUrl`). Both apps fetch the URL themselves **without cookies**, so deep links use the token-authenticated path route `/api/files/<id>/<token>/<name>.3mf` (`src/app/api/files/[id]/[token]/[filename]/`, reusing the `[id]` handler; the token must be a path segment, not `?token=`, because Orca keeps the query string when deriving the filename). Do not try to unify the two link formats — every "obvious" shared format breaks one of them:
 
-- **Schemes differ from the app names.** OrcaSlicer registers `orcaslicer:`;
-  Bambu Studio registers **`bambustudioopen:`** (NOT `bambustudio:`). An
-  unregistered scheme fails *silently* — macOS finds no handler and shows
-  nothing, not even the "open this app?" prompt. Verify against the installed
-  app: `PlistBuddy -c "Print :CFBundleURLTypes"
-  /Applications/BambuStudio.app/Contents/Info.plist`.
-- **Orca** wants `orcaslicer://open?file=<encoded-url>` (Orca's regex
-  `open[\/]?\?file=` also accepts a `open/?` slash — the legacy PrusaSlicer
-  "mysterious slash" — but Printables/MakerWorld omit it, so we do too) and (for
-  a non-MakerWorld host) treats the *entire* remainder after `file=` as the URL
-  to fetch — so **must NOT** get a `&name=` appended (it gets fetched as part of
-  the URL and our route 404s: `{"error":"Not found"}`). Orca names the saved file
-  from that URL's **last path segment** (`filename_from_url` in `Downloader.cpp`
-  — which does **not** strip query strings), so a bare `.../api/files/<id>` saves
-  as the UUID with no extension and a `?token=` would end up inside the filename.
-  We therefore point Orca at the token+filename-suffixed route
-  `.../api/files/<id>/<token>/<name>.3mf` (which ignores the name and reuses the
-  `[id]` handler) to get a real `.3mf` name — the same shape as Printables'
-  `…/build_tray_v3.step` link. See `Downloader::start_download` in OrcaSlicer.
-- **Bambu** (macOS `GUI_App::MacOpenURL`) takes whatever follows
-  `bambustudioopen://`, `url_decode`s it once, and treats it as the raw download
-  URL — **rejected unless it starts with `http`/`https`** (an `open/?file=`
-  prefix silently no-ops *after* the trusted-site prompt). It then splits a
-  trailing `&name=` (a literal `.Find("&name=")`, so it must be `&name=`, not
-  `?name=`) to name the file and **aborts ("Download failed, unknown file
-  format") unless that name ends in `.3mf`** (the bare-UUID URL tail has no
-  extension). Match MakerWorld's own links: percent-encode the whole
-  `<url>&name=<filename>.3mf` as one blob after the scheme
-  (`bambustudioopen://<encodeURIComponent(url + "&name=" + name)>`) so the
-  browser can't mangle the literal `&`/`:` before the OS hands it off.
-- Cold launch (app not already running): **Bambu works** — `MacOpenURL` stashes
-  the URL in `m_download_file_url` and replays it after `post_init`. **Orca does
-  not** — its Apple Event arrives before the handler is ready and is dropped, so
-  it only launches to the home screen (upstream macOS bug, not fixable here).
-  Bambu's `import_model_id` also early-returns if its network plugin/agent isn't
-  loaded (`if (!m_agent) return;`), and its trusted-site allowlist only
-  auto-trusts makerworld / bblmw CDN / `amazonaws.com` / `aliyuncs.com` hosts
-  (any other host — including a self-hosted instance — prompts "not from a
-  trusted site"; clicking through is expected).
+- **Schemes differ from the app names.** OrcaSlicer registers `orcaslicer:`; Bambu Studio registers **`bambustudioopen:`** (NOT `bambustudio:`). An unregistered scheme fails *silently* — macOS finds no handler and shows nothing, not even the "open this app?" prompt. Verify against the installed app: `PlistBuddy -c "Print :CFBundleURLTypes" /Applications/BambuStudio.app/Contents/Info.plist`.
+- **Orca** wants `orcaslicer://open?file=<encoded-url>` (Orca's regex `open[\/]?\?file=` also accepts a `open/?` slash — the legacy PrusaSlicer "mysterious slash" — but Printables/MakerWorld omit it, so we do too) and (for a non-MakerWorld host) treats the *entire* remainder after `file=` as the URL to fetch — so **must NOT** get a `&name=` appended (it gets fetched as part of the URL and our route 404s: `{"error":"Not found"}`). Orca names the saved file from that URL's **last path segment** (`filename_from_url` in `Downloader.cpp` — which does **not** strip query strings), so a bare `.../api/files/<id>` saves as the UUID with no extension and a `?token=` would end up inside the filename. We therefore point Orca at the token+filename-suffixed route `.../api/files/<id>/<token>/<name>.3mf` (which ignores the name and reuses the `[id]` handler) to get a real `.3mf` name — the same shape as Printables' `…/build_tray_v3.step` link. See `Downloader::start_download` in OrcaSlicer.
+- **Bambu** (macOS `GUI_App::MacOpenURL`) takes whatever follows `bambustudioopen://`, `url_decode`s it once, and treats it as the raw download URL — **rejected unless it starts with `http`/`https`** (an `open/?file=` prefix silently no-ops *after* the trusted-site prompt). It then splits a trailing `&name=` (a literal `.Find("&name=")`, so it must be `&name=`, not `?name=`) to name the file and **aborts ("Download failed, unknown file format") unless that name ends in `.3mf`** (the bare-UUID URL tail has no extension). Match MakerWorld's own links: percent-encode the whole `<url>&name=<filename>.3mf` as one blob after the scheme (`bambustudioopen://<encodeURIComponent(url + "&name=" + name)>`) so the browser can't mangle the literal `&`/`:` before the OS hands it off.
+- Cold launch (app not already running): **Bambu works** — `MacOpenURL` stashes the URL in `m_download_file_url` and replays it after `post_init`. **Orca does not** — its Apple Event arrives before the handler is ready and is dropped, so it only launches to the home screen (upstream macOS bug, not fixable here). Bambu's `import_model_id` also early-returns if its network plugin/agent isn't loaded (`if (!m_agent) return;`), and its trusted-site allowlist only auto-trusts makerworld / bblmw CDN / `amazonaws.com` / `aliyuncs.com` hosts (any other host — including a self-hosted instance — prompts "not from a trusted site"; clicking through is expected).
 
-Slicer deep links are `.3mf`-only — Bambu Studio rejects other filenames, so
-`.scad`/`.step` rows render a plain download button instead of
-`FileDownloadMenu`.
+Slicer deep links are `.3mf`-only — Bambu Studio rejects other filenames, so `.scad`/`.step` rows render a plain download button instead of `FileDownloadMenu`.
 
 ## Documentation sources
 
-- [Bambu Studio `GUI_App.cpp` URL handler](https://github.com/bambulab/BambuStudio/blob/master/src/slic3r/GUI/GUI_App.cpp)
-  and `Plater::import_model_id` in [`Plater.cpp`](https://github.com/bambulab/BambuStudio/blob/master/src/slic3r/GUI/Plater.cpp)
+- [Bambu Studio `GUI_App.cpp` URL handler](https://github.com/bambulab/BambuStudio/blob/master/src/slic3r/GUI/GUI_App.cpp) and `Plater::import_model_id` in [`Plater.cpp`](https://github.com/bambulab/BambuStudio/blob/master/src/slic3r/GUI/Plater.cpp)
 - OrcaSlicer's identical [`Plater::import_model_id`](https://github.com/SoftFever/OrcaSlicer/blob/main/src/slic3r/GUI/Plater.cpp)
 - [Bambu Studio URL schemes — what doesn't work and why](https://productionshaped.com/notes/2026-05-14-bambu-studio-url-schemes-what-doesnt-work-and-why/)
 - [BambuStudio #6120 (URL handler domain restriction)](https://github.com/bambulab/BambuStudio/issues/6120)

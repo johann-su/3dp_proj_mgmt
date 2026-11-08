@@ -12,20 +12,13 @@ import { PAGE_SIZE, type Page } from "@/lib/pagination";
 // A single hit in the homepage feed — see CatalogItem in catalog-hydrate.ts.
 export type FeedItem = CatalogItem;
 
-// The temporal column a "newest"/"oldest"/"updated" sort ranks on. newest and
-// oldest both order by created_at (only the direction differs); "updated"
-// swaps in updated_at instead — see the models/collections.updatedAt columns,
-// bumped on every edit.
+// The temporal column a "newest"/"oldest"/"updated" sort ranks on. newest and oldest both order by created_at (only the direction differs); "updated" swaps in updated_at instead — see the models/collections.updatedAt columns, bumped on every edit.
 function timeColumn(alias: "m" | "c", sort: FeedSort): SQL {
   const a = sql.raw(alias);
   return sort === "updated" ? sql`${a}.updated_at` : sql`${a}.created_at`;
 }
 
-// The numeric column "views"/"downloads" rank on; 0 (unused) for the time
-// sorts. Downloads has no per-collection equivalent (model_files carries
-// download_count, collections have nothing to sum), so this branch is only
-// ever reached for the model half of the union — feedSortIsModelOnly keeps
-// collections out of that query entirely.
+// The numeric column "views"/"downloads" rank on; 0 (unused) for the time sorts. Downloads has no per-collection equivalent (model_files carries download_count, collections have nothing to sum), so this branch is only ever reached for the model half of the union — feedSortIsModelOnly keeps collections out of that query entirely.
 function metricColumn(alias: "m" | "c", sort: FeedSort): SQL {
   const a = sql.raw(alias);
   if (sort === "views") return sql`${a}.view_count`;
@@ -39,12 +32,7 @@ function whereClause(conds: SQL[]): SQL {
   return conds.length > 0 ? sql`WHERE ${sql.join(conds, sql` AND `)}` : sql``;
 }
 
-// Cursor-paginated homepage feed of models and collections, ranked together
-// by the requested sort. One UNION ALL query (mirroring src/lib/search.ts)
-// selects a generic (sort_time, metric) pair per row so every sort shares one
-// keyset scheme, then hydrateCatalogRows fills in the card data. A category
-// filter narrows to models only (collections have no category); "downloads"
-// does too, since it has no per-collection metric to rank them by.
+// Cursor-paginated homepage feed of models and collections, ranked together by the requested sort. One UNION ALL query (mirroring src/lib/search.ts) selects a generic (sort_time, metric) pair per row so every sort shares one keyset scheme, then hydrateCatalogRows fills in the card data. A category filter narrows to models only (collections have no category); "downloads" does too, since it has no per-collection metric to rank them by.
 export async function listFeed(opts: {
   categoryId?: string;
   cursor?: string | null;
@@ -67,8 +55,7 @@ export async function listFeed(opts: {
   }
   const union = sql.join(parts, sql` UNION ALL `);
 
-  // Keyset predicate + ordering. The tuple (sort key, id) is a stable total
-  // order per query, so paging never skips or repeats a row.
+  // Keyset predicate + ordering. The tuple (sort key, id) is a stable total order per query, so paging never skips or repeats a row.
   const cursor = opts.cursor ? decodeFeedCursor(opts.cursor) : null;
   let keyset: SQL = sql``;
   let orderBy: SQL;

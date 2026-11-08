@@ -93,9 +93,7 @@ test("/* [Section] */ headers group parameters", () => {
 });
 
 test("/* [Hidden] */ parameters are excluded", () => {
-  // The Hidden section is the customizer's way to keep tunables out of the
-  // UI — exposing them would let users set values the author considered
-  // internal.
+  // The Hidden section is the customizer's way to keep tunables out of the UI — exposing them would let users set values the author considered internal.
   assert.equal(flat(FIXTURE).find((p) => p.name === "internal_fudge"), undefined);
 });
 
@@ -127,8 +125,7 @@ test("CRLF sources parse the same as LF", () => {
 });
 
 test("annotation-like text inside strings does not confuse the parser", () => {
-  // The default contains "//" and brackets — the real annotation follows the
-  // semicolon.
+  // The default contains "//" and brackets — the real annotation follows the semicolon.
   const source = `url = "https://x/[a]"; // 30\ncube(1);`;
   const p = byName(source, "url");
   assert.equal(p.type, "string");
@@ -163,16 +160,14 @@ test("coerce drops unknown names and non-option values", () => {
 });
 
 test("coerce omits values equal to the default — only diffs are rendered", () => {
-  // Keeps parameter sets (and the dedupe hash) canonical: the same visible
-  // configuration always produces the same map.
+  // Keeps parameter sets (and the dedupe hash) canonical: the same visible configuration always produces the same map.
   const groups = parseScadParameters(FIXTURE);
   const out = coerceScadValues(groups, { arm_count: 2, material: "PETG" });
   assert.deepEqual(out, { material: "PETG" });
 });
 
 test("coerce strips quote/backslash from strings", () => {
-  // A crafted string must not be able to escape OpenSCAD's string literal
-  // when the parameter set is applied.
+  // A crafted string must not be able to escape OpenSCAD's string literal when the parameter set is applied.
   const groups = parseScadParameters(`name = "x";\ncube(1);`);
   const out = coerceScadValues(groups, { name: 'a"; evil() //' });
   assert.equal(out.name, "a; evil() //");
@@ -213,8 +208,7 @@ test("sibling-file includes are rejected — multi-file projects are unsupported
 });
 
 test("import() and surface() are always rejected, even with dynamic paths", () => {
-  // There is no file the source could legitimately reference — the render
-  // temp dir contains only the uploaded source.
+  // There is no file the source could legitimately reference — the render temp dir contains only the uploaded source.
   assert.ok(findForbiddenFileRefs(`import("model.stl");`).length > 0);
   assert.ok(findForbiddenFileRefs(`p = "x"; import(str(p, ".stl"));`).length > 0);
   assert.ok(findForbiddenFileRefs(`surface(file = "map.png");`).length > 0);

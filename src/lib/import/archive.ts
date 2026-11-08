@@ -1,8 +1,4 @@
-// Reads a Print Vault export zip back into a create-form draft (issue #94,
-// the import half). Pure — fflate plus the BOM/filename helpers, no S3 and no
-// db — so it stays unit-testable; src/app/api/import/archive/route.ts buffers
-// the upload, stages the extracted bytes and hands the rest to the same
-// sessionStorage draft the URL importers write.
+// Reads a Print Vault export zip back into a create-form draft (issue #94, the import half). Pure — fflate plus the BOM/filename helpers, no S3 and no db — so it stays unit-testable; src/app/api/import/archive/route.ts buffers the upload, stages the extracted bytes and hands the rest to the same sessionStorage draft the URL importers write.
 //
 // Two archive shapes have to be read:
 //
@@ -13,9 +9,7 @@
 //     file sits in gives its kind, `README.md` gives the title and
 //     description, `bom.csv` gives a section-less BOM.
 //
-// Everything the manifest says is treated as untrusted input: it travels
-// through a user-supplied file, so kinds are re-checked against the extension
-// allowlist and names are re-sanitized exactly as the exporter sanitized them.
+// Everything the manifest says is treated as untrusted input: it travels through a user-supplied file, so kinds are re-checked against the extension allowlist and names are re-sanitized exactly as the exporter sanitized them.
 
 import { strFromU8, unzipSync, type UnzipFileInfo } from "fflate";
 import { parseBomCsv, type BomItemInput } from "@/lib/bom";
@@ -31,8 +25,7 @@ import type { FileKind } from "@/db/schema";
 
 export class ArchiveImportError extends Error {}
 
-// Folder → kind, the inverse of the exporter's FOLDERS map. Also the fallback
-// for manifest-less archives, which is why it stays a plain lookup.
+// Folder → kind, the inverse of the exporter's FOLDERS map. Also the fallback for manifest-less archives, which is why it stays a plain lookup.
 const KIND_BY_FOLDER: Record<string, FileKind> = {
   files: "model",
   documents: "pdf",
@@ -40,11 +33,7 @@ const KIND_BY_FOLDER: Record<string, FileKind> = {
   videos: "video",
 };
 
-// Guards on what a single upload may expand to. The route caps the compressed
-// bytes it accepts, which says nothing about what they decompress to — a
-// hostile zip a few hundred KB long can claim gigabytes ("zip bomb"), and
-// unzipSync would happily allocate them. Both budgets are enforced while
-// filtering entries, before any decompression happens.
+// Guards on what a single upload may expand to. The route caps the compressed bytes it accepts, which says nothing about what they decompress to — a hostile zip a few hundred KB long can claim gigabytes ("zip bomb"), and unzipSync would happily allocate them. Both budgets are enforced while filtering entries, before any decompression happens.
 const MAX_UNPACKED_BYTES = 512 * 1024 * 1024;
 const MAX_FILES = 300;
 
@@ -62,14 +51,11 @@ export type ArchiveImport = {
   title: string;
   description: string;
   tags: string[];
-  // The exported category name, passed to the create form as a source-category
-  // hint so suggestCategory can match it against *this* instance's categories
-  // (ids don't survive the trip between instances).
+  // The exported category name, passed to the create form as a source-category hint so suggestCategory can match it against *this* instance's categories (ids don't survive the trip between instances).
   categories: string[];
   sourceUrl: string;
-  onshapeMicroversion: string | null;
-  // Gallery videos off the manifest, with the slots they held in the
-  // exporting instance's carousel; createModel re-validates every link.
+  sourceRevision: string | null;
+  // Gallery videos off the manifest, with the slots they held in the exporting instance's carousel; createModel re-validates every link.
   videos: ModelVideo[];
   bom: BomItemInput[];
   files: ArchiveFile[];
@@ -90,17 +76,13 @@ function stringList(value: unknown, max: number): string[] {
     : [];
 }
 
-// The folder an entry sits in decides its kind; anything at the root or
-// nested deeper (a stray "images/thumbs/x.png") is not part of the layout.
+// The folder an entry sits in decides its kind; anything at the root or nested deeper (a stray "images/thumbs/x.png") is not part of the layout.
 function pathKind(path: string): FileKind | null {
   const segments = path.split("/");
   return segments.length === 2 && segments[1] ? (KIND_BY_FOLDER[segments[0]] ?? null) : null;
 }
 
-// Which entries are worth decompressing at all — the three text files plus
-// anything sitting in a known folder with an extension that folder allows.
-// Runs before decompression, so it doubles as the place the size/count budgets
-// are enforced (fflate hands us `originalSize` straight from the zip header).
+// Which entries are worth decompressing at all — the three text files plus anything sitting in a known folder with an extension that folder allows. Runs before decompression, so it doubles as the place the size/count budgets are enforced (fflate hands us `originalSize` straight from the zip header).
 function entryFilter(warnings: string[]) {
   let unpacked = 0;
   let count = 0;
@@ -135,10 +117,7 @@ function entryFilter(warnings: string[]) {
   };
 }
 
-// Title and description out of README.md, for archives with no manifest. The
-// exporter writes "# <title>", then the "*Print Vault export · version N*"
-// line, then the description verbatim — so drop the first heading and that
-// marker line and the rest is the description as it was authored.
+// Title and description out of README.md, for archives with no manifest. The exporter writes "# <title>", then the "*Print Vault export · version N*" line, then the description verbatim — so drop the first heading and that marker line and the rest is the description as it was authored.
 export function parseExportReadme(text: string): {
   title: string;
   description: string;
@@ -164,10 +143,7 @@ export function parseExportReadme(text: string): {
   return { title, description: body.join("\n").trim() };
 }
 
-// BOM straight off the manifest. Not run through sanitizeBomItems here — the
-// create action sanitizes everything it is given anyway, and doing it twice
-// would mean this module has to decide what to do with a rejection it can't
-// report per-item.
+// BOM straight off the manifest. Not run through sanitizeBomItems here — the create action sanitizes everything it is given anyway, and doing it twice would mean this module has to decide what to do with a rejection it can't report per-item.
 function manifestBom(value: unknown): BomItemInput[] {
   if (!Array.isArray(value)) return [];
   return value.filter(isRecord).map((raw) => ({
@@ -179,9 +155,7 @@ function manifestBom(value: unknown): BomItemInput[] {
   }));
 }
 
-// Gallery videos off the manifest. Like the BOM, not re-validated here — the
-// create action parses every link and drops what it can't embed; this only
-// has to make sure the shape is a list of {url, position}.
+// Gallery videos off the manifest. Like the BOM, not re-validated here — the create action parses every link and drops what it can't embed; this only has to make sure the shape is a list of {url, position}.
 function manifestVideos(value: unknown): ModelVideo[] {
   if (!Array.isArray(value)) return [];
   return value
@@ -217,8 +191,7 @@ function readManifest(
     return null;
   }
   if (!isRecord(parsed)) return null;
-  // A newer instance's archive still imports: unknown fields are ignored and
-  // the known ones are read as usual. Only worth saying so.
+  // A newer instance's archive still imports: unknown fields are ignored and the known ones are read as usual. Only worth saying so.
   if (
     typeof parsed.formatVersion === "number" &&
     parsed.formatVersion > EXPORT_FORMAT_VERSION
@@ -230,23 +203,18 @@ function readManifest(
   return parsed as unknown as ModelExportManifest;
 }
 
-// One archive file, with the manifest's claims about it re-validated. Returns
-// null when the entry can't be a file of that kind at all.
+// One archive file, with the manifest's claims about it re-validated. Returns null when the entry can't be a file of that kind at all.
 function buildFile(
   path: string,
   data: Uint8Array,
   kind: FileKind,
   meta: Partial<ModelExportManifest["files"][number]>,
 ): ArchiveFile | null {
-  // The manifest's filename is as user-controlled as the entry name was on
-  // the way out, so it gets the same treatment; the entry's own basename is
-  // the fallback when the manifest doesn't name the file.
+  // The manifest's filename is as user-controlled as the entry name was on the way out, so it gets the same treatment; the entry's own basename is the fallback when the manifest doesn't name the file.
   const filename = safeEntryName(
     asString(meta.filename, 255) || (path.split("/").pop() ?? path),
   );
-  // Kind and extension have to agree — createModel rejects the mismatch, and
-  // the stored content type is derived from the extension, so a manifest
-  // claiming a .html is an "image" must not get that far.
+  // Kind and extension have to agree — createModel rejects the mismatch, and the stored content type is derived from the extension, so a manifest claiming a .html is an "image" must not get that far.
   if (!allowedExtensions(kind).includes(fileExtension(filename))) return null;
   return {
     filename,
@@ -271,8 +239,7 @@ function filesFromLayout(entries: Record<string, Uint8Array>): ArchiveFile[] {
   return files;
 }
 
-// Manifest archives: the manifest's own order (which is the model's file
-// order), skipping entries it names but the zip doesn't carry.
+// Manifest archives: the manifest's own order (which is the model's file order), skipping entries it names but the zip doesn't carry.
 function filesFromManifest(
   entries: Record<string, Uint8Array>,
   manifest: ModelExportManifest,
@@ -282,9 +249,7 @@ function filesFromManifest(
   let generated = 0;
   for (const meta of Array.isArray(manifest.files) ? manifest.files : []) {
     if (!isRecord(meta)) continue;
-    // A variant belongs to the .scad it was rendered from, and that link
-    // can't survive the trip — importing it as a standalone file would just
-    // duplicate geometry the customizer can produce again on demand.
+    // A variant belongs to the .scad it was rendered from, and that link can't survive the trip — importing it as a standalone file would just duplicate geometry the customizer can produce again on demand.
     if (meta.generated === true) {
       generated++;
       continue;
@@ -292,9 +257,7 @@ function filesFromManifest(
     const path = asString(meta.path, 1000);
     const data = path ? entries[path] : undefined;
     if (!path || !data) continue;
-    // Trust the folder over the manifest's `kind` when they disagree: the
-    // folder is where the bytes actually are, and both are checked against
-    // the extension anyway.
+    // Trust the folder over the manifest's `kind` when they disagree: the folder is where the bytes actually are, and both are checked against the extension anyway.
     const kind = pathKind(path);
     if (!kind) continue;
     const file = buildFile(path, data, kind, meta);
@@ -308,9 +271,7 @@ function filesFromManifest(
   return files;
 }
 
-// Turns an exported .zip into the same draft shape the URL importers produce.
-// `fallbackTitle` is the uploaded file's name, used only when neither the
-// manifest nor the README names the model.
+// Turns an exported .zip into the same draft shape the URL importers produce. `fallbackTitle` is the uploaded file's name, used only when neither the manifest nor the README names the model.
 export function readModelArchive(
   zip: Uint8Array,
   opts: { fallbackTitle?: string } = {},
@@ -355,11 +316,13 @@ export function readModelArchive(
     description,
     tags: stringList(model?.tags, 50),
     categories: [asString(model?.category, 200) ?? ""].filter(Boolean),
-    // Kept so a restored model still links to (and syncs with) the platform
-    // it originally came from; createModel re-validates the host and drops
-    // anything else.
+    // Kept so a restored model still links to (and syncs with) the platform it originally came from; createModel re-validates the host and drops anything else.
     sourceUrl: asString(model?.sourceUrl, 2000) ?? "",
-    onshapeMicroversion: asString(model?.onshapeMicroversion, 100),
+    // `onshapeMicroversion` is the field's name in archives exported before it was generalized; an older reader simply ignores `sourceRevision` (the cost is one re-export on the restored model's first sync).
+    sourceRevision: asString(
+      model?.sourceRevision ?? (model as Record<string, unknown> | null)?.onshapeMicroversion,
+      100,
+    ),
     videos: manifestVideos(model?.videos),
     bom,
     files,

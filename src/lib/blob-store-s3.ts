@@ -27,8 +27,7 @@ export class S3BlobStore implements BlobStore {
         accessKeyId: config.accessKeyId,
         secretAccessKey: config.secretAccessKey,
       },
-      // Non-AWS servers (Garage) return bogus x-amz-checksum-* headers that
-      // trip the SDK's default flexible-checksum validation.
+      // Non-AWS servers (Garage) return bogus x-amz-checksum-* headers that trip the SDK's default flexible-checksum validation.
       requestChecksumCalculation: "WHEN_REQUIRED",
       responseChecksumValidation: "WHEN_REQUIRED",
     });

@@ -20,13 +20,9 @@ export function formatDuration(totalSeconds: number) {
   return minutes === 0 ? `${hours} h` : `${hours} h ${minutes} min`;
 }
 
-// Playback clock for the gallery's video player: 4 -> "0:04", 3725 -> "1:02:05".
-// Distinct from formatDuration, which rounds to human "1 h 31 min" for print
-// estimates — a player has to show the exact second it is sitting on, and the
-// hour field only appears when there is one.
+// Playback clock for the gallery's video player: 4 -> "0:04", 3725 -> "1:02:05". Distinct from formatDuration, which rounds to human "1 h 31 min" for print estimates — a player has to show the exact second it is sitting on, and the hour field only appears when there is one.
 export function formatClock(totalSeconds: number) {
-  // NaN/Infinity until a video's metadata loads, and a live stream's duration
-  // stays Infinite forever; both render as a placeholder rather than "NaN:aN".
+  // NaN/Infinity until a video's metadata loads, and a live stream's duration stays Infinite forever; both render as a placeholder rather than "NaN:aN".
   if (!Number.isFinite(totalSeconds) || totalSeconds < 0) return "0:00";
   const whole = Math.floor(totalSeconds);
   const seconds = whole % 60;
@@ -42,11 +38,7 @@ export function formatGrams(grams: number) {
 }
 
 export function formatDate(date: Date) {
-  // Pinned to UTC: this renders in a "use client" component
-  // (model-view.tsx et al.) that's both server- and client-rendered, and
-  // without an explicit zone toLocaleDateString falls back to the runtime's
-  // local time — server container vs. browser — so a date near midnight can
-  // land on different calendar days and trip a React hydration mismatch.
+  // Pinned to UTC: this renders in a "use client" component (model-view.tsx et al.) that's both server- and client-rendered, and without an explicit zone toLocaleDateString falls back to the runtime's local time — server container vs. browser — so a date near midnight can land on different calendar days and trip a React hydration mismatch.
   return date.toLocaleDateString("en-US", {
     year: "numeric",
     month: "short",

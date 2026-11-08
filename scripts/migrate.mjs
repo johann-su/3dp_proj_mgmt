@@ -1,5 +1,4 @@
-// Applies the SQL migrations in ./drizzle and seeds default categories.
-// Uses only `pg` so it can run inside the Next.js standalone output.
+// Applies the SQL migrations in ./drizzle and seeds default categories. Uses only `pg` so it can run inside the Next.js standalone output.
 import { readdir, readFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import path from "node:path";

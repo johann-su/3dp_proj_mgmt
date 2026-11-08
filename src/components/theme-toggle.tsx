@@ -14,8 +14,7 @@ const emptySubscribe = () => () => {};
 
 export function ThemeToggle() {
   const { resolvedTheme, setTheme } = useTheme();
-  // resolvedTheme is unknown until hydration — render a neutral icon on the
-  // server pass to avoid a hydration mismatch.
+  // resolvedTheme is unknown until hydration — render a neutral icon on the server pass to avoid a hydration mismatch.
   const mounted = useSyncExternalStore(
     emptySubscribe,
     () => true,

@@ -94,9 +94,7 @@ export function UsersTable({
               </div>
             </div>
             {isSelf ? (
-              // Admins can't change their own role or delete their own
-              // account (see actions.ts), so don't render controls that can
-              // only fail.
+              // Admins can't change their own role or delete their own account (see actions.ts), so don't render controls that can only fail.
               <div
                 className="text-sm text-muted-foreground"
                 title="You can't change your own role"

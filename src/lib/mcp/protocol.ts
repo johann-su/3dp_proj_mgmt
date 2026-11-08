@@ -1,9 +1,4 @@
-// The wire side of the MCP server (issue #96): JSON-RPC 2.0 dispatch for MCP's
-// Streamable HTTP transport, plus the argument readers every tool validates
-// with. Deliberately hand-written and dependency-free — this server offers
-// nothing but tools over plain request/response JSON, which is a few hundred
-// lines of the transport, and keeping it here means it stays unit-testable
-// (see protocol.test.ts) instead of hiding behind an SDK adapter.
+// The wire side of the MCP server (issue #96): JSON-RPC 2.0 dispatch for MCP's Streamable HTTP transport, plus the argument readers every tool validates with. Deliberately hand-written and dependency-free — this server offers nothing but tools over plain request/response JSON, which is a few hundred lines of the transport, and keeping it here means it stays unit-testable (see protocol.test.ts) instead of hiding behind an SDK adapter.
 //
 // What the transport does and doesn't do:
 //   * POST only. A server that never pushes messages to the client MUST answer
@@ -17,9 +12,7 @@
 //
 // The DB-backed tools live in tools.ts; nothing here knows about them.
 
-// Versions this server can speak, newest first. `initialize` echoes the
-// client's version when it is one of these — an older client keeps its dialect
-// — and otherwise answers with the newest, letting the client decide.
+// Versions this server can speak, newest first. `initialize` echoes the client's version when it is one of these — an older client keeps its dialect — and otherwise answers with the newest, letting the client decide.
 export const SUPPORTED_PROTOCOL_VERSIONS = [
   "2025-06-18",
   "2025-03-26",
@@ -49,11 +42,7 @@ export type McpImage = { data: string; mimeType: string };
 /**
  * A tool result that carries images as well as JSON.
  *
- * Images have to travel *in the result* rather than as a URL to fetch: a link
- * that appears only in a tool result is not reliably fetchable by the client
- * (see the note in pdf-text.ts), and a wiring diagram the model cannot open is
- * the same as no diagram at all. A distinct class rather than a magic key on
- * the payload, so a tool's own JSON can never be mistaken for one.
+ * Images have to travel *in the result* rather than as a URL to fetch: a link that appears only in a tool result is not reliably fetchable by the client (see the note in pdf-text.ts), and a wiring diagram the model cannot open is the same as no diagram at all. A distinct class rather than a magic key on the payload, so a tool's own JSON can never be mistaken for one.
  */
 export class ImageResult {
   constructor(
@@ -88,9 +77,7 @@ export type McpDispatchOptions = {
 };
 
 /**
- * A failure the calling model should see and can act on ("no such model").
- * Reported as a tool result with `isError`, not a protocol error, so the
- * conversation continues.
+ * A failure the calling model should see and can act on ("no such model"). Reported as a tool result with `isError`, not a protocol error, so the conversation continues.
  */
 export class ToolError extends Error {}
 
@@ -99,9 +86,7 @@ export class InvalidParamsError extends Error {}
 
 // --- Argument readers ------------------------------------------------------
 //
-// Tool arguments arrive as whatever JSON the model produced, so each reader
-// states the contract and rejects the rest. They throw InvalidParamsError,
-// which the dispatcher turns into -32602.
+// Tool arguments arrive as whatever JSON the model produced, so each reader states the contract and rejects the rest. They throw InvalidParamsError, which the dispatcher turns into -32602.
 
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -177,11 +162,7 @@ function fail(id: JsonRpcId, code: number, message: string): JsonRpcResponse {
   return { jsonrpc: "2.0", id, error: { code, message } };
 }
 
-// Tool payloads travel twice: as text (every client shows it to the model) and
-// as `structuredContent` (clients that can hand the model real JSON). Both are
-// the same object, so neither kind of client sees less. Images ride along as
-// extra content blocks; `structuredContent` stays pure JSON, since a base64
-// blob there would be handed to the model as characters rather than pixels.
+// Tool payloads travel twice: as text (every client shows it to the model) and as `structuredContent` (clients that can hand the model real JSON). Both are the same object, so neither kind of client sees less. Images ride along as extra content blocks; `structuredContent` stays pure JSON, since a base64 blob there would be handed to the model as characters rather than pixels.
 function toolResult(outcome: Record<string, unknown> | ImageResult) {
   const payload = outcome instanceof ImageResult ? outcome.payload : outcome;
   const images = outcome instanceof ImageResult ? outcome.images : [];
@@ -233,8 +214,7 @@ async function callTool(
     if (err instanceof ToolError) {
       return { result: toolFailure(err.message) };
     }
-    // A bug or an outage — tell the model something went wrong without
-    // handing it a stack trace, and report it where errors are collected.
+    // A bug or an outage — tell the model something went wrong without handing it a stack trace, and report it where errors are collected.
     options.onError?.(`[mcp] tool ${tool.name} failed`, err);
     return {
       result: toolFailure(`The ${tool.name} tool failed unexpectedly. Try again later.`),
@@ -243,8 +223,7 @@ async function callTool(
 }
 
 /**
- * Handles one JSON-RPC message. Returns the response, or null when the message
- * was a notification (nothing to answer).
+ * Handles one JSON-RPC message. Returns the response, or null when the message was a notification (nothing to answer).
  */
 export async function handleMcpMessage(
   message: unknown,
@@ -255,9 +234,7 @@ export async function handleMcpMessage(
   }
   const { jsonrpc, method, id, params } = message as Record<string, unknown>;
   const responseId = (typeof id === "string" || typeof id === "number" ? id : null);
-  // A message without an id is a notification: acknowledged by the transport
-  // (202), never answered — including the `notifications/initialized` every
-  // client sends right after the handshake.
+  // A message without an id is a notification: acknowledged by the transport (202), never answered — including the `notifications/initialized` every client sends right after the handshake.
   const isNotification = id === undefined || id === null;
 
   if (jsonrpc !== "2.0" || typeof method !== "string") {
@@ -273,8 +250,7 @@ export async function handleMcpMessage(
     case "initialize":
       return ok(responseId, {
         protocolVersion: negotiateVersion(args.protocolVersion),
-        // Tools only: no resources, prompts, sampling or logging — the catalog
-        // is exposed as calls, not as a browsable resource tree.
+        // Tools only: no resources, prompts, sampling or logging — the catalog is exposed as calls, not as a browsable resource tree.
         capabilities: { tools: { listChanged: false } },
         serverInfo: options.serverInfo,
         ...(options.instructions ? { instructions: options.instructions } : {}),
@@ -303,9 +279,7 @@ export async function handleMcpMessage(
 }
 
 /**
- * Handles a whole request body — one message, or the JSON-RPC batch older
- * clients may send. Returns null when there is nothing to answer (a body of
- * notifications only), which the route turns into 202 Accepted.
+ * Handles a whole request body — one message, or the JSON-RPC batch older clients may send. Returns null when there is nothing to answer (a body of notifications only), which the route turns into 202 Accepted.
  */
 export async function handleMcpPayload(
   payload: unknown,

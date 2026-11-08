@@ -32,15 +32,9 @@ export const runtime = "nodejs";
 // 3MF exports are asynchronous on Onshape's side and can take a while.
 export const maxDuration = 300;
 
-// Re-exports the model's Onshape source and replaces the files that came from
-// Onshape (modelFiles.onshapeElementId). Only workspace pins can change;
-// version pins are immutable snapshots and are reported as up to date.
+// Re-exports the model's Onshape source and replaces the files that came from Onshape (modelFiles.onshapeElementId). Only workspace pins can change; version pins are immutable snapshots and are reported as up to date.
 //
-// Two-phase like the MakerWorld/Printables source sync: a POST without a
-// body is the preview — when the document has Part Studio/Assembly tabs the
-// model doesn't carry yet, it answers `needs-selection` with those tabs and
-// the client re-POSTs with the picked `addElementIds` (empty = decline).
-// Without new tabs the preview applies directly, as before.
+// Two-phase like the MakerWorld/Printables source sync: a POST without a body is the preview — when the document has Part Studio/Assembly tabs the model doesn't carry yet, it answers `needs-selection` with those tabs and the client re-POSTs with the picked `addElementIds` (empty = decline). Without new tabs the preview applies directly, as before.
 export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
@@ -65,9 +59,7 @@ export async function POST(
   if (!model || model.deletedAt) {
     return NextResponse.json({ error: "Model not found" }, { status: 404 });
   }
-  // Syncing re-exports the model's files, so it counts as editing — open to any
-  // signed-in user (uses their own Onshape connection, which must have access
-  // to the linked document). Only deletion is owner-gated.
+  // Syncing re-exports the model's files, so it counts as editing — open to any signed-in user (uses their own Onshape connection, which must have access to the linked document). Only deletion is owner-gated.
 
   let pin = null;
   try {
@@ -88,8 +80,7 @@ export async function POST(
     });
   }
   const wvm = pin.wvm as "w";
-  // Captured as a const so the narrowing (guarded non-null above) survives into
-  // the eligibleElements closure below — `pin` is a let, so TS resets it there.
+  // Captured as a const so the narrowing (guarded non-null above) survives into the eligibleElements closure below — `pin` is a let, so TS resets it there.
   const wvmId = pin.wvmId;
 
   const accessToken = await getOnshapeAccessToken(session.user.id);
@@ -102,11 +93,7 @@ export async function POST(
   const auth = { accessToken };
 
   try {
-    // Read the workspace microversion before exporting so a concurrent edit
-    // makes the stored value stale (next sync re-runs) instead of being
-    // skipped. It moves on *any* document change, so it is only a coarse "did
-    // anything at all change" gate — the per-tab diff below decides what to
-    // actually re-export (issue #70).
+    // Read the workspace microversion before exporting so a concurrent edit makes the stored value stale (next sync re-runs) instead of being skipped. It moves on *any* document change, so it is only a coarse "did anything at all change" gate — the per-tab diff below decides what to actually re-export (issue #70).
     const microversion = await getCurrentMicroversion(
       auth,
       pin.documentId,
@@ -114,13 +101,9 @@ export async function POST(
       wvmId,
     );
     const microversionChanged =
-      !microversion || microversion !== model.onshapeMicroversion;
+      !microversion || microversion !== model.sourceRevision;
 
-    // The tabs this model was imported with, each with the per-element
-    // microversion stored on its file (sourceModifiedAt). One entry per element
-    // id (keeping the first file's token). Empty for models whose files carry
-    // no element ids (all Onshape files removed, or an import predating the
-    // feature) — those fall back to the pin/all export.
+    // The tabs this model was imported with, each with the per-element microversion stored on its file (sourceModifiedAt). One entry per element id (keeping the first file's token). Empty for models whose files carry no element ids (all Onshape files removed, or an import predating the feature) — those fall back to the pin/all export.
     const importedByElement = new Map<string, string | null>();
     for (const f of model.files) {
       if (f.onshapeElementId && !importedByElement.has(f.onshapeElementId)) {
@@ -129,8 +112,7 @@ export async function POST(
     }
     const importedElementIds = [...importedByElement.keys()];
 
-    // The document's current export tabs, listed at most once and shared by the
-    // new-tab offer and the per-tab diff.
+    // The document's current export tabs, listed at most once and shared by the new-tab offer and the per-tab diff.
     let eligibleCache: OnshapeExportElement[] | null = null;
     const eligibleElements = async () => {
       if (!eligibleCache) {
@@ -142,12 +124,7 @@ export async function POST(
     };
 
     if (addElementIds === null) {
-      // Preview: offer tabs added upstream since the import. Skipped for
-      // models without element ids (no baseline to diff against) and models
-      // already at the export cap. This check runs even when the microversion
-      // is unchanged, so a tab declined in an earlier sync can still be added
-      // later — the dialog is the only way to grow an existing model's tab set
-      // without re-importing.
+      // Preview: offer tabs added upstream since the import. Skipped for models without element ids (no baseline to diff against) and models already at the export cap. This check runs even when the microversion is unchanged, so a tab declined in an earlier sync can still be added later — the dialog is the only way to grow an existing model's tab set without re-importing.
       const maxAdd = MAX_EXPORT_ELEMENTS - importedElementIds.length;
       if (importedElementIds.length > 0 && maxAdd > 0) {
         const imported = new Set(importedElementIds);
@@ -163,9 +140,7 @@ export async function POST(
           });
         }
       }
-      // Nothing in the workspace moved ⇒ no imported tab moved either (the
-      // workspace microversion is a superset of every element's), so there is
-      // nothing to export.
+      // Nothing in the workspace moved ⇒ no imported tab moved either (the workspace microversion is a superset of every element's), so there is nothing to export.
       if (!microversionChanged) {
         return NextResponse.json({
           status: "up-to-date",
@@ -180,10 +155,7 @@ export async function POST(
       });
     }
 
-    // Decide which tabs to re-export and which existing rows to drop. Unchanged
-    // tabs keep their rows and S3 keys untouched, so no version is recorded for
-    // them. `dropElementIds === null` means "no per-tab baseline": replace
-    // every Onshape file via the pin/all fallback.
+    // Decide which tabs to re-export and which existing rows to drop. Unchanged tabs keep their rows and S3 keys untouched, so no version is recorded for them. `dropElementIds === null` means "no per-tab baseline": replace every Onshape file via the pin/all fallback.
     let exportSelection: string[] | null;
     let dropElementIds: Set<string> | null;
     const syncWarnings: string[] = [];
@@ -214,14 +186,11 @@ export async function POST(
       }
 
       if (exportSelection.length === 0 && deletedIds.length === 0) {
-        // Only unimported tabs / a drawing / a Variable Studio moved. Advance
-        // the stored workspace microversion so the next sync short-circuits on
-        // the coarse gate, but record no version and touch no files (mirrors
-        // the source-sync "toStamp" bookkeeping).
-        if (microversion !== model.onshapeMicroversion) {
+        // Only unimported tabs / a drawing / a Variable Studio moved. Advance the stored workspace microversion so the next sync short-circuits on the coarse gate, but record no version and touch no files (mirrors the source-sync "toStamp" bookkeeping).
+        if (microversion !== model.sourceRevision) {
           await db
             .update(models)
-            .set({ onshapeMicroversion: microversion })
+            .set({ sourceRevision: microversion })
             .where(eq(models.id, model.id));
         }
         return NextResponse.json({
@@ -231,8 +200,7 @@ export async function POST(
       }
     }
 
-    // Export the changed/added tabs — nothing to export when only deletions
-    // remain (rows are dropped in the transaction below).
+    // Export the changed/added tabs — nothing to export when only deletions remain (rows are dropped in the transaction below).
     const { exports, warnings } =
       exportSelection === null || exportSelection.length > 0
         ? await exportPinnedModels(
@@ -248,8 +216,7 @@ export async function POST(
           )
         : { exports: [] as OnshapeExport[], warnings: [] as string[] };
 
-    // Stage every export before touching the database: replacing the files is
-    // all-or-nothing so a mid-way failure can't leave the model half-synced.
+    // Stage every export before touching the database: replacing the files is all-or-nothing so a mid-way failure can't leave the model half-synced.
     const headers = onshapeAuthHeaders(auth);
     const staged: {
       elementId: string;
@@ -261,8 +228,7 @@ export async function POST(
       if (!res.ok || !res.body) {
         throw new OnshapeError(`Download failed for ${file.filename} (${res.status})`);
       }
-      // Onshape exports 3MF in meters centered on the origin; normalize to
-      // millimeters on the plate so slicers (ours and the user's) accept it.
+      // Onshape exports 3MF in meters centered on the origin; normalize to millimeters on the plate so slicers (ours and the user's) accept it.
       staged.push({
         elementId: file.elementId,
         microversionId: file.microversionId,
@@ -274,17 +240,14 @@ export async function POST(
       });
     }
 
-    // Only the tabs we re-exported (or that were deleted upstream) are
-    // replaced; every unchanged tab keeps its row and S3 key. The fallback
-    // (dropElementIds null) replaces all Onshape files, as before.
+    // Only the tabs we re-exported (or that were deleted upstream) are replaced; every unchanged tab keeps its row and S3 key. The fallback (dropElementIds null) replaces all Onshape files, as before.
     const replaced = model.files.filter(
       (f) =>
         f.onshapeElementId !== null &&
         (dropElementIds === null || dropElementIds.has(f.onshapeElementId)),
     );
     const s3KeysToDelete = await db.transaction(async (tx) => {
-      // A bad sync used to destroy the last good export — now the pre-sync
-      // state becomes a version first, so it stays revertable (issue #55).
+      // A bad sync used to destroy the last good export — now the pre-sync state becomes a version first, so it stays revertable (issue #55).
       await ensureBaselineVersion(tx, model.id, model.userId);
       if (replaced.length > 0) {
         await tx.delete(modelFiles).where(
@@ -307,14 +270,10 @@ export async function POST(
             position: position++,
             onshapeElementId: elementId,
             imported: true,
-            // Per-element microversion (issue #70): stored in the shared
-            // sourceModifiedAt token slot so the next sync can skip this tab
-            // when it hasn't moved. Onshape files never take part in the
-            // MakerWorld/Printables source sync.
+            // Per-element microversion (issue #70): stored in the shared sourceModifiedAt token slot so the next sync can skip this tab when it hasn't moved. Onshape files never take part in the MakerWorld/Printables source sync.
             sourceModifiedAt: microversionId ?? null,
             contentHash: file.contentHash,
-            // Newly exported 3MF files still need slice estimates; the model
-            // page runs processPendingSlices in the background on next view.
+            // Newly exported 3MF files still need slice estimates; the model page runs processPendingSlices in the background on next view.
             sliceStatus: sliceEligible("model", file.filename)
               ? ("pending" as const)
               : null,
@@ -323,11 +282,10 @@ export async function POST(
       }
       await tx
         .update(models)
-        .set({ onshapeMicroversion: microversion, updatedAt: new Date() })
+        .set({ sourceRevision: microversion, updatedAt: new Date() })
         .where(eq(models.id, model.id));
 
-      // The replaced exports keep their S3 objects — the pre-sync version
-      // still references them. Only keys orphaned by version pruning go.
+      // The replaced exports keep their S3 objects — the pre-sync version still references them. Only keys orphaned by version pruning go.
       return recordVersion(tx, model.id, session.user.id, "onshape-sync");
     });
 
