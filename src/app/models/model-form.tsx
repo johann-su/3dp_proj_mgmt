@@ -412,7 +412,8 @@ export function ModelForm({
 
   function goToStep(target: 1 | 2) {
     if (target === step) return;
-    if (target === 2 && (!hasModelFile || extracting > 0)) return;
+    // Only the .3mf metadata read holds up the details step, so it opens already prefilled. A missing model file is caught on save instead (handleSubmit) — gating the step on it stranded an import whose files all failed to download on step 1 once the user went back there.
+    if (target === 2 && extracting > 0) return;
     setPreview(false);
     setStep(target);
   }
@@ -591,7 +592,7 @@ export function ModelForm({
         <div className="grid gap-6 max-w-2xl">
           <StepIndicator
             step={step}
-            canGoToDetails={hasModelFile && extracting === 0}
+            canGoToDetails={extracting === 0}
             onSelect={goToStep}
           />
 
@@ -800,13 +801,8 @@ export function ModelForm({
             type="button"
             variant="outline"
             className="w-full"
-            disabled={
-              status !== null || step === 2 || !hasModelFile || extracting > 0
-            }
-            onClick={() => {
-              setPreview(false);
-              setStep(2);
-            }}
+            disabled={status !== null || step === 2 || extracting > 0}
+            onClick={() => goToStep(2)}
           >
             {extracting > 0 ? "Reading…" : "Next"}
             <ArrowRight className="size-4" />

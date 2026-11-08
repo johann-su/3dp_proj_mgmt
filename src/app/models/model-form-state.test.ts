@@ -16,6 +16,8 @@ import {
   toggleSliceQueue,
   linkedVideoEntry,
   mediaKindForFilename,
+  partitionAccepted,
+  MODEL_ACCEPT,
   type ExistingFile,
   type MediaFileEntry,
   type ModelFileEntry,
@@ -318,6 +320,22 @@ test("mediaKindForFilename tells videos from photos by extension", () => {
   assert.equal(mediaKindForFilename("shot.png"), "image");
   // Not a video just because the name says so — the extension decides.
   assert.equal(mediaKindForFilename("video-of-the-print.jpg"), "image");
+});
+
+// Dropping files skips the file input's accept filter, so the picker re-checks them itself: a dropped .stl, or a folder (no extension), must not slip into the model list.
+test("partitionAccepted keeps only files whose extension is in the accept list", () => {
+  const files = ["Benchy.3MF", "clip.scad", "part.stl", "Photos", "notes.3mf.txt"].map(
+    (name) => ({ name }),
+  );
+  const { accepted, rejected } = partitionAccepted(files, MODEL_ACCEPT);
+  assert.deepEqual(
+    accepted.map((f) => f.name),
+    ["Benchy.3MF", "clip.scad"],
+  );
+  assert.deepEqual(
+    rejected.map((f) => f.name),
+    ["part.stl", "Photos", "notes.3mf.txt"],
+  );
 });
 
 // Photos and videos are one order group, so a video's slot among the photos has to survive the round-trip through the save. It would not if videos were ordered separately: the newIndex values are positions in one upload list.

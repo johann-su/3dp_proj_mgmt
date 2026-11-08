@@ -11,7 +11,7 @@ A **model** is the core unit of the catalog — the equivalent of a MakerWorld o
 
 The create wizard collects the title, description, category and tags, the files, images, an optional PDF, and an optional BOM, then saves the model in a single transaction. You reach it three ways:
 
-- **Upload** files directly (see the file types below).
+- **Upload** files directly — click to pick them, or drop them anywhere on the wizard's first step (see the file types below).
 - **Import by URL** from [MakerWorld or Printables](/integrations/makerworld-printables) — metadata, images and files are fetched server-side and staged into the same form for you to review before saving.
 - **Import from [Onshape](/integrations/onshape)** — pick the document tabs and a branch/version; each tab is exported to a `.3mf` file.
 - **Import an archive** — upload a `.zip` [exported](#importing-an-archive) from Print Vault, here or on another instance.
@@ -35,7 +35,7 @@ A single model can hold **multiple model files** — e.g. several plates or part
 
 ## `.3mf` metadata auto-fill
 
-When you select a `.3mf` file in the create form, Print Vault unpacks it **in your browser** and prefills the form from the embedded metadata — nothing is uploaded yet, so this is instant and works offline of the server:
+When you select or drop a `.3mf` file in the create form, Print Vault unpacks it **in your browser** and prefills the form from the embedded metadata — nothing is uploaded yet, so this is instant and works offline of the server:
 
 - **Title and description** from `3D/3dmodel.model`.
 - **Printer name** from the embedded slicer settings (`Metadata/project_settings.config` / `slice_info.config`).

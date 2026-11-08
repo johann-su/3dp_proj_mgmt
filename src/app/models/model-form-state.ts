@@ -17,6 +17,21 @@ export const VIDEO_ACCEPT = ".mp4,.webm,.mov";
 export const MEDIA_ACCEPT = `${IMAGE_ACCEPT},${VIDEO_ACCEPT}`;
 export const PDF_ACCEPT = ".pdf";
 
+// Splits dropped files into what an extension list like MODEL_ACCEPT takes and what it turns away. Drag-and-drop bypasses the file input's own `accept` filter, so a dropped file has to be checked by hand — by extension, as the server does.
+export function partitionAccepted<T extends { name: string }>(
+  files: T[],
+  accept: string,
+): { accepted: T[]; rejected: T[] } {
+  const extensions = accept.split(",").map((ext) => ext.trim().toLowerCase());
+  const accepted: T[] = [];
+  const rejected: T[] = [];
+  for (const file of files) {
+    const name = file.name.toLowerCase();
+    (extensions.some((ext) => name.endsWith(ext)) ? accepted : rejected).push(file);
+  }
+  return { accepted, rejected };
+}
+
 export type ExistingFile = {
   id: string;
   filename: string;

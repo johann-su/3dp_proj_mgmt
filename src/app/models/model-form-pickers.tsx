@@ -2,7 +2,8 @@
 
 // The create/edit wizard's file-picking UI: dashed-border pickers plus the row/tile lists they render (rename-in-place, drag + button reordering). All state lives in ModelForm (model-form.tsx); these components only receive entries and callbacks.
 
-import { useRef, useState } from "react";
+import { useEffect, useEffectEvent, useRef, useState } from "react";
+import { toast } from "sonner";
 import {
   ChevronDown,
   ChevronLeft,
@@ -27,6 +28,7 @@ import {
   isVideoFile,
   mediaFiles,
   MODEL_ACCEPT,
+  partitionAccepted,
   splitExtension,
   type ExistingFile,
   type MediaEntry,
@@ -237,6 +239,88 @@ export function FilePicker({
           ))}
         </ul>
       )}
+    </div>
+  );
+}
+
+// Turns the whole window into a drop target while mounted: dragging files over the page shows a full-screen overlay, and dropping adds whatever matches `accept` (the rest is skipped with a toast). It listens on window rather than on a container so a drop that misses the picker can't fall through to the browser, which would open the file and navigate away from the unsaved form.
+function FileDropOverlay({
+  accept,
+  label,
+  icon,
+  onDrop,
+}: {
+  accept: string;
+  label: string;
+  icon: React.ReactNode;
+  onDrop: (files: File[]) => void;
+}) {
+  const [active, setActive] = useState(false);
+  const extensions = new Intl.ListFormat("en", { type: "disjunction" }).format(
+    accept.split(","),
+  );
+
+  const handleDrop = useEffectEvent((dropped: File[]) => {
+    const { accepted, rejected } = partitionAccepted(dropped, accept);
+    if (rejected.length > 0) {
+      toast.error(
+        `Skipped ${rejected.map((f) => f.name).join(", ")} — only ${extensions} files can be added here`,
+      );
+    }
+    if (accepted.length > 0) onDrop(accepted);
+  });
+
+  useEffect(() => {
+    // dragenter/dragleave fire for every element the cursor crosses, so a running depth — not the latest event — tells whether the drag is still over the page. Drags without files (reordering rows, selected text) are left alone.
+    let depth = 0;
+    const carriesFiles = (e: DragEvent) =>
+      e.dataTransfer?.types.includes("Files") ?? false;
+    function onDragEnter(e: DragEvent) {
+      if (!carriesFiles(e)) return;
+      e.preventDefault();
+      depth++;
+      setActive(true);
+    }
+    function onDragOver(e: DragEvent) {
+      if (!carriesFiles(e)) return;
+      // Cancelling dragover is what allows the drop at all.
+      e.preventDefault();
+      e.dataTransfer!.dropEffect = "copy";
+    }
+    function onDragLeave(e: DragEvent) {
+      if (!carriesFiles(e)) return;
+      depth = Math.max(0, depth - 1);
+      if (depth === 0) setActive(false);
+    }
+    function onDropFiles(e: DragEvent) {
+      if (!carriesFiles(e)) return;
+      e.preventDefault();
+      depth = 0;
+      setActive(false);
+      handleDrop(Array.from(e.dataTransfer?.files ?? []));
+    }
+    window.addEventListener("dragenter", onDragEnter);
+    window.addEventListener("dragover", onDragOver);
+    window.addEventListener("dragleave", onDragLeave);
+    window.addEventListener("drop", onDropFiles);
+    return () => {
+      window.removeEventListener("dragenter", onDragEnter);
+      window.removeEventListener("dragover", onDragOver);
+      window.removeEventListener("dragleave", onDragLeave);
+      window.removeEventListener("drop", onDropFiles);
+    };
+  }, []);
+
+  if (!active) return null;
+  return (
+    <div className="fixed inset-0 z-50 bg-background/80 p-4 backdrop-blur-sm">
+      <div className="flex h-full flex-col items-center justify-center gap-3 rounded-xl border-2 border-dashed border-primary text-center">
+        {icon}
+        <p className="text-lg font-medium">{label}</p>
+        <p className="text-sm text-muted-foreground">
+          {extensions} files only
+        </p>
+      </div>
     </div>
   );
 }
@@ -498,10 +582,17 @@ export function ModelFilePicker({
         className="border border-dashed rounded-lg p-6 text-sm text-muted-foreground hover:bg-accent/50 transition-colors flex flex-col items-center gap-2"
       >
         <FileBox className="size-6" />
-        Click to add .3mf files (title, description, images and printer are
-        imported automatically) or parametric .scad files. Drag rows to
-        reorder.
+        Click or drop files anywhere on the page to add .3mf files (title,
+        description, images and printer are imported automatically) or
+        parametric .scad files. Drag rows to reorder.
       </button>
+      {/* This picker is the wizard's whole first step, so a drop anywhere on the page has one obvious destination. */}
+      <FileDropOverlay
+        accept={MODEL_ACCEPT}
+        label="Drop to add model files"
+        icon={<FileBox className="size-10 text-primary" />}
+        onDrop={onAdd}
+      />
       {entries.length > 0 && (
         <ul className="grid gap-1">
           {entries.map((entry, i) => (
