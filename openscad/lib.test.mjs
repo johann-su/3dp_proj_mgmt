@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { scrubErrorOutput, toParameterSetJson } from "./lib.mjs";
+import { createSerialQueue, scrubErrorOutput, toParameterSetJson } from "./lib.mjs";
 
 test("toParameterSetJson builds OpenSCAD's -p file shape", () => {
   // The service always renders parameter set "app" — the JSON must match what `openscad -p params.json -P app` expects.
@@ -38,6 +38,71 @@ test("scrubErrorOutput returns the last meaningful line without temp paths", () 
   assert.ok(scrubbed.includes("Parser error"), scrubbed);
 });
 
+test("scrubErrorOutput prefers the error over OpenSCAD's trailing chatter", () => {
+  // Real output of a failed assert: the useful line is the ERROR, not the "empty top level object" that follows it.
+  const output = [
+    "ERROR: Assertion '(x < 2)' failed: \"x too big\" in file input.scad, line 2",
+    "TRACE: called by 'assert' in file input.scad, line 2",
+    "Current top level object is empty.",
+  ].join("\n");
+  assert.match(scrubErrorOutput(output), /Assertion .* failed/);
+});
+
+test("scrubErrorOutput falls back to the last line when there is no ERROR", () => {
+  // An empty model fails without an ERROR line; its last line is the explanation.
+  assert.equal(
+    scrubErrorOutput("Compiling design...\nCurrent top level object is empty.\n"),
+    "Current top level object is empty.",
+  );
+});
+
 test("scrubErrorOutput has a fallback for empty output", () => {
   assert.equal(scrubErrorOutput(""), "rendering produced no output");
+});
+
+test("createSerialQueue runs jobs one at a time, in order", async () => {
+  // Rendering is CPU-bound: a second job must not start before the first finishes.
+  const enqueue = createSerialQueue();
+  const events = [];
+  const job = (name) => async () => {
+    events.push(`start ${name}`);
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    events.push(`end ${name}`);
+    return name;
+  };
+  const results = await Promise.all([enqueue(job("a")), enqueue(job("b"))]);
+  assert.deepEqual(results, ["a", "b"]);
+  assert.deepEqual(events, ["start a", "end a", "start b", "end b"]);
+});
+
+test("createSerialQueue skips a queued job whose client went away", async () => {
+  // A preview superseded while waiting in line must never reach OpenSCAD.
+  const enqueue = createSerialQueue();
+  const controller = new AbortController();
+  let release;
+  let started;
+  const firstStarted = new Promise((resolve) => (started = resolve));
+  const first = enqueue(() => {
+    started();
+    return new Promise((resolve) => (release = resolve));
+  });
+  let ran = false;
+  const second = enqueue(() => {
+    ran = true;
+  }, controller.signal);
+  await firstStarted;
+  controller.abort();
+  release("done");
+  assert.equal(await first, "done");
+  assert.equal(await second, null);
+  assert.equal(ran, false);
+});
+
+test("createSerialQueue keeps going after a failing job", async () => {
+  const enqueue = createSerialQueue();
+  const failed = enqueue(async () => {
+    throw new Error("boom");
+  });
+  await assert.rejects(failed);
+  assert.equal(await enqueue(async () => "next"), "next");
 });

@@ -81,6 +81,13 @@
       "description": "OrcaSlicer powers the slicer service's estimates; a release can change slicing behaviour, so review it by hand (last rule so it wins over the patch automerge)",
       "matchPackageNames": ["OrcaSlicer/OrcaSlicer"],
       "automerge": false
+    },
+    {
+      "description": "The openscad service runs OpenSCAD's weekly development build (tags like trixie.2026-11-09, which Docker versioning can't parse). A snapshot can change rendering or the 3MF output, so review bumps by hand (last so it wins over the patch automerge)",
+      "matchDatasources": ["docker"],
+      "matchPackageNames": ["openscad/openscad"],
+      "versioning": "regex:^trixie\\.(?<major>\\d{4})-(?<minor>\\d{2})-(?<patch>\\d{2})$",
+      "automerge": false
     }
   ]
 }

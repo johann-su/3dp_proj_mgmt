@@ -122,8 +122,8 @@ export function recordSliceEstimate(
   }
 }
 
-/** "rejected" = the .scad source was refused (4xx), "error" = service 5xx. */
-export type RenderOutcome = "ok" | "rejected" | "error" | "unreachable";
+/** "rejected" = the .scad source was refused (4xx), "error" = service 5xx, "cancelled" = the caller went away first (a superseded preview). */
+export type RenderOutcome = "ok" | "rejected" | "error" | "unreachable" | "cancelled";
 
 export function recordOpenscadRender(
   format: "3mf" | "stl",

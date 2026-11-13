@@ -33,11 +33,28 @@ export function toParameterSetJson(parameters) {
   return JSON.stringify({ parameterSets: { app: set }, fileFormatVersion: "1" });
 }
 
-// Last meaningful line of the OpenSCAD output for failure messages. Temp paths mean nothing to the caller; ECHO lines are the model talking, not the error.
+// Runs jobs one at a time, in arrival order (rendering is CPU-bound). A job whose signal is aborted by the time its turn comes is skipped and resolves to null: the customizer fires a preview per parameter change and abandons the older ones, and without the skip every abandoned preview would still be rendered in turn before the one the user is waiting for. A failing job doesn't stall the queue.
+export function createSerialQueue() {
+  let tail = Promise.resolve();
+  return function enqueue(job, signal) {
+    const run = tail.then(() => (signal?.aborted ? null : job()));
+    tail = run.then(
+      () => {},
+      () => {},
+    );
+    return run;
+  };
+}
+
+// The failure message for the caller: the last ERROR line, else the last meaningful line of the OpenSCAD output. OpenSCAD keeps talking after an error (a failed assert is followed by "TRACE: ..." and "Current top level object is empty."), so the plain last line is often not the cause. Temp paths mean nothing to the caller; ECHO lines are the model talking, not the error.
 export function scrubErrorOutput(output) {
   const lines = output
     .split("\n")
     .map((line) => line.trim().replace(/\/tmp\/scad-[^\s:,')]*\/?/g, ""))
     .filter((line) => line && !line.startsWith("ECHO:"));
-  return lines.at(-1) ?? "rendering produced no output";
+  return (
+    lines.findLast((line) => line.startsWith("ERROR:")) ??
+    lines.at(-1) ??
+    "rendering produced no output"
+  );
 }
