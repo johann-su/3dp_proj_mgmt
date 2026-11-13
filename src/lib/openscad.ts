@@ -18,10 +18,12 @@ export type RenderResult =
 // "3mf" for files that get stored; "stl" (binary) for the customize page's browser preview, which three.js parses directly.
 export type RenderFormat = "3mf" | "stl";
 
+// `signal` cancels the render when the caller no longer wants it (the preview route passes the browser request's signal); the service then skips or kills the job instead of finishing it. Cancellation yields status 499.
 export async function renderScad(
   source: string,
   parameters: Record<string, string>,
   format: RenderFormat = "3mf",
+  signal?: AbortSignal,
 ): Promise<RenderResult> {
   const url = process.env.OPENSCAD_URL;
   if (!url) {
@@ -30,15 +32,21 @@ export async function renderScad(
 
   const startedAt = performance.now();
   const elapsedSeconds = () => (performance.now() - startedAt) / 1000;
+  const timeout = AbortSignal.timeout(REQUEST_TIMEOUT_MS);
+  const cancelled = (): RenderResult => {
+    recordOpenscadRender(format, "cancelled", elapsedSeconds());
+    return { ok: false, status: 499, error: "Render cancelled" };
+  };
   let res: Response;
   try {
     res = await fetch(new URL("/render", url), {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ source, parameters, format }),
-      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+      signal: signal ? AbortSignal.any([timeout, signal]) : timeout,
     });
   } catch (err) {
+    if (signal?.aborted) return cancelled();
     reportError("openscad service unreachable", err);
     recordOpenscadRender(format, "unreachable", elapsedSeconds());
     return { ok: false, status: 502, error: "OpenSCAD service is unreachable" };
@@ -53,7 +61,15 @@ export async function renderScad(
       error: body?.error ?? `OpenSCAD service responded with ${res.status}`,
     };
   }
-  const data = new Uint8Array(await res.arrayBuffer());
+  let data: Uint8Array;
+  try {
+    data = new Uint8Array(await res.arrayBuffer());
+  } catch (err) {
+    if (signal?.aborted) return cancelled();
+    reportError("openscad service response interrupted", err);
+    recordOpenscadRender(format, "unreachable", elapsedSeconds());
+    return { ok: false, status: 502, error: "OpenSCAD service is unreachable" };
+  }
   recordOpenscadRender(format, "ok", elapsedSeconds());
   return { ok: true, data };
 }

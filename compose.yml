@@ -29,7 +29,7 @@ services:
     ports:
       - "127.0.0.1:8000:8000"
 
-  # Headless OpenSCAD wrapped in the same kind of HTTP service (./openscad). Renders parametric .scad model files into .3mf with user-chosen customizer values. Loopback-only for the same reason as the slicer; the memory/pid limits matter because OpenSCAD's CGAL renderer can eat unbounded RAM on a hostile or just overly ambitious model.
+  # Headless OpenSCAD wrapped in the same kind of HTTP service (./openscad). Renders parametric .scad model files into .3mf with user-chosen customizer values. Loopback-only for the same reason as the slicer; the memory/pid limits matter because OpenSCAD can eat unbounded RAM on a hostile or just overly ambitious model. Its Manifold renderer starts a worker thread per core; threads count toward pids_limit, and past the limit it renders with fewer threads rather than failing. To cap its CPU, pin cores with `cpuset` rather than setting `cpus`: a CPU quota throttles those threads and made renders ~5x slower in testing, while one pinned core cost only ~40%.
   openscad:
     build: ./openscad
     restart: unless-stopped

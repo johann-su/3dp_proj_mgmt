@@ -168,8 +168,8 @@ function ParameterField({
   );
 }
 
-// How long after the last parameter change the preview re-renders. Long enough to survive slider drags, short enough to feel live.
-const PREVIEW_DEBOUNCE_MS = 800;
+// How long after the last parameter change the preview re-renders. Typical models render in 50–300 ms on the Manifold backend, so this delay is most of what the user waits for; it only has to bridge the gaps between steps of a slider drag or keystrokes, and a preview that starts too early is aborted by the next one anyway.
+const PREVIEW_DEBOUNCE_MS = 300;
 
 // Parameter panel width (px) on the lg row layout. Clamped so it can't shrink past readability or grow big enough to crowd out the preview.
 const PANEL_DEFAULT_WIDTH = 384; // matches the previous fixed lg:w-96
@@ -202,6 +202,8 @@ export function CustomizeView({
   const [generating, setGenerating] = useState(false);
   // Monotonic counter so a slow older render can't overwrite a newer one.
   const previewSeq = useRef(0);
+  // The in-flight preview request. Aborting it (when a newer preview starts, or on unmount) makes the server drop the render instead of finishing one nobody will see.
+  const previewAbort = useRef<AbortController | null>(null);
   const debounceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const asideRef = useRef<HTMLElement | null>(null);
@@ -245,6 +247,9 @@ export function CustomizeView({
   const runPreview = useCallback(
     async (previewValues: Values) => {
       const seq = ++previewSeq.current;
+      previewAbort.current?.abort();
+      const controller = new AbortController();
+      previewAbort.current = controller;
       setPreviewing(true);
       setPreviewError(null);
       try {
@@ -252,6 +257,7 @@ export function CustomizeView({
           method: "POST",
           headers: { "content-type": "application/json" },
           body: JSON.stringify({ fileId, values: previewValues }),
+          signal: controller.signal,
         });
         if (seq !== previewSeq.current) return; // superseded by a newer render
         if (!res.ok) {
@@ -261,6 +267,7 @@ export function CustomizeView({
         }
         setPreviewData(await res.arrayBuffer());
       } catch {
+        if (controller.signal.aborted) return; // cancelled on purpose, not a failure
         if (seq === previewSeq.current) setPreviewError("Preview failed — is the OpenSCAD service running?");
       } finally {
         if (seq === previewSeq.current) setPreviewing(false);
@@ -269,9 +276,13 @@ export function CustomizeView({
     [modelId, fileId],
   );
 
-  // First render on mount, then re-render debounced on every change.
+  // First render on mount, then re-render debounced on every change. Leaving the page cancels whatever is still pending.
   useEffect(() => {
     runPreview(defaultValues(groups));
+    return () => {
+      if (debounceTimer.current) clearTimeout(debounceTimer.current);
+      previewAbort.current?.abort();
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
