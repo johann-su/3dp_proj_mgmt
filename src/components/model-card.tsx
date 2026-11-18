@@ -27,8 +27,9 @@ export type ModelCardData = {
 export function ModelCard({ model, href }: { model: ModelCardData; href?: string }) {
   const cover = model.files[0];
   const platform = platformFromSourceUrl(model.sourceUrl);
+  // No viewport prefetch: cards render in grids and infinite feeds, where Next would fire one `/models/<id>?_rsc=` request per visible card (56 on one homepage view, enough for CrowdSec's http-crawl-non_statics to ban the viewer). It bought nothing anyway — model pages are dynamic with no loading.tsx, so a prefetch fetches only the route tree and the click still waits for the server render. See docs/architecture/ui-conventions.md.
   return (
-    <Link href={href ?? `/models/${model.id}`} className="group">
+    <Link href={href ?? `/models/${model.id}`} prefetch={false} className="group">
       <Card className="overflow-hidden h-full py-0 gap-0 border-0 shadow-sm transition-shadow group-hover:shadow-lg">
         <div className="relative aspect-[4/3] bg-muted flex items-center justify-center overflow-hidden">
           {cover ? (
