@@ -31,7 +31,8 @@ export function CollectionCard({
   const overflow = totalModels - 4;
 
   return (
-    <Link href={`/collections/${collection.id}`} className="group block h-full">
+    // No viewport prefetch, same reason as ModelCard: one request per card in a grid trips CrowdSec and buys nothing on a dynamic route.
+    <Link href={`/collections/${collection.id}`} prefetch={false} className="group block h-full">
       {/* Stacked card effect — each layer is offset by an even 4px step (inset + drop) so the peeking edges look evenly spaced. The wrapper is shrunk by the largest drop (8px) so the peeking layers stay within the grid cell instead of overflowing past its bottom edge, which otherwise made collection cards look taller than model cards. */}
       <div className="relative h-[calc(100%-8px)]">
         <div className="absolute inset-x-2 -bottom-2 h-full rounded-xl bg-muted/60 border border-border/40" />
