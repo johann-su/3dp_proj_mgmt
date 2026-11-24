@@ -84,6 +84,8 @@ export function ImportProgressIndicator() {
   );
   // The collection page the user is likely looking at re-renders as models land; refresh it when the running job's numbers move.
   const lastCompleted = useRef<number>(-1);
+  // Starting an import opens the card so progress is visible right after landing on the collection.
+  const [open, setOpen] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -120,7 +122,10 @@ export function ImportProgressIndicator() {
     }
 
     poll();
-    const onStarted = () => poll();
+    const onStarted = () => {
+      setOpen(true);
+      poll();
+    };
     window.addEventListener(IMPORT_JOB_STARTED_EVENT, onStarted);
     return () => {
       cancelled = true;
@@ -151,7 +156,7 @@ export function ImportProgressIndicator() {
     : "Import finished";
 
   return (
-    <DropdownMenu>
+    <DropdownMenu open={open} onOpenChange={setOpen}>
       <Tooltip>
         <TooltipTrigger asChild>
           <DropdownMenuTrigger asChild>
