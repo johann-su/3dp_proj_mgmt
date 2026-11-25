@@ -389,6 +389,7 @@ async function resolveDownloads(
         modelId,
         token,
         region,
+        instance.id,
       );
       if (result === "unauthorized") {
         warnings.push(BAMBU_EXPIRED_WARNING);
