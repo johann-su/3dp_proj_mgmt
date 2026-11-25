@@ -4,6 +4,8 @@
 //
 // Endpoints and flow are community-documented; Bambu can change them at will.
 
+import { logger } from "@/lib/logger";
+
 export type BambuRegion = "global" | "china";
 
 // A realistic desktop UA — some Bambu endpoints reject obvious bots.
@@ -177,19 +179,45 @@ export async function fetchProfileDownload(
   modelId: string,
   token: string,
   region: BambuRegion,
+  instanceId?: number,
 ): Promise<ProfileDownload | null | "unauthorized"> {
+  const headers = { ...jsonHeaders(), Authorization: `Bearer ${token}` };
   const res = await fetch(
     `${apiBase(region)}/v1/iot-service/api/user/profile/${profileId}?model_id=${encodeURIComponent(modelId)}`,
-    { headers: { ...jsonHeaders(), Authorization: `Bearer ${token}` } },
+    { headers },
   );
   if (res.status === 401) return "unauthorized";
-  if (!res.ok) return null;
-  const data = (await res.json().catch(() => null)) as {
+  if (res.ok) {
+    const data = (await res.json().catch(() => null)) as {
+      url?: string;
+      name?: string;
+    } | null;
+    if (data?.url) return { url: data.url, name: data.name ?? "" };
+  } else {
+    logger.warn(
+      { profileId, modelId, status: res.status, body: (await res.text().catch(() => "")).slice(0, 300) },
+      "bambu profile download failed",
+    );
+  }
+
+  // The slicer-facing profile endpoint can refuse (or come back without a URL) for designs whose web download still works; the design-service endpoint keyed by the *instance* id is what makerworld.com itself uses.
+  if (instanceId === undefined) return null;
+  const fallback = await fetch(
+    `${apiBase(region)}/v1/design-service/instance/${instanceId}/f3mf?type=download`,
+    { headers },
+  );
+  if (!fallback.ok) {
+    logger.warn(
+      { instanceId, modelId, status: fallback.status, body: (await fallback.text().catch(() => "")).slice(0, 300) },
+      "bambu f3mf download failed",
+    );
+    return null;
+  }
+  const data = (await fallback.json().catch(() => null)) as {
     url?: string;
     name?: string;
   } | null;
-  if (!data?.url) return null;
-  return { url: data.url, name: data.name ?? "" };
+  return data?.url ? { url: data.url, name: data.name ?? "" } : null;
 }
 
 // Exchanges a design id for a presigned download of its *raw* model files (the "raw model files" panel on MakerWorld — .scad sources, unsliced .3mf/.stl geometry — as opposed to the sliced print profiles above). Only `modelType=all` works (verified against a live account: "scad"/"3mf" answer 404), returning one zip of every raw file with an empty `name`. Undocumented like the favorites API: discovered from community clients of MakerWorld's own frontend, so Bambu can change it at will. Requires a login — it answers 403 "Please log in to download models." anonymously, hence 403 also maps to "unauthorized".

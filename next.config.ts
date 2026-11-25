@@ -26,6 +26,8 @@ const csp = [
 
 const nextConfig: NextConfig = {
   output: "standalone",
+  // `next dev` prints every Server Function call with its arguments, which would put the Bambu password, email/TOTP codes and pasted tokens (src/app/settings/bambu/actions.ts) in the terminal. It's all-or-nothing, so turn it off.
+  logging: { serverFunctions: false },
   // Baseline security headers for an internet-facing deployment. Applied here rather than at the reverse proxy so they hold however the app is fronted.
   async headers() {
     return [
