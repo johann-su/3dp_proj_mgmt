@@ -51,6 +51,8 @@ export type SourceImporter = {
   // Why a URL on this source's site can't be imported here, when there is a more useful answer than "unsupported" (a collection link has its own import flow).
   rejection?(url: URL): string | null;
   importUrl(url: URL, request: ImportRequest): Promise<ImportStep>;
+  // Why this user can't import from this source unattended (POST /api/import/background), or null. A background import saves the model directly, with no create form to finish a draft in, so a source that would only produce a file-less draft says so up front instead of failing after the user has moved on.
+  backgroundBlocker?(userId: string): Promise<string | null>;
 };
 
 // --- MakerWorld --------------------------------------------------------------
@@ -76,6 +78,11 @@ const makerworld: SourceImporter = {
       await markBambuCredentialInvalid(userId);
     }
     return { project };
+  },
+  async backgroundBlocker(userId) {
+    return (await getBambuCredential(userId))
+      ? null
+      : "Importing MakerWorld files in the background needs a connected Bambu account — connect it in Settings → Bambu Cloud, or use Fetch model and add the .3mf yourself";
   },
 };
 

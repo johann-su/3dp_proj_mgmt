@@ -32,12 +32,17 @@ import {
 import { stageImportedAssets, type StagedImportFile } from "./stage";
 import { animatedImageKeys } from "@/lib/storage";
 import { ImportError, type ImportedProject } from "./types";
+import {
+  IMPORT_ALREADY_RUNNING,
+  hasRunningImport,
+  isImportJobCanceled,
+  updateImportJob,
+  type ImportJobRow,
+} from "./jobs";
 
 const MAX_WARNINGS = 50;
 // Pause between designs — the whole job is one client hammering Bambu's API and CDN, so give them room to breathe.
 const DELAY_BETWEEN_DESIGNS_MS = 500;
-
-type JobRow = typeof importJobs.$inferSelect;
 
 export type StartCollectionImport =
   | { ok: true; jobId: string; collectionId: string; title: string; total: number }
@@ -70,17 +75,8 @@ export async function startCollectionImport(
     };
   }
 
-  // One import at a time per user; a second job would fight the first for Bambu API rate limits and make the progress indicator ambiguous.
-  const running = await db.query.importJobs.findFirst({
-    where: and(eq(importJobs.userId, userId), eq(importJobs.status, "running")),
-    columns: { id: true },
-  });
-  if (running) {
-    return {
-      ok: false,
-      status: 409,
-      error: "Another import is already running — wait for it to finish",
-    };
+  if (await hasRunningImport(userId)) {
+    return { ok: false, status: 409, error: IMPORT_ALREADY_RUNNING };
   }
 
   const remote = await fetchMakerworldCollection(remoteId, cred.region);
@@ -128,21 +124,6 @@ export async function startCollectionImport(
 
 // Jobs currently running in this process (double-start guard, mirrors the inFlight set in src/lib/slicer.ts).
 const inFlight = new Set<string>();
-
-async function updateJob(jobId: string, values: Partial<JobRow>) {
-  await db
-    .update(importJobs)
-    .set({ ...values, updatedAt: new Date() })
-    .where(eq(importJobs.id, jobId));
-}
-
-async function isCanceled(jobId: string): Promise<boolean> {
-  const row = await db.query.importJobs.findFirst({
-    where: eq(importJobs.id, jobId),
-    columns: { status: true },
-  });
-  return !row || row.status === "canceled";
-}
 
 // Inserts an imported project as a finished model owned by the job's user and links it into the job's collection. Returns the new model id.
 async function createImportedModel(
@@ -230,7 +211,7 @@ export async function runCollectionImportJob(jobId: string) {
     await runJob(jobId);
   } catch (err) {
     reportError(`collection import ${jobId} failed`, err);
-    await updateJob(jobId, {
+    await updateImportJob(jobId, {
       status: "failed",
       currentItem: null,
       error:
@@ -276,11 +257,11 @@ async function runJob(jobId: string) {
   let skipped = 0;
   const createdModelIds: string[] = [];
 
-  await updateJob(jobId, { total: designs.length });
+  await updateImportJob(jobId, { total: designs.length });
 
   for (const design of designs) {
-    if (await isCanceled(jobId)) return;
-    await updateJob(jobId, { currentItem: design.title, completed, failed, skipped });
+    if (await isImportJobCanceled(jobId)) return;
+    await updateImportJob(jobId, { currentItem: design.title, completed, failed, skipped });
 
     try {
       const outcome = await importDesign(job, design, cred);
@@ -308,11 +289,11 @@ async function runJob(jobId: string) {
     }
 
     completed++;
-    await updateJob(jobId, { completed, failed, skipped, warnings });
+    await updateImportJob(jobId, { completed, failed, skipped, warnings });
     await new Promise((resolve) => setTimeout(resolve, DELAY_BETWEEN_DESIGNS_MS));
   }
 
-  await updateJob(jobId, { status: "done", currentItem: null, warnings });
+  await updateImportJob(jobId, { status: "done", currentItem: null, warnings });
 
   // Estimate print time & filament sequentially once the job is done (most MakerWorld profiles carry embedded slice_info, so this is usually just a couple of ranged S3 reads per model). Kept out of the import loop so a slow slicer service doesn't stretch the visible progress.
   for (const modelId of createdModelIds) {
@@ -326,7 +307,7 @@ type DesignOutcome =
   | { kind: "failed"; reason: string };
 
 async function importDesign(
-  job: JobRow,
+  job: ImportJobRow,
   design: MakerworldCollectionDesign,
   cred: { token: string; region: "global" | "china" },
 ): Promise<DesignOutcome> {

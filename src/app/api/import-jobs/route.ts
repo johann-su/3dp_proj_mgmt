@@ -39,8 +39,10 @@ export async function GET() {
     columns: {
       id: true,
       status: true,
+      kind: true,
       sourceUrl: true,
       collectionId: true,
+      modelId: true,
       total: true,
       completed: true,
       failed: true,

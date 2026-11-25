@@ -4,7 +4,7 @@ import { Fragment, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Box, Boxes, CloudDownload, FileArchive, HelpCircle } from "lucide-react";
+import { Box, Boxes, Clock, CloudDownload, FileArchive, HelpCircle } from "lucide-react";
 import { IMPORT_DRAFT_KEY } from "@/app/models/import-draft";
 import { IMPORT_TYPES, type ImportType } from "./import-types";
 import type { OnshapeBranchPick, OnshapeImportTab } from "@/lib/import/onshape";
@@ -79,6 +79,19 @@ const HELP_SECTIONS: Record<string, React.ReactNode> = {
       </p>
     </section>
   ),
+  background: (
+    <section className="grid gap-1.5">
+      <h3 className="font-medium">Import in background</h3>
+      <p className="text-muted-foreground">
+        Skips the create form: the model is saved as imported, with a
+        category suggested from its source, while you carry on elsewhere.
+        Progress shows in the top-right corner; edit the model afterwards like
+        any other. MakerWorld needs a connected Bambu account for this, since
+        there is no form to add the <code>.3mf</code> in. One import runs at a
+        time.
+      </p>
+    </section>
+  ),
   collection: (
     <section className="grid gap-1.5">
       <h3 className="font-medium">MakerWorld collections</h3>
@@ -131,7 +144,7 @@ const HELP_SECTIONS: Record<string, React.ReactNode> = {
 };
 
 const HELP_SECTIONS_BY_TYPE: Record<ImportType, string[]> = {
-  model: ["printables", "makerworld"],
+  model: ["printables", "makerworld", "background"],
   collection: ["collection"],
   cad: ["onshape"],
   archive: ["archive"],
@@ -141,6 +154,8 @@ export function ImportForm({ type }: { type: ImportType }) {
   const config = IMPORT_TYPES[type];
   const router = useRouter();
   const [fetching, setFetching] = useState(false);
+  // Which button started the request in flight, so only that one shows the pending label.
+  const [fetchMode, setFetchMode] = useState<"draft" | "background">("draft");
   // Set when the importer reports a model has a lot of files — drives the Continue/Cancel confirmation dialog before we download them all.
   const [pendingConfirm, setPendingConfirm] = useState<{
     url: string;
@@ -157,10 +172,11 @@ export function ImportForm({ type }: { type: ImportType }) {
     selected: OnshapeBranchPick;
   } | null>(null);
   const [onshapeSelected, setOnshapeSelected] = useState<string[]>([]);
-  // Set when the catalog already holds the design this URL names — drives the Skip/Import-anyway dialog (issue #118). Flag-only: nothing is blocked.
+  // Set when the catalog already holds the design this URL names — drives the Skip/Import-anyway dialog (issue #118). Flag-only: nothing is blocked. `background` remembers which endpoint "Import anyway" re-POSTs to.
   const [pendingDuplicate, setPendingDuplicate] = useState<{
     url: string;
     duplicates: DuplicateMatch[];
+    background: boolean;
   } | null>(null);
   // "Import anyway" has been answered for the URL in flight. A ref, not state: the duplicate prompt comes before the many-files and Onshape-tab prompts, and every one of those re-POSTs synchronously from its own handler, which would read a stale state value.
   const duplicateOkRef = useRef(false);
@@ -182,6 +198,31 @@ export function ImportForm({ type }: { type: ImportType }) {
       `Importing “${body.title}” in the background — models appear in the collection as they finish`,
     );
     router.push(`/collections/${body.collectionId}`);
+  }
+
+  // The single-model import as a background job: the route answers right away (or with the duplicate prompt), the header indicator takes over, and the model is saved without the create form.
+  async function importInBackground(url: string) {
+    const res = await fetch("/api/import/background", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ url, confirmDuplicate: duplicateOkRef.current }),
+    });
+    const body = await res.json().catch(() => null);
+    if (!res.ok) {
+      throw new Error(body?.error ?? `Import failed (${res.status})`);
+    }
+    if (body?.needsDuplicateConfirmation) {
+      setFetching(false);
+      setPendingDuplicate({
+        url,
+        duplicates: Array.isArray(body.duplicates) ? body.duplicates : [],
+        background: true,
+      });
+      return;
+    }
+    window.dispatchEvent(new Event(IMPORT_JOB_STARTED_EVENT));
+    toast.success("Importing in the background — the model appears once it's done");
+    router.push("/");
   }
 
   async function importModel(
@@ -217,6 +258,7 @@ export function ImportForm({ type }: { type: ImportType }) {
       setPendingDuplicate({
         url,
         duplicates: Array.isArray(body.duplicates) ? body.duplicates : [],
+        background: false,
       });
       return;
     }
@@ -270,12 +312,12 @@ export function ImportForm({ type }: { type: ImportType }) {
 
   async function confirmDuplicateImport() {
     if (!pendingDuplicate) return;
-    const { url } = pendingDuplicate;
+    const { url, background } = pendingDuplicate;
     setPendingDuplicate(null);
     duplicateOkRef.current = true;
     setFetching(true);
     try {
-      await importModel(url);
+      await (background ? importInBackground(url) : importModel(url));
     } catch (err) {
       setFetching(false);
       toast.error(err instanceof Error ? err.message : "Import failed");
@@ -344,8 +386,12 @@ export function ImportForm({ type }: { type: ImportType }) {
       return;
     }
     const url = String(data.get("url") ?? "").trim();
+    // Enter submits through the first button (Fetch model); only a click on the second one goes to the background job.
+    const submitter = (e.nativeEvent as SubmitEvent).submitter;
+    const background = submitter?.dataset.importMode === "background";
     // A new submission asks about duplicates again — the URL may be a different design than the one that was waved through last time.
     duplicateOkRef.current = false;
+    setFetchMode(background ? "background" : "draft");
     setFetching(true);
     try {
       // The import type is chosen up front in the sidebar, so route by it directly rather than sniffing the URL for a collection link.
@@ -353,6 +399,8 @@ export function ImportForm({ type }: { type: ImportType }) {
         await importArchive(archive as File);
       } else if (type === "collection") {
         await importCollection(url);
+      } else if (background) {
+        await importInBackground(url);
       } else {
         await importModel(url);
       }
@@ -413,14 +461,31 @@ export function ImportForm({ type }: { type: ImportType }) {
               />
             )}
           </div>
-          <Button type="submit" disabled={fetching} className="justify-self-start">
-            {config.input === "file" ? (
-              <FileArchive className="size-4" />
-            ) : (
-              <CloudDownload className="size-4" />
+          <div className="flex flex-wrap gap-2">
+            <Button type="submit" disabled={fetching}>
+              {config.input === "file" ? (
+                <FileArchive className="size-4" />
+              ) : (
+                <CloudDownload className="size-4" />
+              )}
+              {fetching && fetchMode === "draft"
+                ? config.fetchingLabel
+                : config.submitLabel}
+            </Button>
+            {"backgroundLabel" in config && (
+              <Button
+                type="submit"
+                variant="outline"
+                disabled={fetching}
+                data-import-mode="background"
+              >
+                <Clock className="size-4" />
+                {fetching && fetchMode === "background"
+                  ? "Starting import…"
+                  : config.backgroundLabel}
+              </Button>
             )}
-            {fetching ? config.fetchingLabel : config.submitLabel}
-          </Button>
+          </div>
           <p className="text-xs text-muted-foreground">{config.hint}</p>
         </form>
       </CardContent>
