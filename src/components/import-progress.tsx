@@ -1,6 +1,6 @@
 "use client";
 
-// Header widget for background collection imports: a small progress ring in the top-right corner while a job runs, turning into a status dot when it finishes. Polls GET /api/import-jobs while a job is active; the import form fires IMPORT_JOB_STARTED_EVENT so polling starts without a page reload.
+// Header widget for background imports (a whole MakerWorld collection, or one model via "Import in background"): a small progress ring in the top-right corner while a job runs, turning into a status dot when it finishes. Polls GET /api/import-jobs while a job is active; the import form fires IMPORT_JOB_STARTED_EVENT so polling starts without a page reload.
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
@@ -23,8 +23,10 @@ export const IMPORT_JOB_STARTED_EVENT = "printvault:import-job-started";
 type ImportJob = {
   id: string;
   status: "running" | "done" | "failed" | "canceled";
+  kind: "collection" | "model";
   sourceUrl: string;
   collectionId: string | null;
+  modelId: string | null;
   total: number;
   completed: number;
   failed: number;
@@ -48,11 +50,16 @@ function dismissedIds(): string[] {
   }
 }
 
-function ProgressRing({ fraction }: { fraction: number }) {
+// `fraction` null = indeterminate: a model job is one unit of work with no countable steps, so it spins a fixed arc instead of sitting at 0%.
+function ProgressRing({ fraction }: { fraction: number | null }) {
   const radius = 8;
   const circumference = 2 * Math.PI * radius;
+  const shown = fraction === null ? 0.3 : Math.min(1, Math.max(0.02, fraction));
   return (
-    <svg viewBox="0 0 20 20" className="size-5 -rotate-90">
+    <svg
+      viewBox="0 0 20 20"
+      className={`size-5 ${fraction === null ? "animate-spin" : "-rotate-90"}`}
+    >
       <circle
         cx="10"
         cy="10"
@@ -69,7 +76,7 @@ function ProgressRing({ fraction }: { fraction: number }) {
         strokeWidth="2.5"
         strokeLinecap="round"
         strokeDasharray={circumference}
-        strokeDashoffset={circumference * (1 - Math.min(1, Math.max(0.02, fraction)))}
+        strokeDashoffset={circumference * (1 - shown)}
         className="stroke-primary transition-[stroke-dashoffset] duration-500"
       />
     </svg>
@@ -82,8 +89,9 @@ export function ImportProgressIndicator() {
   const [dismissed, setDismissed] = useState<string[]>(() =>
     typeof window === "undefined" ? [] : dismissedIds(),
   );
-  // The collection page the user is likely looking at re-renders as models land; refresh it when the running job's numbers move.
+  // The page the user is likely looking at (the collection, or the homepage a model import redirected to) re-renders as models land; refresh it when the running job's numbers move, and once more when it finishes.
   const lastCompleted = useRef<number>(-1);
+  const runningId = useRef<string | null>(null);
   // Starting an import opens the card so progress is visible right after landing on the collection.
   const [open, setOpen] = useState(false);
 
@@ -112,7 +120,11 @@ export function ImportProgressIndicator() {
           if (active && active.completed !== lastCompleted.current) {
             lastCompleted.current = active.completed;
             router.refresh();
+          } else if (!active && runningId.current) {
+            // A model job's only model appears when it finishes, and a collection's last one may land after its final progress tick.
+            router.refresh();
           }
+          runningId.current = active?.id ?? null;
         }
       } catch {
         // transient network error — keep polling
@@ -140,7 +152,8 @@ export function ImportProgressIndicator() {
   if (!job) return null;
 
   const running = job.status === "running";
-  const fraction = job.total > 0 ? job.completed / job.total : 0;
+  const isModel = job.kind === "model";
+  const fraction = isModel ? null : job.total > 0 ? job.completed / job.total : 0;
   const imported = job.completed - job.failed - job.skipped;
 
   const dismiss = () => {
@@ -151,9 +164,11 @@ export function ImportProgressIndicator() {
     } catch {}
   };
 
-  const label = running
-    ? `Importing collection: ${job.completed} of ${job.total}`
-    : "Import finished";
+  const label = !running
+    ? "Import finished"
+    : isModel
+      ? `Importing model${job.currentItem ? `: ${job.currentItem}` : ""}`
+      : `Importing collection: ${job.completed} of ${job.total}`;
 
   return (
     <DropdownMenu open={open} onOpenChange={setOpen}>
@@ -179,7 +194,20 @@ export function ImportProgressIndicator() {
       </Tooltip>
       <DropdownMenuContent align="end" className="w-80 p-3">
         <div className="grid gap-2 text-sm">
-          {running ? (
+          {isModel ? (
+            <>
+              <p className="font-medium">
+                {job.status === "running" && "Importing model…"}
+                {job.status === "done" && "Model imported"}
+                {job.status === "failed" && (job.error ?? "Import failed")}
+                {job.status === "canceled" && "Import canceled"}
+              </p>
+              {/* The title once the importer has read it; until then (or if it never got that far) the link that was pasted. */}
+              <p className="truncate text-xs text-muted-foreground">
+                {job.currentItem ?? job.sourceUrl}
+              </p>
+            </>
+          ) : running ? (
             <>
               <p className="font-medium">
                 Importing collection… {job.completed} / {job.total}
@@ -215,6 +243,11 @@ export function ImportProgressIndicator() {
             {job.collectionId && (
               <Button asChild size="sm" variant="outline">
                 <Link href={`/collections/${job.collectionId}`}>View collection</Link>
+              </Button>
+            )}
+            {job.modelId && (
+              <Button asChild size="sm" variant="outline">
+                <Link href={`/models/${job.modelId}`}>View model</Link>
               </Button>
             )}
             {running ? (

@@ -10,6 +10,8 @@ Paste a MakerWorld or Printables model URL into the import dialog to prefill the
 - **Printables** — metadata, images and files import anonymously.
 - **MakerWorld** — metadata and images import anonymously; `.3mf` print-profile downloads require a connected [Bambu Cloud account](/integrations/bambu-cloud).
 
+**Import in background** (next to **Fetch model**) skips the review form instead: the import runs as a background job while you carry on, and the model is saved as imported, with a category suggested from its source. Progress shows in the header like a [collection import](#collection-import), with a link to the finished model. Because there is no form to add a `.3mf` in, MakerWorld models need a connected [Bambu account](/integrations/bambu-cloud) for this, and a model with no downloadable `.3mf`/`.scad`/`.step` file fails instead of being saved empty. One import job runs per user at a time.
+
 Imported models link back to their source, and files staged by an importer are badged with a cloud icon so they stay distinguishable from files you upload manually later. Pasting a link someone already imported warns you first — see [duplicate warnings](/features/models#duplicate-warnings).
 
 ## Source sync

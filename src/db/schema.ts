@@ -665,20 +665,24 @@ export const collectionShareLinks = pgTable("collection_share_links", {
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
-// Lifecycle of a bulk import (MakerWorld collection import): the job runs in the background after POST /api/import/collection responds (next/server `after`), models land in `collectionId` as they finish, and the header progress indicator polls GET /api/import-jobs. "canceled" is set by the user; the runner checks for it between designs and stops.
+// Lifecycle of a background import: the job runs after POST /api/import/collection (a whole MakerWorld collection) or POST /api/import/background (one model link) responds (next/server `after`), and the header progress indicator polls GET /api/import-jobs. Collection jobs link models into `collectionId` as they finish; model jobs set `modelId` once the one model is saved. "canceled" is set by the user; the runners check for it between designs (collection) or before saving (model) and stop.
 export type ImportJobStatus = "running" | "done" | "failed" | "canceled";
+export type ImportJobKind = "collection" | "model";
 
 export const importJobs = pgTable("import_jobs", {
   id: uuid("id").primaryKey().defaultRandom(),
   userId: text("user_id")
     .notNull()
     .references(() => user.id, { onDelete: "cascade" }),
-  // The MakerWorld collection URL the job was started from.
+  kind: text("kind").$type<ImportJobKind>().notNull().default("collection"),
+  // The URL the job was started from: a MakerWorld collection, or (kind "model") a single model link.
   sourceUrl: text("source_url").notNull(),
-  // Local collection the imported models are added to.
+  // Local collection the imported models are added to (collection jobs only).
   collectionId: uuid("collection_id").references(() => collections.id, {
     onDelete: "set null",
   }),
+  // The model a finished single-model job created, for the indicator's "View model" link.
+  modelId: uuid("model_id").references(() => models.id, { onDelete: "set null" }),
   status: text("status").$type<ImportJobStatus>().notNull().default("running"),
   // Number of designs the job will attempt (listed, non-hidden designs).
   total: integer("total").notNull().default(0),
@@ -686,7 +690,7 @@ export const importJobs = pgTable("import_jobs", {
   completed: integer("completed").notNull().default(0),
   failed: integer("failed").notNull().default(0),
   skipped: integer("skipped").notNull().default(0),
-  // Title of the design currently being imported, for the progress UI.
+  // Title of the design currently being imported, for the progress UI. Model jobs keep it once finished — it's the one design the job is about.
   currentItem: text("current_item"),
   // Fatal error that stopped the whole job (per-design problems go to `warnings` instead).
   error: text("error"),

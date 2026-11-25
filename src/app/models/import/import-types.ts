@@ -23,6 +23,8 @@ export type ImportTypeConfig = {
   hint: string;
   submitLabel: string;
   fetchingLabel: string;
+  // Offers a second button that imports via a background job (POST /api/import/background) and saves the model directly instead of prefilling the create form. Only the single-model type has one: a collection is always a background job, an Onshape document needs its tab dialog, and an archive is already on disk.
+  backgroundLabel?: string;
 };
 
 export const IMPORT_TYPES = {
@@ -37,9 +39,10 @@ export const IMPORT_TYPES = {
       "Paste a MakerWorld or Printables model link. The model info, images and files are fetched and prefilled into the create form.",
     inputLabel: "Model URL",
     placeholder: "https://www.printables.com/model/3161-3d-benchy",
-    hint: "Supports Printables and MakerWorld single-model links.",
+    hint: "Supports Printables and MakerWorld single-model links. Import in background skips the review form and saves the model as imported.",
     submitLabel: "Fetch model",
     fetchingLabel: "Fetching model… this can take a moment",
+    backgroundLabel: "Import in background",
   },
   collection: {
     type: "collection",
